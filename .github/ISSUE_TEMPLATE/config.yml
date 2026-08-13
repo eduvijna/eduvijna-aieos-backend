@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contribution guide
+    url: https://github.com/eduvijna/eduvijna-aieos-backend/blob/main/CONTRIBUTING.md
+    about: Read CONTRIBUTING.md before opening an issue.
+  - name: Repository README
+    url: https://github.com/eduvijna/eduvijna-aieos-backend/blob/main/README.md
+    about: Mission, scope, structure, and contribution workflow.
+  - name: Architecture Office repository
+    url: https://github.com/eduvijna/eduvijna-architecture
+    about: EAO governance and ADRs live in eduvijna-architecture — not here.
+  - name: Product Office repository
+    url: https://github.com/eduvijna/eduvijna-product
+    about: Product vision and Teacher OS product architecture live in eduvijna-product — not here.

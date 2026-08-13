@@ -1,0 +1,13 @@
+# EduVijna AIEOS Backend — CODEOWNERS
+#
+# Pattern aligned with eduvijna-product and eduvijna-architecture CODEOWNERS.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+*                           @eduvijna
+
+/CONTRIBUTING.md            @eduvijna
+/CODEOWNERS                 @eduvijna
+/.github/                   @eduvijna
+
+/src/                       @eduvijna
+/docs/                      @eduvijna
