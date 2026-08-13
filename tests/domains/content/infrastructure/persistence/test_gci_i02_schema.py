@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import ast
+import io
 import uuid
+from contextlib import redirect_stdout
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect, text
+from alembic import command
+from psycopg.pq import ExecStatus
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from aieos.domains.content.infrastructure.persistence.models import (
     content_versions_table,
     contents_table,
 )
+from tests.conftest import SCHEMA_OWNER_ROLE, alembic_config, provision_identities
 from tests.dbutil import REPO_ROOT, set_tenant
 
 pytestmark = pytest.mark.gci_i02
@@ -825,6 +831,112 @@ class TestPrivilegeAndOwnership:
                     ),
                     match="permission denied",
                 )
+
+
+OFFLINE_DB = "aieos_gci_i02r2_offline"
+
+
+def _generate_offline_upgrade_sql(migrator_url: str) -> str:
+    cfg = alembic_config(migrator_url)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        command.upgrade(cfg, "base:head", sql=True)
+    return output.getvalue()
+
+
+def _exec_sql_script(url: str, script: str) -> None:
+    engine = create_engine(url, isolation_level="AUTOCOMMIT")
+    raw = engine.raw_connection()
+    try:
+        result = raw.pgconn.exec_(script.encode("utf-8"))
+        if result is None or result.status == ExecStatus.FATAL_ERROR:
+            message = result.error_message if result is not None else raw.pgconn.error_message
+            raise RuntimeError(message)
+    finally:
+        raw.close()
+        engine.dispose()
+
+
+def _url_for_database(url: str, database: str) -> str:
+    return make_url(url).set(database=database).render_as_string(hide_password=False)
+
+
+class TestOfflineMigrationOwnership:
+    def test_offline_sql_assumes_schema_owner_before_ddl_and_preserves_ownership(
+        self, bootstrap_engine, postgres18
+    ) -> None:
+        sql_text = _generate_offline_upgrade_sql(postgres18["migrator_url"])
+        role_stmt = f"SET LOCAL ROLE {SCHEMA_OWNER_ROLE}"
+        create_schema = "CREATE SCHEMA content"
+        role_at = sql_text.find(role_stmt)
+        create_at = sql_text.find(create_schema)
+        begin_at = sql_text.upper().find("BEGIN")
+        assert role_at != -1, sql_text
+        assert create_at != -1, sql_text
+        assert begin_at != -1, sql_text
+        assert begin_at < role_at < create_at
+
+        autocommit = bootstrap_engine.execution_options(isolation_level="AUTOCOMMIT")
+        with autocommit.connect() as conn:
+            conn.execute(text(f"DROP DATABASE IF EXISTS {OFFLINE_DB} WITH (FORCE)"))
+            conn.execute(text(f"CREATE DATABASE {OFFLINE_DB}"))
+            conn.execute(
+                text(
+                    f"GRANT CONNECT, CREATE ON DATABASE {OFFLINE_DB} "
+                    f"TO {SCHEMA_OWNER_ROLE}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT CONNECT ON DATABASE {OFFLINE_DB} TO {postgres18['migrator_user']}"
+                )
+            )
+
+        bootstrap_offline_url = _url_for_database(postgres18["bootstrap_url"], OFFLINE_DB)
+        bootstrap_offline = create_engine(bootstrap_offline_url, isolation_level="AUTOCOMMIT")
+        try:
+            provision_identities(bootstrap_offline)
+            with bootstrap_offline.connect() as conn:
+                conn.execute(
+                    text(f"GRANT USAGE, CREATE ON SCHEMA public TO {SCHEMA_OWNER_ROLE}")
+                )
+                conn.execute(
+                    text(
+                        f"GRANT USAGE ON SCHEMA public TO {postgres18['migrator_user']}"
+                    )
+                )
+            migrator_offline_url = _url_for_database(
+                postgres18["migrator_url"], OFFLINE_DB
+            )
+            _exec_sql_script(migrator_offline_url, sql_text)
+            with bootstrap_offline.connect() as conn:
+                schema_owner = conn.execute(
+                    text(
+                        "SELECT pg_catalog.pg_get_userbyid(nspowner) "
+                        "FROM pg_catalog.pg_namespace WHERE nspname = 'content'"
+                    )
+                ).scalar_one()
+                table_owners = dict(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT c.relname, pg_catalog.pg_get_userbyid(c.relowner)
+                            FROM pg_catalog.pg_class c
+                            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                            WHERE n.nspname = 'content' AND c.relkind = 'r'
+                            """
+                        )
+                    ).all()
+                )
+                current_user = conn.execute(text("SELECT current_user")).scalar_one()
+            assert schema_owner == SCHEMA_OWNER_ROLE
+            assert table_owners["contents"] == SCHEMA_OWNER_ROLE
+            assert table_owners["content_versions"] == SCHEMA_OWNER_ROLE
+            assert current_user != SCHEMA_OWNER_ROLE
+        finally:
+            bootstrap_offline.dispose()
+            with autocommit.connect() as conn:
+                conn.execute(text(f"DROP DATABASE IF EXISTS {OFFLINE_DB} WITH (FORCE)"))
 
 
 class TestArchitectureBoundary:

@@ -64,7 +64,7 @@ def _configure_kwargs() -> dict:
 
 
 def run_migrations_offline() -> None:
-    _schema_owner_role()
+    owner_role = _schema_owner_role()
     context.configure(
         url=_database_url(),
         literal_binds=True,
@@ -72,6 +72,7 @@ def run_migrations_offline() -> None:
         **_configure_kwargs(),
     )
     with context.begin_transaction():
+        context.execute(f"SET LOCAL ROLE {owner_role}")
         context.run_migrations()
 
 

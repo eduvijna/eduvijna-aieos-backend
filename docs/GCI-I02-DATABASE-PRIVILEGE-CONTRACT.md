@@ -2,10 +2,10 @@
 id: GCI-I02-DATABASE-PRIVILEGE-CONTRACT
 title: Generic Content database privilege contract
 status: draft
-version: 0.2.0
+version: 0.3.0
 ---
 
-# Generic Content database privilege contract (GCI-I02R1)
+# Generic Content database privilege contract (GCI-I02R2)
 
 This document describes the required production privilege separation. It does **not** provision cloud or production identities.
 
@@ -32,7 +32,7 @@ Alembic connects as the **migrator** identity and executes Generic Content DDL o
 AIEOS_SCHEMA_OWNER_ROLE=<schema-owner-role>
 ```
 
-The migration environment issues `SET LOCAL ROLE` to that role. It does **not** silently create `content` objects as the migrator. The named schema-owner role must already exist; Alembic does not `CREATE ROLE` for production.
+The migration environment issues `SET LOCAL ROLE` to that role. Online migrations execute it on the migrator connection. Offline SQL generation emits the same `SET LOCAL ROLE` inside the migration transaction before Generic Content DDL, so generated SQL preserves migrator identity ≠ object owner when executed. It does **not** silently create `content` objects as the migrator. The named schema-owner role must already exist; Alembic does not `CREATE ROLE` for production.
 
 After upgrade:
 
