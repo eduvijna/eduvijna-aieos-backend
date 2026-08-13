@@ -25,6 +25,38 @@ from aieos.platform.idempotency.hashing import fingerprint_material, hash_idempo
 from aieos.platform.idempotency.models import CONTENT_CREATE_V1, IdempotencyOutcome, IdempotencyScope
 
 
+def _create_fingerprint(command: CreateContentCommand) -> str:
+    return fingerprint_material(
+        {
+            "content_type": command.content_type,
+            "title": command.title,
+            "description": command.description,
+            "locale": command.locale,
+        }
+    )
+
+
+def original_create_read_model(
+    command: CreateContentCommand,
+    outcome: IdempotencyOutcome,
+) -> ContentReadModel:
+    """Reconstruct the established create result. Not current Content state."""
+    return ContentReadModel(
+        content_id=ContentId(outcome.result_content_id),
+        content_type=command.content_type,
+        title=command.title,
+        description=command.description,
+        locale=command.locale,
+        stewardship_state=StewardshipState.DRAFT.value,
+        current_version_id=None,
+        published_version_id=None,
+        aggregate_revision=AggregateRevision(outcome.result_aggregate_revision),
+        created_at=outcome.created_at,
+        updated_at=outcome.created_at,
+        archived_at=None,
+    )
+
+
 class CreateContentService:
     """Authoritative Content insert. Development/test foundation only."""
 
@@ -50,44 +82,13 @@ class CreateContentService:
         idempotency_key: str,
         now: datetime | None = None,
     ) -> ContentReadModel:
-        if not self._catalog.contains(command.content_type):
-            raise UnknownContentType("content_type is not registered")
-        created_at = now if now is not None else datetime.now(UTC)
-        fingerprint = fingerprint_material(
-            {
-                "content_type": command.content_type,
-                "title": command.title,
-                "description": command.description,
-                "locale": command.locale,
-            }
-        )
+        fingerprint = _create_fingerprint(command)
         scope = IdempotencyScope(
             tenant_id=execution_tenant_id,
             principal_id=principal_id,
             operation=CONTENT_CREATE_V1,
             key_sha256=hash_idempotency_key(idempotency_key),
         )
-        try:
-            content = Content(
-                content_id=ContentId.generate(),
-                tenant_id=execution_tenant_id,
-                owner_principal_id=principal_id,
-                content_type=ContentType(command.content_type),
-                title=command.title,
-                description=command.description,
-                locale=command.locale,
-                stewardship_state=StewardshipState.DRAFT,
-                current_version_id=None,
-                published_version_id=None,
-                aggregate_revision=AggregateRevision(0),
-                created_at=created_at,
-                created_by_principal_id=principal_id,
-                updated_at=created_at,
-                archived_at=None,
-            )
-        except ContentDomainError as exc:
-            raise InvalidContentRequest("content create request is invalid") from exc
-
         with self._uow_factory(execution_tenant_id) as uow:
             uow.idempotency.acquire_scope(scope)
             existing = uow.idempotency.get(scope)
@@ -99,7 +100,31 @@ class CreateContentService:
                     raise PersistenceInvariantViolation(
                         "idempotent create outcome is not visible"
                     )
-                return content_read_model(found)
+                return original_create_read_model(command, existing)
+
+            if not self._catalog.contains(command.content_type):
+                raise UnknownContentType("content_type is not registered")
+            created_at = now if now is not None else datetime.now(UTC)
+            try:
+                content = Content(
+                    content_id=ContentId.generate(),
+                    tenant_id=execution_tenant_id,
+                    owner_principal_id=principal_id,
+                    content_type=ContentType(command.content_type),
+                    title=command.title,
+                    description=command.description,
+                    locale=command.locale,
+                    stewardship_state=StewardshipState.DRAFT,
+                    current_version_id=None,
+                    published_version_id=None,
+                    aggregate_revision=AggregateRevision(0),
+                    created_at=created_at,
+                    created_by_principal_id=principal_id,
+                    updated_at=created_at,
+                    archived_at=None,
+                )
+            except ContentDomainError as exc:
+                raise InvalidContentRequest("content create request is invalid") from exc
             uow.contents.insert(content)
             uow.idempotency.insert(
                 IdempotencyOutcome(

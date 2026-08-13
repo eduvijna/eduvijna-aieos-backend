@@ -326,6 +326,122 @@ class TestIdempotencyHttp:
             ).scalar_one()
         assert int(count) == 1
 
+    def test_create_retry_after_later_aggregate_advance_replays_original_outcome(
+        self, runtime_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        client = _client(runtime_engine, tenant_id, uuid.uuid7())
+        key = f"create-advance-{uuid.uuid7()}"
+        first = client.post(
+            "/api/v1/contents",
+            json=CREATE_BODY,
+            headers=_headers(tenant_id, **{"Idempotency-Key": key}),
+        )
+        assert first.status_code == 201, first.text
+        original = first.json()
+        content_id = original["content_id"]
+        append = _append(client, tenant_id, content_id, etag='"r0"')
+        assert append.status_code == 201, append.text
+        version_id = append.json()["version_id"]
+        with bootstrap_engine.connect() as conn:
+            head = conn.execute(
+                text(
+                    "SELECT aggregate_revision, current_version_id "
+                    "FROM content.contents WHERE content_id = :cid"
+                ),
+                {"cid": UUID(content_id)},
+            ).one()
+        assert int(head.aggregate_revision) == 1
+        assert str(head.current_version_id) == version_id
+
+        replay = client.post(
+            "/api/v1/contents",
+            json=CREATE_BODY,
+            headers=_headers(tenant_id, **{"Idempotency-Key": key}),
+        )
+        assert replay.status_code == 201, replay.text
+        replayed = replay.json()
+        assert replayed == original
+        assert replayed["content_id"] == content_id
+        assert replay.headers["Location"] == first.headers["Location"]
+        assert replay.headers["ETag"] == '"r0"'
+        assert replayed["aggregate_revision"] == 0
+        assert replayed["current_version_id"] is None
+        assert replayed["published_version_id"] is None
+        assert replayed["stewardship_state"] == "DRAFT"
+        assert replayed["created_at"] == original["created_at"]
+        assert replayed["updated_at"] == original["updated_at"]
+
+        changed = client.post(
+            "/api/v1/contents",
+            json={**CREATE_BODY, "title": "Other"},
+            headers=_headers(tenant_id, **{"Idempotency-Key": key}),
+        )
+        assert changed.status_code == 409
+        assert changed.json()["code"] == "idempotency_key_reused"
+
+        with bootstrap_engine.connect() as conn:
+            after = conn.execute(
+                text(
+                    "SELECT aggregate_revision, current_version_id "
+                    "FROM content.contents WHERE content_id = :cid"
+                ),
+                {"cid": UUID(content_id)},
+            ).one()
+            content_count = conn.execute(
+                text("SELECT count(*) FROM content.contents WHERE tenant_id = :tid"),
+                {"tid": tenant_id},
+            ).scalar_one()
+            version_count = conn.execute(
+                text(
+                    "SELECT count(*) FROM content.content_versions WHERE content_id = :cid"
+                ),
+                {"cid": UUID(content_id)},
+            ).scalar_one()
+        assert int(after.aggregate_revision) == 1
+        assert str(after.current_version_id) == version_id
+        assert int(content_count) == 1
+        assert int(version_count) == 1
+
+    def test_create_replay_survives_catalog_drift(self, runtime_engine) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        key = f"create-catalog-{uuid.uuid7()}"
+        client = _client(runtime_engine, tenant_id, principal_id)
+        first = client.post(
+            "/api/v1/contents",
+            json=CREATE_BODY,
+            headers=_headers(tenant_id, **{"Idempotency-Key": key}),
+        )
+        assert first.status_code == 201, first.text
+        drifted = TestClient(
+            create_app(
+                uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+                security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
+                content_types=StaticContentTypeCatalog({"other.type"}),
+                cursor_signing_key=CURSOR_KEY,
+                schema_registry=make_test_schema_registry(),
+                idempotency_retention=IDEMPOTENCY_RETENTION,
+            ),
+            raise_server_exceptions=False,
+        )
+        unknown = drifted.post(
+            "/api/v1/contents",
+            json={**CREATE_BODY, "title": "Fresh"},
+            headers=_headers(tenant_id),
+        )
+        assert unknown.status_code == 422
+        assert unknown.json()["code"] == "unknown_content_type"
+        replay = drifted.post(
+            "/api/v1/contents",
+            json=CREATE_BODY,
+            headers=_headers(tenant_id, **{"Idempotency-Key": key}),
+        )
+        assert replay.status_code == 201, replay.text
+        assert replay.json() == first.json()
+        assert replay.json()["content_id"] == first.json()["content_id"]
+        assert replay.headers["ETag"] == '"r0"'
+
     def test_scopes_do_not_collide(self, runtime_engine, bootstrap_engine) -> None:
         tenant_a = uuid.uuid7()
         tenant_b = uuid.uuid7()
