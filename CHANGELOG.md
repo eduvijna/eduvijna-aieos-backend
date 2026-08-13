@@ -16,7 +16,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Nothing yet.
+- GCI-I02R1: ordinary runtime has no DELETE on `contents` and no UPDATE/DELETE on `content_versions`; Alembic DDL runs under an explicit NOLOGIN schema-owner role distinct from migrator and runtime.
 
 ### Deprecated
 
@@ -32,7 +32,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Nothing yet.
+- GCI-I02R1 withholds ordinary-runtime DELETE/UPDATE privileges that would otherwise authorize physical purge or historical ContentVersion mutation.
 
 ## [0.1.0] - 2026-08-13
 

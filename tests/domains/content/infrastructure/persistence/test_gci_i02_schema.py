@@ -198,9 +198,9 @@ def _table_columns(conn, table: str) -> set[str]:
 
 class TestAlembicAndCatalog:
     def test_schema_created_only_through_alembic_and_required_tables(
-        self, migrator_engine, postgres18
+        self, bootstrap_engine, postgres18
     ) -> None:
-        with migrator_engine.connect() as conn:
+        with bootstrap_engine.connect() as conn:
             schemas = {
                 row[0]
                 for row in conn.execute(
@@ -235,21 +235,21 @@ class TestAlembicAndCatalog:
         assert postgres18["server_version"].startswith("18.")
 
     def test_alembic_downgrade_reupgrade_left_schema_at_head(
-        self, postgres18, migrator_engine
+        self, postgres18, bootstrap_engine
     ) -> None:
-        insp = inspect(migrator_engine)
+        insp = inspect(bootstrap_engine)
         assert "content" in insp.get_schema_names()
         assert set(insp.get_table_names(schema="content")) == {
             "contents",
             "content_versions",
         }
-        with migrator_engine.connect() as conn:
+        with bootstrap_engine.connect() as conn:
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
                 "gcii020001"
             )
 
-    def test_required_columns_and_sqlalchemy_mappings(self, migrator_engine) -> None:
-        with migrator_engine.connect() as conn:
+    def test_required_columns_and_sqlalchemy_mappings(self, bootstrap_engine) -> None:
+        with bootstrap_engine.connect() as conn:
             assert _table_columns(conn, "contents") == CONTENTS_COLUMNS
             assert _table_columns(conn, "content_versions") == VERSION_COLUMNS
         assert set(contents_table.c.keys()) == CONTENTS_COLUMNS
@@ -259,8 +259,8 @@ class TestAlembicAndCatalog:
 
 
 class TestConstraints:
-    def test_stewardship_and_origin_vocabularies(self, migrator_engine) -> None:
-        with migrator_engine.begin() as conn:
+    def test_stewardship_and_origin_vocabularies(self, bootstrap_engine) -> None:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, _ = _ids()
             _expect_integrity(
                 conn,
@@ -271,7 +271,7 @@ class TestConstraints:
                     stewardship_state="PUBLISHED",
                 ),
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _ids()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
             _expect_integrity(
@@ -286,7 +286,7 @@ class TestConstraints:
                     origin="MACHINE",
                 ),
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, _ = _ids()
             for state in ("DRAFT", "GENERATED", "IN_REVIEW", "APPROVED"):
                 cid = uuid.uuid7()
@@ -303,7 +303,7 @@ class TestConstraints:
                 stewardship_state="ARCHIVED",
                 archived_at=_now(),
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             for origin in ("HUMAN", "IMPORT", "SYSTEM"):
                 tenant_id, content_id, version_id = _ids()
                 _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
@@ -317,8 +317,8 @@ class TestConstraints:
                     origin=origin,
                 )
 
-    def test_aggregate_revision_and_version_number(self, migrator_engine) -> None:
-        with migrator_engine.begin() as conn:
+    def test_aggregate_revision_and_version_number(self, bootstrap_engine) -> None:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, _ = _ids()
             _expect_integrity(
                 conn,
@@ -329,7 +329,7 @@ class TestConstraints:
                     aggregate_revision=-1,
                 ),
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _ids()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
             _expect_integrity(
@@ -344,8 +344,8 @@ class TestConstraints:
                 ),
             )
 
-    def test_first_version_lineage_both_directions(self, migrator_engine) -> None:
-        with migrator_engine.begin() as conn:
+    def test_first_version_lineage_both_directions(self, bootstrap_engine) -> None:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _ids()
             parent = uuid.uuid7()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
@@ -360,7 +360,7 @@ class TestConstraints:
                     parent_version_id=parent,
                 ),
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _ids()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
             _expect_integrity(
@@ -375,8 +375,8 @@ class TestConstraints:
                 ),
             )
 
-    def test_duplicate_version_number_rejected(self, migrator_engine) -> None:
-        with migrator_engine.begin() as conn:
+    def test_duplicate_version_number_rejected(self, bootstrap_engine) -> None:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, v1 = _ids()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
             _insert_version_json(
@@ -399,8 +399,8 @@ class TestConstraints:
                 ),
             )
 
-    def test_cross_tenant_and_cross_content_lineage(self, migrator_engine) -> None:
-        with migrator_engine.begin() as conn:
+    def test_cross_tenant_and_cross_content_lineage(self, bootstrap_engine) -> None:
+        with bootstrap_engine.begin() as conn:
             tenant_a, content_a, version_a = _seed_pair(conn)
             tenant_b = uuid.uuid7()
             content_b = uuid.uuid7()
@@ -441,9 +441,9 @@ class TestConstraints:
                 ),
             )
 
-    def test_current_and_published_pointers_same_domain(self, migrator_engine) -> None:
+    def test_current_and_published_pointers_same_domain(self, bootstrap_engine) -> None:
         with pytest.raises(IntegrityError):
-            with migrator_engine.begin() as conn:
+            with bootstrap_engine.begin() as conn:
                 tenant_a, content_a, version_a = _seed_pair(conn)
                 tenant_b, content_b, version_b = _seed_pair(conn)
                 conn.execute(
@@ -454,7 +454,7 @@ class TestConstraints:
                     {"vid": version_b, "cid": content_a},
                 )
         with pytest.raises(IntegrityError):
-            with migrator_engine.begin() as conn:
+            with bootstrap_engine.begin() as conn:
                 tenant_a, content_a, version_a = _seed_pair(conn)
                 tenant_b, content_b, version_b = _seed_pair(conn)
                 conn.execute(
@@ -464,7 +464,7 @@ class TestConstraints:
                     ),
                     {"vid": version_b, "cid": content_a},
                 )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_a, content_a, version_a = _seed_pair(conn)
             conn.execute(
                 text(
@@ -474,8 +474,8 @@ class TestConstraints:
                 {"vid": version_a, "cid": content_a},
             )
 
-    def test_archive_and_published_pointer_rules(self, migrator_engine) -> None:
-        with migrator_engine.begin() as conn:
+    def test_archive_and_published_pointer_rules(self, bootstrap_engine) -> None:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, v1 = _seed_pair(conn)
             v2 = uuid.uuid7()
             _insert_version_json(
@@ -512,7 +512,7 @@ class TestConstraints:
                     {"archived": _now(), "cid": content_id},
                 ),
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, v1 = _seed_pair(conn)
             conn.execute(
                 text(
@@ -523,8 +523,8 @@ class TestConstraints:
                 {"archived": _now(), "vid": v1, "cid": content_id},
             )
 
-    def test_payload_sha_origin_provenance(self, migrator_engine) -> None:
-        with migrator_engine.begin() as conn:
+    def test_payload_sha_origin_provenance(self, bootstrap_engine) -> None:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _ids()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
             _expect_integrity(
@@ -539,7 +539,7 @@ class TestConstraints:
                     payload_sql="'[1]'::jsonb",
                 ),
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _ids()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
             _expect_integrity(
@@ -554,7 +554,7 @@ class TestConstraints:
                     payload_sha256="ABC" + "a" * 61,
                 ),
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _ids()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
             _expect_integrity(
@@ -570,7 +570,7 @@ class TestConstraints:
                     provenance_sql="NULL",
                 ),
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _ids()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
             _expect_integrity(
@@ -586,7 +586,7 @@ class TestConstraints:
                     provenance_sql="'[1]'::jsonb",
                 ),
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _ids()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
             _insert_version_json(
@@ -602,8 +602,10 @@ class TestConstraints:
 
 
 class TestImmutability:
-    def test_update_and_delete_rejected(self, migrator_engine) -> None:
-        with migrator_engine.begin() as conn:
+    def test_privileged_identity_trigger_rejects_update_and_delete(
+        self, bootstrap_engine
+    ) -> None:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _seed_pair(conn)
             _expect_dbapi(
                 conn,
@@ -616,7 +618,7 @@ class TestImmutability:
                 ),
                 match="immutable",
             )
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _seed_pair(conn)
             _expect_dbapi(
                 conn,
@@ -629,10 +631,10 @@ class TestImmutability:
 
 
 class TestRlsAndTenantContext:
-    def test_tenant_isolation_and_insert_check(self, runtime_engine, migrator_engine) -> None:
+    def test_tenant_isolation_and_insert_check(self, runtime_engine, bootstrap_engine) -> None:
         tenant_a = uuid.uuid7()
         tenant_b = uuid.uuid7()
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             _, content_a, _ = _seed_pair(conn, tenant_id=tenant_a)
             _, content_b, _ = _seed_pair(conn, tenant_id=tenant_b)
         with runtime_engine.connect() as conn:
@@ -668,10 +670,10 @@ class TestRlsAndTenantContext:
                 )
 
     def test_set_local_cleared_after_commit_and_rollback(
-        self, runtime_engine, migrator_engine
+        self, runtime_engine, bootstrap_engine
     ) -> None:
         tenant_a = uuid.uuid7()
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             _seed_pair(conn, tenant_id=tenant_a)
         with runtime_engine.connect() as conn:
             with conn.begin():
@@ -699,11 +701,11 @@ class TestRlsAndTenantContext:
                 )
 
     def test_reused_connection_does_not_leak_tenant(
-        self, runtime_engine, migrator_engine
+        self, runtime_engine, bootstrap_engine
     ) -> None:
         tenant_a = uuid.uuid7()
         tenant_b = uuid.uuid7()
-        with migrator_engine.begin() as conn:
+        with bootstrap_engine.begin() as conn:
             _, content_a, _ = _seed_pair(conn, tenant_id=tenant_a)
             _, content_b, _ = _seed_pair(conn, tenant_id=tenant_b)
         with runtime_engine.connect() as conn:
@@ -723,6 +725,106 @@ class TestRlsAndTenantContext:
                 }
                 assert content_b in ids
                 assert content_a not in ids
+
+
+class TestPrivilegeAndOwnership:
+    def test_schema_and_tables_owned_by_schema_owner_not_migrator_or_runtime(
+        self, bootstrap_engine, migrator_engine, runtime_engine, postgres18
+    ) -> None:
+        owner = postgres18["schema_owner_role"]
+        migrator = postgres18["migrator_user"]
+        runtime = postgres18["runtime_user"]
+        with bootstrap_engine.connect() as conn:
+            schema_owner = conn.execute(
+                text(
+                    "SELECT pg_catalog.pg_get_userbyid(nspowner) "
+                    "FROM pg_catalog.pg_namespace WHERE nspname = 'content'"
+                )
+            ).scalar_one()
+            table_owners = dict(
+                conn.execute(
+                    text(
+                        """
+                        SELECT c.relname, pg_catalog.pg_get_userbyid(c.relowner)
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = 'content' AND c.relkind = 'r'
+                        """
+                    )
+                ).all()
+            )
+            roles = {
+                row["rolname"]: row
+                for row in conn.execute(
+                    text(
+                        """
+                        SELECT rolname, rolsuper, rolbypassrls, rolcanlogin, rolinherit
+                        FROM pg_catalog.pg_roles
+                        WHERE rolname IN (:owner, :migrator, :runtime)
+                        """
+                    ),
+                    {"owner": owner, "migrator": migrator, "runtime": runtime},
+                ).mappings()
+            }
+        assert schema_owner == owner
+        assert table_owners["contents"] == owner
+        assert table_owners["content_versions"] == owner
+        assert owner != migrator
+        assert runtime != owner
+        assert runtime != migrator
+        assert roles[owner]["rolcanlogin"] is False
+        assert roles[owner]["rolsuper"] is False
+        assert roles[migrator]["rolcanlogin"] is True
+        assert roles[migrator]["rolsuper"] is False
+        assert roles[migrator]["rolbypassrls"] is False
+        assert roles[runtime]["rolcanlogin"] is True
+        assert roles[runtime]["rolsuper"] is False
+        assert roles[runtime]["rolbypassrls"] is False
+        with migrator_engine.connect() as conn:
+            assert conn.execute(text("SELECT current_user")).scalar_one() == migrator
+            assert conn.execute(text("SELECT session_user")).scalar_one() == migrator
+        with runtime_engine.connect() as conn:
+            assert conn.execute(text("SELECT current_user")).scalar_one() == runtime
+            assert conn.execute(text("SELECT session_user")).scalar_one() == runtime
+
+    def test_runtime_lacks_purge_and_version_mutation_privileges(
+        self, runtime_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        with bootstrap_engine.begin() as conn:
+            _, content_id, version_id = _seed_pair(conn, tenant_id=tenant_id)
+        with runtime_engine.connect() as conn:
+            with conn.begin():
+                set_tenant(conn, tenant_id)
+                _expect_dbapi(
+                    conn,
+                    lambda: conn.execute(
+                        text("DELETE FROM content.contents WHERE content_id = :cid"),
+                        {"cid": content_id},
+                    ),
+                    match="permission denied",
+                )
+                _expect_dbapi(
+                    conn,
+                    lambda: conn.execute(
+                        text(
+                            "UPDATE content.content_versions SET origin = 'SYSTEM' "
+                            "WHERE version_id = :vid"
+                        ),
+                        {"vid": version_id},
+                    ),
+                    match="permission denied",
+                )
+                _expect_dbapi(
+                    conn,
+                    lambda: conn.execute(
+                        text(
+                            "DELETE FROM content.content_versions WHERE version_id = :vid"
+                        ),
+                        {"vid": version_id},
+                    ),
+                    match="permission denied",
+                )
 
 
 class TestArchitectureBoundary:

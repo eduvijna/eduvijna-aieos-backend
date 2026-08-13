@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
@@ -25,6 +26,8 @@ if config.config_file_name is not None:
 target_metadata = content_metadata
 
 DATABASE_URL_ENV = "AIEOS_DATABASE_URL"
+SCHEMA_OWNER_ROLE_ENV = "AIEOS_SCHEMA_OWNER_ROLE"
+_ROLE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 
 def _database_url() -> str:
@@ -37,21 +40,43 @@ def _database_url() -> str:
     return url
 
 
+def _schema_owner_role() -> str:
+    role = os.environ.get(SCHEMA_OWNER_ROLE_ENV, "").strip()
+    if not role:
+        raise RuntimeError(
+            f"{SCHEMA_OWNER_ROLE_ENV} must be set to the Generic Content schema-owner "
+            "role; Alembic will not silently create content objects as the migrator."
+        )
+    if not _ROLE_NAME.fullmatch(role):
+        raise RuntimeError(
+            f"{SCHEMA_OWNER_ROLE_ENV} must be a lowercase unquoted PostgreSQL identifier"
+        )
+    return role
+
+
+def _configure_kwargs() -> dict:
+    return {
+        "target_metadata": target_metadata,
+        "include_schemas": True,
+        "version_table": "alembic_version",
+        "version_table_schema": "public",
+    }
+
+
 def run_migrations_offline() -> None:
+    _schema_owner_role()
     context.configure(
         url=_database_url(),
-        target_metadata=target_metadata,
         literal_binds=True,
         dialect_name="postgresql",
-        include_schemas=True,
-        version_table="alembic_version",
-        version_table_schema="public",
+        **_configure_kwargs(),
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def run_migrations_online() -> None:
+    owner_role = _schema_owner_role()
     configuration = config.get_section(config.config_ini_section) or {}
     configuration["sqlalchemy.url"] = _database_url()
     connectable = engine_from_config(
@@ -60,14 +85,9 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            include_schemas=True,
-            version_table="alembic_version",
-            version_table_schema="public",
-        )
+        context.configure(connection=connection, **_configure_kwargs())
         with context.begin_transaction():
+            connection.execute(text(f"SET LOCAL ROLE {owner_role}"))
             context.run_migrations()
 
 
