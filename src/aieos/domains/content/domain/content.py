@@ -93,6 +93,11 @@ class Content:
                 raise InvalidContentAggregateError(
                     "archived_at is required when stewardship_state is ARCHIVED"
                 )
+            if self.published_version_id is not None:
+                raise InvalidContentAggregateError(
+                    "ARCHIVED Content must withdraw the active published_version_id; "
+                    "historical Publication facts are unchanged"
+                )
         elif self.archived_at is not None:
             raise InvalidContentAggregateError(
                 "archived_at is only valid when stewardship_state is ARCHIVED"

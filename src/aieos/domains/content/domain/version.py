@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
@@ -50,11 +51,57 @@ class PayloadSha256:
         return self.value
 
 
+def freeze_json_value(value: object) -> object:
+    """Recursively freeze a JSON-compatible value.
+
+    mappings -> MappingProxyType of a copied dict
+    arrays/lists/tuples -> tuple
+    Scalars are copied by value. Unsupported Python types are rejected.
+    """
+    if value is None or isinstance(value, bool) or isinstance(value, str):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise InvalidPayloadError("payload numbers must be finite JSON numbers")
+        return value
+    if isinstance(value, Mapping):
+        frozen: dict[str, object] = {}
+        for key, nested in value.items():
+            if not isinstance(key, str):
+                raise InvalidPayloadError("payload object keys must be strings")
+            frozen[key] = freeze_json_value(nested)
+        return MappingProxyType(frozen)
+    if isinstance(value, (list, tuple)):
+        return tuple(freeze_json_value(item) for item in value)
+    raise InvalidPayloadError(
+        f"unsupported payload value type {type(value).__name__}"
+    )
+
+
+def thaw_json_value(value: object) -> object:
+    """Convert the immutable representation back to normal JSON structures."""
+    if isinstance(value, Mapping):
+        return {key: thaw_json_value(nested) for key, nested in value.items()}
+    if isinstance(value, tuple):
+        return [thaw_json_value(item) for item in value]
+    return value
+
+
+def freeze_payload_mapping(body: Mapping[str, object]) -> Mapping[str, object]:
+    frozen = freeze_json_value(body)
+    if not isinstance(frozen, Mapping):
+        raise InvalidPayloadError("payload body must be a JSON object")
+    return frozen
+
+
 @dataclass(frozen=True, slots=True)
 class ContentPayload:
-    """Domain payload representation with integrity hash.
+    """Deeply immutable domain payload with integrity hash.
 
-    Not a SQL/JSONB persistence mapping.
+    Not a SQL/JSONB persistence mapping. Nested mappings are read-only;
+    nested arrays are tuples. No process/module/class-global cache.
     """
 
     body: Mapping[str, object]
@@ -63,24 +110,27 @@ class ContentPayload:
     def __post_init__(self) -> None:
         if not isinstance(self.body, Mapping):
             raise InvalidPayloadError("payload body must be a mapping")
-        frozen_body = MappingProxyType(dict(self.body))
+        frozen_body = freeze_payload_mapping(self.body)
         object.__setattr__(self, "body", frozen_body)
-        canonical = canonical_payload_json(frozen_body)
-        digest = PayloadSha256(hashlib.sha256(canonical.encode("utf-8")).hexdigest())
+        digest = PayloadSha256(_sha256_hex(canonical_payload_json(frozen_body)))
         if digest != self.sha256:
             raise InvalidPayloadError("payload sha256 does not match canonical body")
 
     @classmethod
     def from_mapping(cls, body: Mapping[str, object]) -> ContentPayload:
-        canonical = canonical_payload_json(body)
-        digest = PayloadSha256(hashlib.sha256(canonical.encode("utf-8")).hexdigest())
-        return cls(body=body, sha256=digest)
+        frozen_body = freeze_payload_mapping(body)
+        digest = PayloadSha256(_sha256_hex(canonical_payload_json(frozen_body)))
+        return cls(body=frozen_body, sha256=digest)
+
+
+def _sha256_hex(canonical: str) -> str:
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def canonical_payload_json(body: Mapping[str, object]) -> str:
     try:
         return json.dumps(
-            dict(body),
+            thaw_json_value(body),
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=False,
@@ -111,9 +161,11 @@ class ContentVersion:
             self.created_by_principal_id, label="created_by_principal_id"
         )
         _require_aware(self.created_at, label="created_at")
-        if self.parent_version_id is None and self.version_number.value != 1:
+        is_first = self.version_number.value == 1
+        has_parent = self.parent_version_id is not None
+        if is_first == has_parent:
             raise ParentLineageError(
-                "the first ContentVersion must have version_number 1 and no parent"
+                "version_number == 1 if and only if parent_version_id is None"
             )
         if self.parent_version_id == self.version_id:
             raise ParentLineageError("parent_version_id must not equal version_id")

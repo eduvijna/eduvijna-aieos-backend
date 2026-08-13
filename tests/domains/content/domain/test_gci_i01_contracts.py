@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import unittest
 import uuid
 from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime
+from types import MappingProxyType
 from uuid import UUID, uuid4
 
 import aieos.domains.content.domain as content_domain
@@ -14,8 +16,10 @@ import aieos.domains.content.domain.version as version_mod
 from aieos.domains.content.domain.content import Content, ContentType
 from aieos.domains.content.domain.errors import (
     ContentVersionImmutabilityError,
+    InvalidContentAggregateError,
     InvalidContentIdentityError,
     InvalidOriginError,
+    InvalidPayloadError,
     InvalidReviewDecisionError,
     InvalidStewardshipStateError,
     InvalidVersionNumberError,
@@ -42,6 +46,8 @@ from aieos.domains.content.domain.states import StewardshipState, parse_stewards
 from aieos.domains.content.domain.version import (
     ContentPayload,
     ContentVersion,
+    PayloadSha256,
+    canonical_payload_json,
     validate_linear_parent,
 )
 
@@ -258,13 +264,20 @@ class ContentVersionContractTests(unittest.TestCase):
         with self.assertRaises(ParentLineageError):
             validate_linear_parent(skip, v1)
 
-    def test_first_version_must_be_number_one(self) -> None:
+    def test_first_version_must_be_number_one_iff_no_parent(self) -> None:
         with self.assertRaises(ParentLineageError):
             _version(
                 content_id=ContentId.generate(),
                 tenant_id=_foreign_uuid(),
                 version_number=2,
                 parent=None,
+            )
+        with self.assertRaises(ParentLineageError):
+            _version(
+                content_id=ContentId.generate(),
+                tenant_id=_foreign_uuid(),
+                version_number=1,
+                parent=ContentVersionId.generate(),
             )
 
 
@@ -366,6 +379,125 @@ class PublicationContractTests(unittest.TestCase):
         )
         self.assertIs(content.stewardship_state, StewardshipState.APPROVED)
         self.assertIsNone(content.published_version_id)
+
+    def test_archived_withdraws_active_publication_pointer(self) -> None:
+        with self.assertRaises(InvalidContentAggregateError):
+            Content(
+                content_id=ContentId.generate(),
+                tenant_id=_foreign_uuid(),
+                owner_principal_id=_foreign_uuid(),
+                content_type=ContentType("test.generic"),
+                title="Archived with pointer",
+                description="",
+                locale="en-IN",
+                stewardship_state=StewardshipState.ARCHIVED,
+                current_version_id=ContentVersionId.generate(),
+                published_version_id=ContentVersionId.generate(),
+                aggregate_revision=AggregateRevision(2),
+                created_at=_now(),
+                created_by_principal_id=_foreign_uuid(),
+                updated_at=_now(),
+                archived_at=_now(),
+            )
+        archived = Content(
+            content_id=ContentId.generate(),
+            tenant_id=_foreign_uuid(),
+            owner_principal_id=_foreign_uuid(),
+            content_type=ContentType("test.generic"),
+            title="Archived",
+            description="",
+            locale="en-IN",
+            stewardship_state=StewardshipState.ARCHIVED,
+            current_version_id=ContentVersionId.generate(),
+            published_version_id=None,
+            aggregate_revision=AggregateRevision(2),
+            created_at=_now(),
+            created_by_principal_id=_foreign_uuid(),
+            updated_at=_now(),
+            archived_at=_now(),
+        )
+        self.assertIsNone(archived.published_version_id)
+
+    def test_non_archived_may_retain_published_pointer_beside_newer_current(self) -> None:
+        published = ContentVersionId.generate()
+        current = ContentVersionId.generate()
+        content = Content(
+            content_id=ContentId.generate(),
+            tenant_id=_foreign_uuid(),
+            owner_principal_id=_foreign_uuid(),
+            content_type=ContentType("test.generic"),
+            title="Draft after publish",
+            description="",
+            locale="en-IN",
+            stewardship_state=StewardshipState.DRAFT,
+            current_version_id=current,
+            published_version_id=published,
+            aggregate_revision=AggregateRevision(3),
+            created_at=_now(),
+            created_by_principal_id=_foreign_uuid(),
+            updated_at=_now(),
+            archived_at=None,
+        )
+        self.assertEqual(content.published_version_id, published)
+        self.assertEqual(content.current_version_id, current)
+        self.assertNotEqual(content.current_version_id, content.published_version_id)
+
+
+class ContentPayloadImmutabilityTests(unittest.TestCase):
+    def test_source_and_nested_structures_are_deeply_immutable(self) -> None:
+        source: dict[str, object] = {
+            "nested": {"a": 1, "inner": {"b": 2}},
+            "items": [1, {"k": "v"}],
+        }
+        payload = ContentPayload.from_mapping(source)
+        original_sha = payload.sha256
+        source["nested"]["a"] = 99  # type: ignore[index]
+        source["nested"]["inner"]["b"] = 100  # type: ignore[index]
+        source["items"].append(3)  # type: ignore[union-attr]
+        source["extra"] = "nope"
+        self.assertEqual(payload.body["nested"]["a"], 1)  # type: ignore[index]
+        self.assertEqual(payload.body["nested"]["inner"]["b"], 2)  # type: ignore[index]
+        self.assertIsInstance(payload.body["items"], tuple)
+        self.assertEqual(payload.body["items"][0], 1)
+        self.assertEqual(payload.body["items"][1]["k"], "v")  # type: ignore[index]
+        self.assertIsInstance(payload.body["nested"], MappingProxyType)
+        self.assertNotIn("extra", payload.body)
+        with self.assertRaises(AttributeError):
+            payload.body["items"].append(4)  # type: ignore[union-attr]
+        with self.assertRaises(TypeError):
+            payload.body["nested"]["a"] = 7  # type: ignore[index]
+        with self.assertRaises(TypeError):
+            payload.body["x"] = 1  # type: ignore[index]
+        self.assertEqual(payload.sha256, original_sha)
+        recomputed = PayloadSha256(
+            hashlib.sha256(canonical_payload_json(payload.body).encode("utf-8")).hexdigest()
+        )
+        self.assertEqual(payload.sha256, recomputed)
+
+    def test_rejects_non_string_keys_and_unsupported_values(self) -> None:
+        with self.assertRaises(InvalidPayloadError):
+            ContentPayload.from_mapping({1: "x"})  # type: ignore[dict-item]
+        with self.assertRaises(InvalidPayloadError):
+            ContentPayload.from_mapping({"when": datetime(2026, 1, 1, tzinfo=UTC)})
+        with self.assertRaises(InvalidPayloadError):
+            ContentPayload.from_mapping({"id": uuid4()})
+        with self.assertRaises(InvalidPayloadError):
+            ContentPayload.from_mapping({"tags": {1, 2}})
+        with self.assertRaises(InvalidPayloadError):
+            ContentPayload.from_mapping({"n": float("nan")})
+
+    def test_nested_json_canonicalizes_deterministically(self) -> None:
+        left = ContentPayload.from_mapping(
+            {"b": {"z": 1, "a": [2, {"k": True, "m": None}]}, "a": "x"}
+        )
+        right = ContentPayload.from_mapping(
+            {"a": "x", "b": {"a": [2, {"m": None, "k": True}], "z": 1}}
+        )
+        self.assertEqual(left.sha256, right.sha256)
+        self.assertEqual(
+            canonical_payload_json(left.body),
+            '{"a":"x","b":{"a":[2,{"k":true,"m":null}],"z":1}}',
+        )
 
 
 if __name__ == "__main__":
