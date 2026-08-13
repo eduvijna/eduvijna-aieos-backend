@@ -19,6 +19,7 @@ FORBIDDEN = (
     "asyncpg",
     "fastapi",
     "starlette",
+    "pydantic",
     "temporalio",
     "nats",
     "openai",

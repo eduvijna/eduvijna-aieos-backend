@@ -45,7 +45,10 @@ Out of scope:
 | `CODEOWNERS` | Ownership map |
 | `.github/` | Issue and pull-request templates |
 | `src/` | Backend implementation (to be added under approved blueprints) |
+| `contracts/openapi/` | Checked-in OpenAPI 3.1 snapshots |
 | `docs/` | Repository-local implementation notes (not ADRs) |
+
+HTTP Content create (`POST /api/v1/contents`) is a **non-production foundation**. See `docs/GCI-I04-NON-PRODUCTION-MUTATION-BOUNDARY.md`.
 
 ## Engineering Lifecycle
 

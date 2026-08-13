@@ -6,10 +6,15 @@ from datetime import datetime
 from typing import Mapping
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.engine import Connection
 
+from aieos.domains.content.application.errors import (
+    ContentAlreadyExists,
+    VersionAlreadyExists,
+)
 from aieos.domains.content.application.models import LockedContentHead
+from aieos.domains.content.domain.content import Content
 from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
@@ -21,6 +26,7 @@ from aieos.domains.content.infrastructure.persistence.errors import (
     reraise_as_application_error,
 )
 from aieos.domains.content.infrastructure.persistence.mapping import (
+    content_from_row,
     content_version_from_row,
     payload_as_json,
     provenance_as_json,
@@ -60,7 +66,11 @@ class SqlAlchemyContentVersionRepository:
         try:
             self._connection.execute(content_versions_table.insert().values(**values))
         except Exception as exc:
-            reraise_as_application_error(exc)
+            reraise_as_application_error(
+                exc,
+                unique_conflict=VersionAlreadyExists,
+                unique_message="ContentVersion identity or version_number already exists",
+            )
 
     def get(self, version_id: ContentVersionId) -> ContentVersion | None:
         try:
@@ -80,6 +90,91 @@ class SqlAlchemyContentRepository:
     def __init__(self, connection: Connection, execution_tenant_id: UUID) -> None:
         self._connection = connection
         self._execution_tenant_id = execution_tenant_id
+
+    def insert(self, content: Content) -> None:
+        values: dict[str, object] = {
+            "content_id": content.content_id.value,
+            "tenant_id": content.tenant_id,
+            "owner_principal_id": content.owner_principal_id,
+            "content_type": content.content_type.value,
+            "title": content.title,
+            "description": content.description,
+            "locale": content.locale,
+            "stewardship_state": content.stewardship_state.value,
+            "current_version_id": (
+                None
+                if content.current_version_id is None
+                else content.current_version_id.value
+            ),
+            "published_version_id": (
+                None
+                if content.published_version_id is None
+                else content.published_version_id.value
+            ),
+            "aggregate_revision": content.aggregate_revision.value,
+            "created_at": content.created_at,
+            "created_by_principal_id": content.created_by_principal_id,
+            "updated_at": content.updated_at,
+            "archived_at": content.archived_at,
+        }
+        try:
+            self._connection.execute(contents_table.insert().values(**values))
+        except Exception as exc:
+            reraise_as_application_error(
+                exc,
+                unique_conflict=ContentAlreadyExists,
+                unique_message="Content identity already exists",
+            )
+
+    def get(self, content_id: ContentId) -> Content | None:
+        try:
+            row = (
+                self._connection.execute(
+                    select(contents_table).where(
+                        contents_table.c.content_id == content_id.value,
+                        contents_table.c.tenant_id == self._execution_tenant_id,
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                return None
+            return content_from_row(row)
+        except Exception as exc:
+            reraise_as_application_error(exc)
+
+    def list_page(
+        self,
+        *,
+        limit: int,
+        after_created_at: datetime | None,
+        after_content_id: ContentId | None,
+    ) -> list[Content]:
+        stmt = (
+            select(contents_table)
+            .where(contents_table.c.tenant_id == self._execution_tenant_id)
+            .order_by(
+                contents_table.c.created_at.desc(),
+                contents_table.c.content_id.desc(),
+            )
+            .limit(limit)
+        )
+        if after_created_at is not None and after_content_id is not None:
+            stmt = stmt.where(
+                or_(
+                    contents_table.c.created_at < after_created_at,
+                    and_(
+                        contents_table.c.created_at == after_created_at,
+                        contents_table.c.content_id < after_content_id.value,
+                    ),
+                )
+            )
+        try:
+            rows = self._connection.execute(stmt).mappings().all()
+            return [content_from_row(row) for row in rows]
+        except Exception as exc:
+            reraise_as_application_error(exc)
 
     def get_head_for_update(self, content_id: ContentId) -> LockedContentHead | None:
         stmt = (

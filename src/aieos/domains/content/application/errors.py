@@ -30,9 +30,21 @@ class VersionAlreadyExists(ContentApplicationError):
     """A ContentVersion with the same identity or version number already exists."""
 
 
+class ContentAlreadyExists(ContentApplicationError):
+    """A Content aggregate with the same identity already exists."""
+
+
 class PersistenceInvariantViolation(ContentApplicationError):
     """A persistence invariant failed (payload, provenance, or database check)."""
 
 
 class PersistenceOperationFailed(ContentApplicationError):
     """Infrastructure/transaction/connection/driver failure, not a business conflict."""
+
+
+class UnknownContentType(ContentApplicationError):
+    """Requested content_type is not in the registered catalog."""
+
+
+class InvalidContentRequest(ContentApplicationError):
+    """Create or query request failed application validation."""

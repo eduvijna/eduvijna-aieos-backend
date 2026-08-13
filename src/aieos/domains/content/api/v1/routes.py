@@ -1,0 +1,171 @@
+"""Content HTTP v1. Calls application services only."""
+
+from __future__ import annotations
+
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query, Response
+
+from aieos.domains.content.api.v1.dependencies import (
+    create_content_service,
+    cursor_codec,
+    get_content_service,
+    list_contents_service,
+    resolve_trusted_context,
+)
+from aieos.domains.content.api.v1.models import (
+    ContentCreateRequest,
+    ContentListResponse,
+    ContentResponse,
+)
+from aieos.domains.content.application.create import CreateContentService
+from aieos.domains.content.application.errors import InvalidContentRequest
+from aieos.domains.content.application.models import (
+    ContentReadModel,
+    CreateContentCommand,
+    ListContentsQuery,
+)
+from aieos.domains.content.application.queries import GetContentService, ListContentsService
+from aieos.domains.content.domain.errors import InvalidContentIdentityError
+from aieos.domains.content.domain.identities import ContentId
+from aieos.platform.api.etag import encode_revision_etag
+from aieos.platform.api.pagination import CursorCodec, ListCursor
+from aieos.platform.api.problems import ProblemDetails
+from aieos.platform.security.context import TrustedSecurityContext
+
+DEFAULT_LIST_LIMIT = 50
+MAX_LIST_LIMIT = 100
+
+router = APIRouter(prefix="/api/v1", tags=["contents"])
+
+_PROBLEM_RESPONSES = {
+    400: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+    401: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+    403: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+    404: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+    405: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+    409: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+    422: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+    500: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+    503: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+}
+
+
+def _to_response(model: ContentReadModel) -> ContentResponse:
+    return ContentResponse(
+        content_id=model.content_id.value,
+        content_type=model.content_type,
+        title=model.title,
+        description=model.description,
+        locale=model.locale,
+        stewardship_state=model.stewardship_state,
+        current_version_id=(
+            None if model.current_version_id is None else model.current_version_id.value
+        ),
+        published_version_id=(
+            None
+            if model.published_version_id is None
+            else model.published_version_id.value
+        ),
+        aggregate_revision=int(model.aggregate_revision),
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+        archived_at=model.archived_at,
+    )
+
+
+def _content_id(value: UUID) -> ContentId:
+    try:
+        return ContentId(value)
+    except InvalidContentIdentityError as exc:
+        raise InvalidContentRequest("content_id must be a UUIDv7") from exc
+
+
+@router.post(
+    "/contents",
+    status_code=201,
+    response_model=ContentResponse,
+    operation_id="content_create",
+    responses=_PROBLEM_RESPONSES,
+)
+def content_create(
+    body: ContentCreateRequest,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[CreateContentService, Depends(create_content_service)],
+) -> ContentResponse:
+    model = service.create(
+        context.tenant_id,
+        context.principal_id,
+        CreateContentCommand(
+            content_type=body.content_type,
+            title=body.title,
+            description=body.description,
+            locale=body.locale,
+        ),
+    )
+    response.headers["Location"] = f"/api/v1/contents/{model.content_id}"
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_response(model)
+
+
+@router.get(
+    "/contents/{content_id}",
+    response_model=ContentResponse,
+    operation_id="content_get",
+    responses=_PROBLEM_RESPONSES,
+)
+def content_get(
+    content_id: UUID,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[GetContentService, Depends(get_content_service)],
+) -> ContentResponse:
+    model = service.get(context.tenant_id, _content_id(content_id))
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_response(model)
+
+
+@router.get(
+    "/contents",
+    response_model=ContentListResponse,
+    operation_id="content_list",
+    responses=_PROBLEM_RESPONSES,
+)
+def content_list(
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[ListContentsService, Depends(list_contents_service)],
+    codec: Annotated[CursorCodec, Depends(cursor_codec)],
+    limit: Annotated[int | None, Query(ge=1)] = None,
+    cursor: str | None = None,
+) -> ContentListResponse:
+    if limit is not None and limit > MAX_LIST_LIMIT:
+        raise InvalidContentRequest("list limit exceeds the maximum of 100")
+    page_size = DEFAULT_LIST_LIMIT if limit is None else limit
+    after_created_at = None
+    after_content_id = None
+    if cursor is not None:
+        decoded = codec.decode(cursor, expected_tenant_id=context.tenant_id)
+        after_created_at = decoded.created_at
+        after_content_id = ContentId(decoded.content_id)
+    result = service.list(
+        context.tenant_id,
+        ListContentsQuery(
+            limit=page_size,
+            after_created_at=after_created_at,
+            after_content_id=after_content_id,
+        ),
+    )
+    items = [_to_response(item) for item in result.items]
+    next_cursor = None
+    if result.has_more and result.items:
+        last = result.items[-1]
+        next_cursor = codec.encode(
+            ListCursor(
+                tenant_id=context.tenant_id,
+                created_at=last.created_at,
+                content_id=last.content_id.value,
+            )
+        )
+    return ContentListResponse(items=items, next_cursor=next_cursor)

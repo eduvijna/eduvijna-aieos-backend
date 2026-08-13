@@ -7,6 +7,8 @@ dependencies = [
     "sqlalchemy>=2.0,<3",
     "alembic>=1.13,<2",
     "psycopg[binary]>=3.2,<4",
+    "fastapi>=0.115,<1",
+    "pydantic>=2,<3",
 ]
 
 [build-system]
@@ -15,6 +17,7 @@ build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.27,<1",
     "pytest>=8,<9",
 ]
 
@@ -30,4 +33,5 @@ testpaths = ["tests"]
 markers = [
     "gci_i02: Generic Content PostgreSQL schema tests",
     "gci_i03: Generic Content immutable version append tests",
+    "gci_i04: Generic Content HTTP read/create foundation tests",
 ]

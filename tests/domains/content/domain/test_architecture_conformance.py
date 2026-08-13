@@ -19,6 +19,7 @@ FORBIDDEN_MODULE_PREFIXES = (
     "sqlalchemy",
     "fastapi",
     "starlette",
+    "pydantic",
     "alembic",
     "asyncpg",
     "psycopg",

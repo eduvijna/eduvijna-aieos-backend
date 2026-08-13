@@ -7,6 +7,7 @@ from typing import Mapping, Protocol
 from uuid import UUID
 
 from aieos.domains.content.application.models import LockedContentHead
+from aieos.domains.content.domain.content import Content
 from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
@@ -27,7 +28,23 @@ class ContentVersionRepository(Protocol):
     def get(self, version_id: ContentVersionId) -> ContentVersion | None: ...
 
 
+class ContentTypeCatalog(Protocol):
+    def contains(self, content_type: str) -> bool: ...
+
+
 class ContentRepository(Protocol):
+    def insert(self, content: Content) -> None: ...
+
+    def get(self, content_id: ContentId) -> Content | None: ...
+
+    def list_page(
+        self,
+        *,
+        limit: int,
+        after_created_at: datetime | None,
+        after_content_id: ContentId | None,
+    ) -> list[Content]: ...
+
     def get_head_for_update(self, content_id: ContentId) -> LockedContentHead | None: ...
 
     def advance_current_version(
