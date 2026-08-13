@@ -7,7 +7,12 @@ import unittest
 from pathlib import Path
 
 DOMAIN_ROOT = (
-    Path(__file__).resolve().parents[4] / "src" / "aieos" / "domains" / "content"
+    Path(__file__).resolve().parents[4]
+    / "src"
+    / "aieos"
+    / "domains"
+    / "content"
+    / "domain"
 )
 
 FORBIDDEN_MODULE_PREFIXES = (

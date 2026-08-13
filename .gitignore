@@ -61,6 +61,7 @@ __pycache__/
 venv/
 .pytest_cache/
 .mypy_cache/
+*.egg-info/
 
 # .NET / build artefacts (if tooling is added later)
 bin/
