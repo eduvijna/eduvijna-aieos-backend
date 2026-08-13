@@ -32,3 +32,7 @@ class VersionAlreadyExists(ContentApplicationError):
 
 class PersistenceInvariantViolation(ContentApplicationError):
     """A persistence invariant failed (payload, provenance, or database check)."""
+
+
+class PersistenceOperationFailed(ContentApplicationError):
+    """Infrastructure/transaction/connection/driver failure, not a business conflict."""

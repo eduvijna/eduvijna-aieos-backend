@@ -6,15 +6,9 @@ from datetime import datetime
 from typing import Mapping
 from uuid import UUID
 
-from psycopg.errors import UniqueViolation
 from sqlalchemy import select, update
 from sqlalchemy.engine import Connection
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from aieos.domains.content.application.errors import (
-    PersistenceInvariantViolation,
-    VersionAlreadyExists,
-)
 from aieos.domains.content.application.models import LockedContentHead
 from aieos.domains.content.domain.identities import (
     AggregateRevision,
@@ -23,6 +17,9 @@ from aieos.domains.content.domain.identities import (
     VersionNumber,
 )
 from aieos.domains.content.domain.version import ContentVersion
+from aieos.domains.content.infrastructure.persistence.errors import (
+    reraise_as_application_error,
+)
 from aieos.domains.content.infrastructure.persistence.mapping import (
     content_version_from_row,
     payload_as_json,
@@ -32,13 +29,6 @@ from aieos.domains.content.infrastructure.persistence.models import (
     content_versions_table,
     contents_table,
 )
-
-
-def _map_integrity(exc: IntegrityError) -> Exception:
-    orig = exc.orig
-    if isinstance(orig, UniqueViolation):
-        return VersionAlreadyExists("ContentVersion identity or version_number already exists")
-    return PersistenceInvariantViolation("content persistence invariant was violated")
 
 
 class SqlAlchemyContentVersionRepository:
@@ -69,22 +59,21 @@ class SqlAlchemyContentVersionRepository:
             values["provenance"] = provenance_as_json(provenance)
         try:
             self._connection.execute(content_versions_table.insert().values(**values))
-        except IntegrityError as exc:
-            raise _map_integrity(exc) from exc
-        except SQLAlchemyError as exc:
-            raise PersistenceInvariantViolation(
-                "content version insert failed"
-            ) from exc
+        except Exception as exc:
+            reraise_as_application_error(exc)
 
     def get(self, version_id: ContentVersionId) -> ContentVersion | None:
-        row = self._connection.execute(
-            select(content_versions_table).where(
-                content_versions_table.c.version_id == version_id.value
-            )
-        ).mappings().one_or_none()
-        if row is None:
-            return None
-        return content_version_from_row(row)
+        try:
+            row = self._connection.execute(
+                select(content_versions_table).where(
+                    content_versions_table.c.version_id == version_id.value
+                )
+            ).mappings().one_or_none()
+            if row is None:
+                return None
+            return content_version_from_row(row)
+        except Exception as exc:
+            reraise_as_application_error(exc)
 
 
 class SqlAlchemyContentRepository:
@@ -125,7 +114,10 @@ class SqlAlchemyContentRepository:
             )
             .with_for_update(of=contents_table)
         )
-        row = self._connection.execute(stmt).one_or_none()
+        try:
+            row = self._connection.execute(stmt).one_or_none()
+        except Exception as exc:
+            reraise_as_application_error(exc)
         if row is None:
             return None
         current_id = row.current_version_id
@@ -181,8 +173,8 @@ class SqlAlchemyContentRepository:
         )
         try:
             row = self._connection.execute(stmt).one_or_none()
-        except IntegrityError as exc:
-            raise _map_integrity(exc) from exc
+        except Exception as exc:
+            reraise_as_application_error(exc)
         if row is None:
             return None
         return AggregateRevision(int(row.aggregate_revision))

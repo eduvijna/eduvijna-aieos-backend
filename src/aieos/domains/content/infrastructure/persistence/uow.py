@@ -8,6 +8,10 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.engine import Transaction
 
+from aieos.domains.content.application.errors import PersistenceOperationFailed
+from aieos.domains.content.infrastructure.persistence.errors import (
+    reraise_as_application_error,
+)
 from aieos.domains.content.infrastructure.persistence.repositories import (
     SqlAlchemyContentRepository,
     SqlAlchemyContentVersionRepository,
@@ -24,26 +28,37 @@ class SqlAlchemyContentUnitOfWork:
         self.versions: SqlAlchemyContentVersionRepository
 
     def __enter__(self) -> SqlAlchemyContentUnitOfWork:
-        self._connection = self._engine.connect()
-        self._transaction = self._connection.begin()
-        self._connection.execute(
-            text("SELECT set_config('aieos.tenant_id', :tid, true)"),
-            {"tid": str(self._execution_tenant_id)},
-        )
-        self.contents = SqlAlchemyContentRepository(
-            self._connection, self._execution_tenant_id
-        )
-        self.versions = SqlAlchemyContentVersionRepository(self._connection)
-        return self
+        try:
+            self._connection = self._engine.connect()
+            self._transaction = self._connection.begin()
+            self._connection.execute(
+                text("SELECT set_config('aieos.tenant_id', :tid, true)"),
+                {"tid": str(self._execution_tenant_id)},
+            )
+            self.contents = SqlAlchemyContentRepository(
+                self._connection, self._execution_tenant_id
+            )
+            self.versions = SqlAlchemyContentVersionRepository(self._connection)
+            return self
+        except Exception as exc:
+            self._cleanup(suppress=True)
+            reraise_as_application_error(exc)
 
     def commit(self) -> None:
         if self._transaction is None:
-            raise RuntimeError("Content Unit of Work is not active")
-        self._transaction.commit()
+            raise PersistenceOperationFailed("Content Unit of Work is not active")
+        try:
+            self._transaction.commit()
+        except Exception as exc:
+            reraise_as_application_error(exc)
 
     def rollback(self) -> None:
-        if self._transaction is not None and self._transaction.is_active:
+        if self._transaction is None or not self._transaction.is_active:
+            return
+        try:
             self._transaction.rollback()
+        except Exception as exc:
+            reraise_as_application_error(exc)
 
     def __exit__(
         self,
@@ -51,14 +66,26 @@ class SqlAlchemyContentUnitOfWork:
         exc: BaseException | None,
         tb: object,
     ) -> None:
+        self._cleanup(suppress=exc_type is not None)
+
+    def _cleanup(self, *, suppress: bool) -> None:
         try:
             if self._transaction is not None and self._transaction.is_active:
-                self._transaction.rollback()
+                try:
+                    self._transaction.rollback()
+                except Exception as rollback_exc:
+                    if not suppress:
+                        reraise_as_application_error(rollback_exc)
         finally:
-            if self._connection is not None:
-                self._connection.close()
-            self._connection = None
-            self._transaction = None
+            try:
+                if self._connection is not None:
+                    self._connection.close()
+            except Exception as close_exc:
+                if not suppress:
+                    reraise_as_application_error(close_exc)
+            finally:
+                self._connection = None
+                self._transaction = None
 
 
 class SqlAlchemyContentUnitOfWorkFactory:
