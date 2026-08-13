@@ -43,6 +43,7 @@ class LockedContentHead:
     current_version_number: VersionNumber | None
     published_version_id: ContentVersionId | None
     stewardship_state: str
+    content_type: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +83,40 @@ class ListContentsQuery:
 class ListContentsResult:
     items: tuple[ContentReadModel, ...]
     has_more: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ContentVersionReadModel:
+    version_id: ContentVersionId
+    content_id: ContentId
+    version_number: VersionNumber
+    parent_version_id: ContentVersionId | None
+    schema_id: str
+    schema_version: int
+    payload: Mapping[str, object]
+    payload_sha256: str
+    origin: str
+    created_at: datetime
+
+
+def content_version_read_model(version: ContentVersion) -> ContentVersionReadModel:
+    from aieos.domains.content.domain.version import thaw_json_value
+
+    thawed = thaw_json_value(version.payload.body)
+    if not isinstance(thawed, Mapping):
+        raise TypeError("ContentVersion payload must thaw to a JSON object")
+    return ContentVersionReadModel(
+        version_id=version.version_id,
+        content_id=version.content_id,
+        version_number=version.version_number,
+        parent_version_id=version.parent_version_id,
+        schema_id=str(version.schema_id),
+        schema_version=int(version.schema_version),
+        payload=thawed,
+        payload_sha256=version.payload.sha256.value,
+        origin=version.origin.value,
+        created_at=version.created_at,
+    )
 
 
 def content_read_model(content: Content) -> ContentReadModel:

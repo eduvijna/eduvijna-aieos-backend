@@ -18,6 +18,12 @@ from aieos.domains.content.application.errors import (
     ContentAlreadyExists,
     ContentApplicationError,
     ContentNotFound,
+    ContentPayloadInvalid,
+    ContentSchemaMismatch,
+    ContentSchemaNotFound,
+    ContentVersionAppendNotAllowed,
+    ContentVersionNotFound,
+    IdempotencyKeyReused,
     InvalidContentRequest,
     PersistenceInvariantViolation,
     PersistenceOperationFailed,
@@ -29,6 +35,12 @@ from aieos.domains.content.application.errors import (
 from aieos.platform.api.context import (
     InvalidTenantHeaderError,
     bind_response_context,
+)
+from aieos.platform.api.http_errors import (
+    IdempotencyKeyRequiredError,
+    InvalidIdempotencyKeyError,
+    InvalidIfMatchError,
+    PreconditionRequiredError,
 )
 from aieos.platform.api.pagination import InvalidCursorError
 from aieos.platform.security.context import UnauthenticatedError, UnauthorizedError
@@ -154,6 +166,12 @@ _APPLICATION_PROBLEMS: dict[type[ContentApplicationError], tuple[int, str, str, 
         "Content not found",
         "Content was not found",
     ),
+    ContentVersionNotFound: (
+        404,
+        "content_version_not_found",
+        "ContentVersion not found",
+        "ContentVersion was not found",
+    ),
     UnknownContentType: (
         422,
         "unknown_content_type",
@@ -191,10 +209,40 @@ _APPLICATION_PROBLEMS: dict[type[ContentApplicationError], tuple[int, str, str, 
         "A content persistence invariant was violated",
     ),
     AggregateRevisionConflict: (
+        412,
+        "resource_revision_conflict",
+        "Resource revision conflict",
+        "If-Match does not match the current aggregate revision",
+    ),
+    ContentVersionAppendNotAllowed: (
         409,
-        "aggregate_revision_conflict",
-        "Aggregate revision conflict",
-        "Expected aggregate revision does not match stored head",
+        "content_version_append_not_allowed",
+        "ContentVersion append not allowed",
+        "ContentVersion append is not allowed in the current stewardship state",
+    ),
+    IdempotencyKeyReused: (
+        409,
+        "idempotency_key_reused",
+        "Idempotency key reused",
+        "Idempotency-Key was already used with a different request",
+    ),
+    ContentSchemaNotFound: (
+        422,
+        "content_schema_not_found",
+        "Content schema not found",
+        "schema_id/schema_version is not registered",
+    ),
+    ContentSchemaMismatch: (
+        422,
+        "content_schema_mismatch",
+        "Content schema mismatch",
+        "Registered schema does not match Content.content_type",
+    ),
+    ContentPayloadInvalid: (
+        422,
+        "content_payload_invalid",
+        "Content payload invalid",
+        "payload failed schema validation",
     ),
     VersionLineageConflict: (
         422,
@@ -326,6 +374,54 @@ def install_exception_handlers(app) -> None:
             detail="The list cursor is invalid",
         )
 
+    @app.exception_handler(PreconditionRequiredError)
+    async def precondition_handler(
+        request: Request, exc: PreconditionRequiredError
+    ) -> JSONResponse:
+        return problem_response(
+            request,
+            status=428,
+            code="precondition_required",
+            title="Precondition required",
+            detail="If-Match is required",
+        )
+
+    @app.exception_handler(InvalidIfMatchError)
+    async def invalid_if_match_handler(
+        request: Request, exc: InvalidIfMatchError
+    ) -> JSONResponse:
+        return problem_response(
+            request,
+            status=400,
+            code="invalid_if_match",
+            title="Invalid If-Match",
+            detail="If-Match must be one strong revision validator",
+        )
+
+    @app.exception_handler(IdempotencyKeyRequiredError)
+    async def idempotency_required_handler(
+        request: Request, exc: IdempotencyKeyRequiredError
+    ) -> JSONResponse:
+        return problem_response(
+            request,
+            status=400,
+            code="idempotency_key_required",
+            title="Idempotency-Key required",
+            detail="Idempotency-Key is required",
+        )
+
+    @app.exception_handler(InvalidIdempotencyKeyError)
+    async def invalid_idempotency_handler(
+        request: Request, exc: InvalidIdempotencyKeyError
+    ) -> JSONResponse:
+        return problem_response(
+            request,
+            status=400,
+            code="invalid_idempotency_key",
+            title="Invalid Idempotency-Key",
+            detail="Idempotency-Key is invalid",
+        )
+
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
         if isinstance(
@@ -338,6 +434,10 @@ def install_exception_handlers(app) -> None:
                 UnauthorizedError,
                 InvalidCursorError,
                 InvalidTenantHeaderError,
+                PreconditionRequiredError,
+                InvalidIfMatchError,
+                IdempotencyKeyRequiredError,
+                InvalidIdempotencyKeyError,
             ),
         ):
             raise exc

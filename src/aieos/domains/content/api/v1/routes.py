@@ -5,12 +5,14 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Header, Query, Response
 
 from aieos.domains.content.api.v1.dependencies import (
     create_content_service,
     cursor_codec,
     get_content_service,
+    get_content_version_service,
+    http_append_service,
     list_contents_service,
     resolve_trusted_context,
 )
@@ -18,18 +20,31 @@ from aieos.domains.content.api.v1.models import (
     ContentCreateRequest,
     ContentListResponse,
     ContentResponse,
+    ContentVersionAppendRequest,
+    ContentVersionResponse,
 )
 from aieos.domains.content.application.create import CreateContentService
 from aieos.domains.content.application.errors import InvalidContentRequest
+from aieos.domains.content.application.http_append import (
+    GetContentVersionService,
+    HttpAppendContentVersionService,
+)
 from aieos.domains.content.application.models import (
     ContentReadModel,
+    ContentVersionReadModel,
     CreateContentCommand,
     ListContentsQuery,
 )
 from aieos.domains.content.application.queries import GetContentService, ListContentsService
 from aieos.domains.content.domain.errors import InvalidContentIdentityError
-from aieos.domains.content.domain.identities import ContentId
+from aieos.domains.content.domain.identities import (
+    AggregateRevision,
+    ContentId,
+    ContentVersionId,
+)
 from aieos.platform.api.etag import encode_revision_etag
+from aieos.platform.api.idempotency_key import parse_idempotency_key
+from aieos.platform.api.if_match import parse_if_match
 from aieos.platform.api.pagination import CursorCodec, ListCursor
 from aieos.platform.api.problems import ProblemDetails
 from aieos.platform.security.context import TrustedSecurityContext
@@ -46,7 +61,9 @@ _PROBLEM_RESPONSES = {
     404: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
     405: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
     409: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+    412: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
     422: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
+    428: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
     500: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
     503: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
 }
@@ -75,11 +92,35 @@ def _to_response(model: ContentReadModel) -> ContentResponse:
     )
 
 
+def _to_version_response(model: ContentVersionReadModel) -> ContentVersionResponse:
+    return ContentVersionResponse(
+        version_id=model.version_id.value,
+        content_id=model.content_id.value,
+        version_number=int(model.version_number),
+        parent_version_id=(
+            None if model.parent_version_id is None else model.parent_version_id.value
+        ),
+        schema_id=model.schema_id,
+        schema_version=model.schema_version,
+        payload=dict(model.payload),
+        payload_sha256=model.payload_sha256,
+        origin=model.origin,
+        created_at=model.created_at,
+    )
+
+
 def _content_id(value: UUID) -> ContentId:
     try:
         return ContentId(value)
     except InvalidContentIdentityError as exc:
         raise InvalidContentRequest("content_id must be a UUIDv7") from exc
+
+
+def _version_id(value: UUID) -> ContentVersionId:
+    try:
+        return ContentVersionId(value)
+    except InvalidContentIdentityError as exc:
+        raise InvalidContentRequest("version_id must be a UUIDv7") from exc
 
 
 @router.post(
@@ -94,7 +135,9 @@ def content_create(
     response: Response,
     context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
     service: Annotated[CreateContentService, Depends(create_content_service)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> ContentResponse:
+    key = parse_idempotency_key(idempotency_key)
     model = service.create(
         context.tenant_id,
         context.principal_id,
@@ -104,6 +147,7 @@ def content_create(
             description=body.description,
             locale=body.locale,
         ),
+        idempotency_key=key,
     )
     response.headers["Location"] = f"/api/v1/contents/{model.content_id}"
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
@@ -169,3 +213,58 @@ def content_list(
             )
         )
     return ContentListResponse(items=items, next_cursor=next_cursor)
+
+
+@router.post(
+    "/contents/{content_id}/versions",
+    status_code=201,
+    response_model=ContentVersionResponse,
+    operation_id="content_version_append",
+    responses=_PROBLEM_RESPONSES,
+)
+def content_version_append(
+    content_id: UUID,
+    body: ContentVersionAppendRequest,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[HttpAppendContentVersionService, Depends(http_append_service)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ContentVersionResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    model, revision = service.append(
+        context.tenant_id,
+        context.principal_id,
+        content_id=_content_id(content_id),
+        expected_aggregate_revision=expected,
+        schema_id=body.schema_id,
+        schema_version=body.schema_version,
+        payload=body.payload,
+        idempotency_key=key,
+    )
+    response.headers["Location"] = (
+        f"/api/v1/contents/{model.content_id}/versions/{model.version_id}"
+    )
+    response.headers["ETag"] = encode_revision_etag(int(revision))
+    return _to_version_response(model)
+
+
+@router.get(
+    "/contents/{content_id}/versions/{version_id}",
+    response_model=ContentVersionResponse,
+    operation_id="content_version_get",
+    responses=_PROBLEM_RESPONSES,
+)
+def content_version_get(
+    content_id: UUID,
+    version_id: UUID,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[GetContentVersionService, Depends(get_content_version_service)],
+) -> ContentVersionResponse:
+    model = service.get(
+        context.tenant_id,
+        _content_id(content_id),
+        _version_id(version_id),
+    )
+    return _to_version_response(model)

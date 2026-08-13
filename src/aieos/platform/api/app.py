@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import FastAPI
 
 from aieos.domains.content.api.v1.routes import router as content_v1_router
 from aieos.domains.content.application.create import CreateContentService
+from aieos.domains.content.application.http_append import (
+    GetContentVersionService,
+    HttpAppendContentVersionService,
+)
 from aieos.domains.content.application.ports import ContentTypeCatalog, ContentUnitOfWorkFactory
 from aieos.domains.content.application.queries import GetContentService, ListContentsService
+from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.context import RequestContextMiddleware
 from aieos.platform.api.openapi import build_openapi
 from aieos.platform.api.pagination import CursorCodec
@@ -15,10 +22,10 @@ from aieos.platform.api.problems import install_exception_handlers
 from aieos.platform.security.context import SecurityContextResolver
 
 _APP_DESCRIPTION = (
-    "AIEOS HTTP foundation (GCI-I04). "
-    "POST /api/v1/contents is a development/test mutation only and MUST NOT be "
-    "authorized for production until transactional outbox and required "
-    "audit-intent persistence are integrated. Retry-safe create keys are not implemented."
+    "AIEOS HTTP foundation (GCI-I05). "
+    "POST /api/v1/contents and POST /api/v1/contents/{content_id}/versions are "
+    "development/test mutations only and MUST NOT be authorized for production "
+    "until transactional outbox and required audit-intent persistence are integrated."
 )
 
 
@@ -28,6 +35,8 @@ def create_app(
     security_resolver: SecurityContextResolver,
     content_types: ContentTypeCatalog,
     cursor_signing_key: bytes,
+    schema_registry: ContentSchemaRegistry,
+    idempotency_retention: timedelta,
 ) -> FastAPI:
     codec = CursorCodec(cursor_signing_key)
     app = FastAPI(
@@ -42,9 +51,15 @@ def create_app(
     app.include_router(content_v1_router)
     app.state.security_resolver = security_resolver
     app.state.cursor_codec = codec
-    app.state.create_content_service = CreateContentService(uow_factory, content_types)
+    app.state.create_content_service = CreateContentService(
+        uow_factory, content_types, idempotency_retention=idempotency_retention
+    )
     app.state.get_content_service = GetContentService(uow_factory)
     app.state.list_contents_service = ListContentsService(uow_factory)
+    app.state.http_append_service = HttpAppendContentVersionService(
+        uow_factory, schema_registry, idempotency_retention=idempotency_retention
+    )
+    app.state.get_content_version_service = GetContentVersionService(uow_factory)
 
     def _openapi() -> dict:
         if app.openapi_schema is None:

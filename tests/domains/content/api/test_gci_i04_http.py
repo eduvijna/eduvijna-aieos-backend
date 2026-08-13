@@ -20,7 +20,7 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.platform.api.app import create_app
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.api.pagination import CursorCodec, ListCursor
-from tests.fakes import StubSecurityContextResolver
+from tests.fakes import IDEMPOTENCY_RETENTION, StubSecurityContextResolver, make_test_schema_registry
 
 pytestmark = pytest.mark.gci_i04
 
@@ -51,6 +51,8 @@ def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID, **resolver
         ),
         content_types=StaticContentTypeCatalog({"test.generic"}),
         cursor_signing_key=CURSOR_KEY,
+        schema_registry=make_test_schema_registry(),
+        idempotency_retention=IDEMPOTENCY_RETENTION,
     )
 
 
@@ -63,6 +65,8 @@ def _client(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID, **resol
 
 def _headers(tenant_id: UUID, **extra: str) -> dict[str, str]:
     headers = {"X-AIEOS-Tenant-ID": str(tenant_id), **extra}
+    if "Idempotency-Key" not in headers:
+        headers["Idempotency-Key"] = f"test-{uuid.uuid7()}"
     return headers
 
 

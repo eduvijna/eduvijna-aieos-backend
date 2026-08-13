@@ -571,8 +571,15 @@ class TestArchitectureAndNoSchemaChange:
         assert calls == []
 
     def test_no_new_alembic_revision_or_tables(self) -> None:
-        versions = list((REPO_ROOT / "migrations" / "versions").glob("*.py"))
-        assert [path.name for path in versions] == ["gcii020001_content_schema.py"]
+        versions = sorted(
+            path.name
+            for path in (REPO_ROOT / "migrations" / "versions").glob("*.py")
+            if path.name != "__init__.py"
+        )
+        assert versions == [
+            "gcii020001_content_schema.py",
+            "gcii050001_api_idempotency.py",
+        ]
         assert not Path(
             REPO_ROOT / "src" / "aieos" / "domains" / "content" / "infrastructure" / "outbox"
         ).exists()

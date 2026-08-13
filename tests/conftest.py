@@ -152,6 +152,22 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                 f"GRANT EXECUTE ON FUNCTION content.current_tenant_id() TO {RUNTIME_USER}"
             )
         )
+        conn.execute(text(f"GRANT USAGE ON SCHEMA api TO {RUNTIME_USER}"))
+        conn.execute(
+            text(
+                f"GRANT SELECT, INSERT ON api.idempotency_records TO {RUNTIME_USER}"
+            )
+        )
+        conn.execute(
+            text(
+                f"REVOKE UPDATE, DELETE ON api.idempotency_records FROM {RUNTIME_USER}"
+            )
+        )
+        conn.execute(
+            text(
+                f"GRANT EXECUTE ON FUNCTION api.current_tenant_id() TO {RUNTIME_USER}"
+            )
+        )
 
 
 @pytest.fixture(scope="session")

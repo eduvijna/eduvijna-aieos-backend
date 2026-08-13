@@ -7,6 +7,10 @@ from typing import Annotated
 from fastapi import Header, Request
 
 from aieos.domains.content.application.create import CreateContentService
+from aieos.domains.content.application.http_append import (
+    GetContentVersionService,
+    HttpAppendContentVersionService,
+)
 from aieos.domains.content.application.queries import GetContentService, ListContentsService
 from aieos.platform.api.context import TENANT_ID_HEADER, parse_requested_tenant_id
 from aieos.platform.api.pagination import CursorCodec
@@ -36,3 +40,11 @@ def list_contents_service(request: Request) -> ListContentsService:
 
 def cursor_codec(request: Request) -> CursorCodec:
     return request.app.state.cursor_codec
+
+
+def http_append_service(request: Request) -> HttpAppendContentVersionService:
+    return request.app.state.http_append_service
+
+
+def get_content_version_service(request: Request) -> GetContentVersionService:
+    return request.app.state.get_content_version_service

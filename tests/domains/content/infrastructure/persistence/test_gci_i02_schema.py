@@ -222,8 +222,22 @@ class TestAlembicAndCatalog:
                 )
             }
             assert tables == {"contents", "content_versions"}
+            api_tables = {
+                row[0]
+                for row in conn.execute(
+                    text("SELECT tablename FROM pg_tables WHERE schemaname = 'api'")
+                )
+            }
+            assert "api" in schemas
+            assert api_tables == {"idempotency_records"}
             revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            assert revision == "gcii020001"
+            assert revision == "gcii050001"
+            gcii02 = (
+                REPO_ROOT / "migrations" / "versions" / "gcii020001_content_schema.py"
+            ).read_text(encoding="utf-8")
+            assert "CREATE SCHEMA content" in gcii02
+            assert "CREATE SCHEMA api" not in gcii02
+            assert "idempotency_records" not in gcii02
             edu = conn.execute(
                 text(
                     "SELECT COUNT(*) FROM information_schema.tables "
@@ -248,9 +262,11 @@ class TestAlembicAndCatalog:
             "contents",
             "content_versions",
         }
+        assert "api" in insp.get_schema_names()
+        assert set(insp.get_table_names(schema="api")) == {"idempotency_records"}
         with bootstrap_engine.connect() as conn:
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "gcii020001"
+                "gcii050001"
             )
 
     def test_required_columns_and_sqlalchemy_mappings(self, bootstrap_engine) -> None:
@@ -771,9 +787,30 @@ class TestPrivilegeAndOwnership:
                     {"owner": owner, "migrator": migrator, "runtime": runtime},
                 ).mappings()
             }
+        with bootstrap_engine.connect() as conn:
+            api_schema_owner = conn.execute(
+                text(
+                    "SELECT pg_catalog.pg_get_userbyid(nspowner) "
+                    "FROM pg_catalog.pg_namespace WHERE nspname = 'api'"
+                )
+            ).scalar_one()
+            api_table_owners = dict(
+                conn.execute(
+                    text(
+                        """
+                        SELECT c.relname, pg_catalog.pg_get_userbyid(c.relowner)
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = 'api' AND c.relkind = 'r'
+                        """
+                    )
+                ).all()
+            )
         assert schema_owner == owner
         assert table_owners["contents"] == owner
         assert table_owners["content_versions"] == owner
+        assert api_schema_owner == owner
+        assert api_table_owners["idempotency_records"] == owner
         assert owner != migrator
         assert runtime != owner
         assert runtime != migrator
@@ -867,13 +904,17 @@ class TestOfflineMigrationOwnership:
         sql_text = _generate_offline_upgrade_sql(postgres18["migrator_url"])
         role_stmt = f"SET LOCAL ROLE {SCHEMA_OWNER_ROLE}"
         create_schema = "CREATE SCHEMA content"
+        create_api = "CREATE SCHEMA api"
         role_at = sql_text.find(role_stmt)
         create_at = sql_text.find(create_schema)
+        api_at = sql_text.find(create_api)
         begin_at = sql_text.upper().find("BEGIN")
         assert role_at != -1, sql_text
         assert create_at != -1, sql_text
+        assert api_at != -1, sql_text
         assert begin_at != -1, sql_text
         assert begin_at < role_at < create_at
+        assert role_at < api_at
 
         autocommit = bootstrap_engine.execution_options(isolation_level="AUTOCOMMIT")
         with autocommit.connect() as conn:
@@ -928,9 +969,29 @@ class TestOfflineMigrationOwnership:
                     ).all()
                 )
                 current_user = conn.execute(text("SELECT current_user")).scalar_one()
+                api_owner = conn.execute(
+                    text(
+                        "SELECT pg_catalog.pg_get_userbyid(nspowner) "
+                        "FROM pg_catalog.pg_namespace WHERE nspname = 'api'"
+                    )
+                ).scalar_one()
+                api_table_owners = dict(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT c.relname, pg_catalog.pg_get_userbyid(c.relowner)
+                            FROM pg_catalog.pg_class c
+                            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                            WHERE n.nspname = 'api' AND c.relkind = 'r'
+                            """
+                        )
+                    ).all()
+                )
             assert schema_owner == SCHEMA_OWNER_ROLE
             assert table_owners["contents"] == SCHEMA_OWNER_ROLE
             assert table_owners["content_versions"] == SCHEMA_OWNER_ROLE
+            assert api_owner == SCHEMA_OWNER_ROLE
+            assert api_table_owners["idempotency_records"] == SCHEMA_OWNER_ROLE
             assert current_user != SCHEMA_OWNER_ROLE
         finally:
             bootstrap_offline.dispose()

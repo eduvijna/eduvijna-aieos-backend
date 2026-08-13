@@ -34,4 +34,5 @@ markers = [
     "gci_i02: Generic Content PostgreSQL schema tests",
     "gci_i03: Generic Content immutable version append tests",
     "gci_i04: Generic Content HTTP read/create foundation tests",
+    "gci_i05: Generic Content version append, If-Match, and idempotency tests",
 ]

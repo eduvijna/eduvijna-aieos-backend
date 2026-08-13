@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
 from aieos.domains.content.application.catalog import StaticContentTypeCatalog
+from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.app import create_app
 from aieos.platform.api.openapi import build_openapi, canonical_openapi_json
 from aieos.platform.security.context import TrustedSecurityContext
@@ -30,6 +32,8 @@ def main() -> None:
         security_resolver=_ExportResolver(),
         content_types=StaticContentTypeCatalog({"test.generic"}),
         cursor_signing_key=b"gci-i04-openapi-export-key",
+        schema_registry=ContentSchemaRegistry(),
+        idempotency_retention=timedelta(hours=24),
     )
     SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
     SNAPSHOT.write_text(canonical_openapi_json(build_openapi(app)), encoding="utf-8")

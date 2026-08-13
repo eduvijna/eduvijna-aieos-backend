@@ -185,6 +185,7 @@ class SqlAlchemyContentRepository:
                 contents_table.c.current_version_id,
                 contents_table.c.published_version_id,
                 contents_table.c.stewardship_state,
+                contents_table.c.content_type,
                 content_versions_table.c.version_number,
             )
             .select_from(
@@ -232,6 +233,7 @@ class SqlAlchemyContentRepository:
                 None if published is None else ContentVersionId(published)
             ),
             stewardship_state=row.stewardship_state,
+            content_type=row.content_type,
         )
 
     def advance_current_version(

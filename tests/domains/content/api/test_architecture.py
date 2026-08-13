@@ -64,9 +64,9 @@ def test_get_does_not_perform_privileged_second_lookup() -> None:
     assert text.count(".get(") == 1
 
 
-def test_no_gci_i05_or_later_http_or_intent_structures() -> None:
+def test_no_gci_i06_or_later_http_or_intent_structures() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
-    for needle in ("/versions", "If-Match", "Idempotency-Key", "PATCH"):
+    for needle in ("PATCH", "submit-for-review", "/publish", "/archive"):
         assert needle not in routes
     hits: list[str] = []
     for path in (REPO_ROOT / "migrations").rglob("*.py"):

@@ -16,6 +16,9 @@ from aieos.domains.content.infrastructure.persistence.repositories import (
     SqlAlchemyContentRepository,
     SqlAlchemyContentVersionRepository,
 )
+from aieos.platform.api.infrastructure.persistence.repositories import (
+    SqlAlchemyIdempotencyRepository,
+)
 
 
 class SqlAlchemyContentUnitOfWork:
@@ -26,6 +29,7 @@ class SqlAlchemyContentUnitOfWork:
         self._transaction: Transaction | None = None
         self.contents: SqlAlchemyContentRepository
         self.versions: SqlAlchemyContentVersionRepository
+        self.idempotency: SqlAlchemyIdempotencyRepository
 
     def __enter__(self) -> SqlAlchemyContentUnitOfWork:
         try:
@@ -39,6 +43,9 @@ class SqlAlchemyContentUnitOfWork:
                 self._connection, self._execution_tenant_id
             )
             self.versions = SqlAlchemyContentVersionRepository(self._connection)
+            self.idempotency = SqlAlchemyIdempotencyRepository(
+                self._connection, self._execution_tenant_id
+            )
             return self
         except Exception as exc:
             self._cleanup(suppress=True)

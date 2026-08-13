@@ -14,6 +14,10 @@ class ContentNotFound(ContentApplicationError):
     """Target Content is not visible in the current execution tenant."""
 
 
+class ContentVersionNotFound(ContentApplicationError):
+    """Target ContentVersion is not visible for the path Content."""
+
+
 class AggregateRevisionConflict(ContentApplicationError):
     """Expected aggregate revision does not match the locked/stored head."""
 
@@ -48,3 +52,23 @@ class UnknownContentType(ContentApplicationError):
 
 class InvalidContentRequest(ContentApplicationError):
     """Create or query request failed application validation."""
+
+
+class ContentVersionAppendNotAllowed(ContentApplicationError):
+    """External append is not allowed in the current stewardship state."""
+
+
+class ContentSchemaNotFound(ContentApplicationError):
+    """Requested schema_id/schema_version is not registered."""
+
+
+class ContentSchemaMismatch(ContentApplicationError):
+    """Registered schema content_type does not match the Content."""
+
+
+class ContentPayloadInvalid(ContentApplicationError):
+    """Payload failed the registered schema validator or canonical payload rules."""
+
+
+class IdempotencyKeyReused(ContentApplicationError):
+    """The idempotency key was already bound to a different request fingerprint."""

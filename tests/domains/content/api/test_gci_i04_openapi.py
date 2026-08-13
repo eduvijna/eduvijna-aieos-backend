@@ -6,7 +6,10 @@ from uuid import uuid4
 
 import pytest
 
+from datetime import timedelta
+
 from aieos.domains.content.application.catalog import StaticContentTypeCatalog
+from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.app import create_app
 from aieos.platform.api.openapi import build_openapi, canonical_openapi_json
 from tests.dbutil import REPO_ROOT
@@ -28,6 +31,8 @@ def _schema() -> dict:
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),
         cursor_signing_key=b"gci-i04-openapi-export-key",
+        schema_registry=ContentSchemaRegistry(),
+        idempotency_retention=timedelta(hours=24),
     )
     return build_openapi(app)
 
@@ -44,7 +49,6 @@ def test_openapi_is_31_with_stable_operation_ids() -> None:
     assert "get" in paths["/api/v1/contents/{content_id}"]
     assert "post" not in paths["/api/v1/contents/{content_id}"]
     for path, item in paths.items():
-        assert "/versions" not in path
         for method, operation in item.items():
             if method.startswith("x-") or not isinstance(operation, dict):
                 continue
@@ -54,8 +58,6 @@ def test_openapi_is_31_with_stable_operation_ids() -> None:
     assert "content_list" in operation_ids
     dumped = canonical_openapi_json(schema)
     assert "HTTPValidationError" not in dumped
-    assert "Idempotency-Key" not in dumped
-    assert "If-Match" not in dumped
     assert "X-AIEOS-Tenant-ID" in dumped
     assert "X-AIEOS-Correlation-ID" in dumped
     assert "ETag" in dumped

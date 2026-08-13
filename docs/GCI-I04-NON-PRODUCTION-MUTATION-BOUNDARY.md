@@ -1,28 +1,33 @@
 ---
-id: GCI-I04-NON-PRODUCTION-MUTATION-BOUNDARY
-title: Generic Content HTTP create is not a production mutation
+id: GCI-I05-NON-PRODUCTION-MUTATION-BOUNDARY
+title: Generic Content HTTP mutations are not production mutations
 status: draft
-version: 0.1.0
+version: 0.2.0
 ---
 
-# GCI-I04 non-production mutation boundary
+# GCI-I05 non-production mutation boundary
 
-`POST /api/v1/contents` is a **development / test HTTP foundation** for Generic Content create.
+Idempotency-Key is now required for:
 
-It MUST NOT be authorized for production mutation until later slices integrate:
+- `POST /api/v1/contents`
+- `POST /api/v1/contents/{content_id}/versions`
+
+Both routes remain a **development / test HTTP mutation foundation**.
+
+They MUST NOT be authorized for production mutation until later slices integrate:
 
 - transactional outbox / event-publication intent (ADR-AIEOS-024 / 025 / 027)
 - required security-audit intent persistence
-- Idempotency-Key retry-safe create semantics (ADR-AIEOS-025)
 
-GCI-I04 intentionally does **not** create:
+GCI-I05 does **not** create:
 
 - `integration.outbox_messages`
 - audit tables
 - event contracts
 - NATS publishers
-- idempotency records
-- ContentVersion HTTP routes
-- If-Match enforcement
+- review/publication/archive HTTP
+- AI provenance HTTP
+
+`api.idempotency_records` is synchronous API retry state, not Content business authority and not a substitute for outbox/audit intent.
 
 No production deployment or production database mutation entrypoint is authorized by this slice.

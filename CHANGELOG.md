@@ -15,6 +15,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GCI-I02 Generic Content PostgreSQL schema `content.contents` / `content.content_versions` via Alembic, SQLAlchemy 2.0 mappings, FORCE RLS, transaction-local `aieos.tenant_id`, and ContentVersion immutability triggers. No repositories, HTTP, or GCI-I03+ persistence behavior.
 - GCI-I03 application-owned Unit of Work and atomic immutable ContentVersion append with expected-revision concurrency and linear lineage. No HTTP, outbox, or later-slice tables.
 - GCI-I04 FastAPI/Pydantic HTTP foundation: `POST/GET /api/v1/contents` and `GET /api/v1/contents/{content_id}` with RFC 9457 Problem Details, revision ETags, and opaque list cursors. Development/test mutation only; no production create, outbox, audit, Idempotency-Key, or ContentVersion HTTP.
+- GCI-I05 ContentVersion append HTTP (`POST/GET .../versions`), mandatory If-Match, transactional Idempotency-Key for create and append, schema-registry payload validation, and `api.idempotency_records`. Still non-production: no outbox/audit intent.
 
 ### Changed
 

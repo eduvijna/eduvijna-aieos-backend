@@ -10,7 +10,35 @@ from fastapi.openapi.utils import get_openapi
 
 from aieos.platform.api.problems import ProblemDetails, ProblemErrorItem
 
-_ERROR_STATUSES = ("400", "401", "403", "404", "405", "409", "422", "500", "503")
+_ERROR_STATUSES = (
+    "400",
+    "401",
+    "403",
+    "404",
+    "405",
+    "409",
+    "412",
+    "422",
+    "428",
+    "500",
+    "503",
+)
+
+_IDEMPOTENCY_PARAM = {
+    "name": "Idempotency-Key",
+    "in": "header",
+    "required": True,
+    "schema": {"type": "string", "maxLength": 255},
+    "description": "Required retry key. Bounded, not stored in PostgreSQL.",
+}
+
+_IF_MATCH_PARAM = {
+    "name": "If-Match",
+    "in": "header",
+    "required": True,
+    "schema": {"type": "string"},
+    "description": "Required strong aggregate revision validator, e.g. \"r0\".",
+}
 
 _CORRELATION_PARAM = {
     "name": "X-AIEOS-Correlation-ID",
@@ -74,6 +102,20 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                 params.append(_CORRELATION_PARAM)
             responses = operation.setdefault("responses", {})
             operation_id = operation.get("operationId")
+            if operation_id in {"content_create", "content_version_append"}:
+                _ensure_header_param(params, _IDEMPOTENCY_PARAM)
+            if operation_id == "content_version_append":
+                _ensure_header_param(params, _IF_MATCH_PARAM)
+            if operation_id in {"content_get", "content_list", "content_version_get"}:
+                params[:] = [
+                    p
+                    for p in params
+                    if not (
+                        isinstance(p, dict)
+                        and p.get("in") == "header"
+                        and p.get("name") in {"If-Match", "Idempotency-Key"}
+                    )
+                ]
             for status, response in list(responses.items()):
                 if not isinstance(response, dict):
                     continue
@@ -82,6 +124,7 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                 if status in {"200", "201"} and operation_id in {
                     "content_create",
                     "content_get",
+                    "content_version_append",
                 }:
                     headers["ETag"] = {
                         "description": "Opaque aggregate revision validator",
@@ -90,6 +133,11 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                 if status == "201" and operation_id == "content_create":
                     headers["Location"] = {
                         "description": "Canonical Content URL",
+                        "schema": {"type": "string"},
+                    }
+                if status == "201" and operation_id == "content_version_append":
+                    headers["Location"] = {
+                        "description": "Canonical ContentVersion URL",
                         "schema": {"type": "string"},
                     }
                 if status in _ERROR_STATUSES:
@@ -104,6 +152,19 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                     },
                 )
     return schema
+
+
+def _ensure_header_param(params: list, spec: dict[str, Any]) -> None:
+    for existing in params:
+        if (
+            isinstance(existing, dict)
+            and existing.get("name") == spec["name"]
+            and existing.get("in") == "header"
+        ):
+            existing["required"] = True
+            existing.setdefault("description", spec.get("description"))
+            return
+    params.append(spec)
 
 
 def canonical_openapi_json(schema: dict[str, Any]) -> str:

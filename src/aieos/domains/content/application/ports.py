@@ -14,6 +14,7 @@ from aieos.domains.content.domain.identities import (
     ContentVersionId,
 )
 from aieos.domains.content.domain.version import ContentVersion
+from aieos.platform.idempotency.ports import IdempotencyRepository
 
 
 class ContentVersionRepository(Protocol):
@@ -62,6 +63,7 @@ class ContentRepository(Protocol):
 class ContentUnitOfWork(Protocol):
     contents: ContentRepository
     versions: ContentVersionRepository
+    idempotency: IdempotencyRepository
 
     def __enter__(self) -> ContentUnitOfWork: ...
 

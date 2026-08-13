@@ -48,7 +48,7 @@ Out of scope:
 | `contracts/openapi/` | Checked-in OpenAPI 3.1 snapshots |
 | `docs/` | Repository-local implementation notes (not ADRs) |
 
-HTTP Content create (`POST /api/v1/contents`) is a **non-production foundation**. See `docs/GCI-I04-NON-PRODUCTION-MUTATION-BOUNDARY.md`.
+HTTP Content create and version append are a **non-production foundation**. See `docs/GCI-I04-NON-PRODUCTION-MUTATION-BOUNDARY.md`.
 
 ## Engineering Lifecycle
 
