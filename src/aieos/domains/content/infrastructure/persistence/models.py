@@ -1,7 +1,7 @@
 """SQLAlchemy 2.0 table mappings for content.contents and content.content_versions.
 
 These mappings are persistence representations, not the Generic Content domain
-authority. No repository or Unit of Work lives here.
+authority. Repository and Unit of Work implementations live in sibling modules.
 """
 
 from __future__ import annotations

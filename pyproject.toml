@@ -29,4 +29,5 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 markers = [
     "gci_i02: Generic Content PostgreSQL schema tests",
+    "gci_i03: Generic Content immutable version append tests",
 ]

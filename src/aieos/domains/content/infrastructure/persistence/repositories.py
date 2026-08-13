@@ -1,0 +1,188 @@
+"""SQLAlchemy Core repositories. They never commit or rollback."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Mapping
+from uuid import UUID
+
+from psycopg.errors import UniqueViolation
+from sqlalchemy import select, update
+from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
+from aieos.domains.content.application.errors import (
+    PersistenceInvariantViolation,
+    VersionAlreadyExists,
+)
+from aieos.domains.content.application.models import LockedContentHead
+from aieos.domains.content.domain.identities import (
+    AggregateRevision,
+    ContentId,
+    ContentVersionId,
+    VersionNumber,
+)
+from aieos.domains.content.domain.version import ContentVersion
+from aieos.domains.content.infrastructure.persistence.mapping import (
+    content_version_from_row,
+    payload_as_json,
+    provenance_as_json,
+)
+from aieos.domains.content.infrastructure.persistence.models import (
+    content_versions_table,
+    contents_table,
+)
+
+
+def _map_integrity(exc: IntegrityError) -> Exception:
+    orig = exc.orig
+    if isinstance(orig, UniqueViolation):
+        return VersionAlreadyExists("ContentVersion identity or version_number already exists")
+    return PersistenceInvariantViolation("content persistence invariant was violated")
+
+
+class SqlAlchemyContentVersionRepository:
+    def __init__(self, connection: Connection) -> None:
+        self._connection = connection
+
+    def insert(
+        self,
+        version: ContentVersion,
+        provenance: Mapping[str, object] | None,
+    ) -> None:
+        parent = version.parent_version_id
+        values: dict[str, object] = {
+            "version_id": version.version_id.value,
+            "tenant_id": version.tenant_id,
+            "content_id": version.content_id.value,
+            "version_number": version.version_number.value,
+            "parent_version_id": None if parent is None else parent.value,
+            "schema_id": str(version.schema_id),
+            "schema_version": version.schema_version.value,
+            "payload": payload_as_json(version),
+            "payload_sha256": version.payload.sha256.value,
+            "origin": version.origin.value,
+            "created_at": version.created_at,
+            "created_by_principal_id": version.created_by_principal_id,
+        }
+        if provenance is not None:
+            values["provenance"] = provenance_as_json(provenance)
+        try:
+            self._connection.execute(content_versions_table.insert().values(**values))
+        except IntegrityError as exc:
+            raise _map_integrity(exc) from exc
+        except SQLAlchemyError as exc:
+            raise PersistenceInvariantViolation(
+                "content version insert failed"
+            ) from exc
+
+    def get(self, version_id: ContentVersionId) -> ContentVersion | None:
+        row = self._connection.execute(
+            select(content_versions_table).where(
+                content_versions_table.c.version_id == version_id.value
+            )
+        ).mappings().one_or_none()
+        if row is None:
+            return None
+        return content_version_from_row(row)
+
+
+class SqlAlchemyContentRepository:
+    def __init__(self, connection: Connection, execution_tenant_id: UUID) -> None:
+        self._connection = connection
+        self._execution_tenant_id = execution_tenant_id
+
+    def get_head_for_update(self, content_id: ContentId) -> LockedContentHead | None:
+        stmt = (
+            select(
+                contents_table.c.tenant_id,
+                contents_table.c.content_id,
+                contents_table.c.aggregate_revision,
+                contents_table.c.current_version_id,
+                contents_table.c.published_version_id,
+                contents_table.c.stewardship_state,
+                content_versions_table.c.version_number,
+            )
+            .select_from(
+                contents_table.outerjoin(
+                    content_versions_table,
+                    (
+                        content_versions_table.c.tenant_id == contents_table.c.tenant_id
+                    )
+                    & (
+                        content_versions_table.c.content_id
+                        == contents_table.c.content_id
+                    )
+                    & (
+                        content_versions_table.c.version_id
+                        == contents_table.c.current_version_id
+                    ),
+                )
+            )
+            .where(
+                contents_table.c.content_id == content_id.value,
+                contents_table.c.tenant_id == self._execution_tenant_id,
+            )
+            .with_for_update(of=contents_table)
+        )
+        row = self._connection.execute(stmt).one_or_none()
+        if row is None:
+            return None
+        current_id = row.current_version_id
+        current_number = row.version_number
+        published = row.published_version_id
+        return LockedContentHead(
+            tenant_id=row.tenant_id,
+            content_id=ContentId(row.content_id),
+            aggregate_revision=AggregateRevision(int(row.aggregate_revision)),
+            current_version_id=(
+                None if current_id is None else ContentVersionId(current_id)
+            ),
+            current_version_number=(
+                None if current_number is None else VersionNumber(int(current_number))
+            ),
+            published_version_id=(
+                None if published is None else ContentVersionId(published)
+            ),
+            stewardship_state=row.stewardship_state,
+        )
+
+    def advance_current_version(
+        self,
+        *,
+        content_id: ContentId,
+        tenant_id: UUID,
+        expected_revision: AggregateRevision,
+        expected_current_version_id: ContentVersionId | None,
+        new_version_id: ContentVersionId,
+        updated_at: datetime,
+    ) -> AggregateRevision | None:
+        expected_current = (
+            None
+            if expected_current_version_id is None
+            else expected_current_version_id.value
+        )
+        stmt = (
+            update(contents_table)
+            .where(
+                contents_table.c.tenant_id == tenant_id,
+                contents_table.c.content_id == content_id.value,
+                contents_table.c.aggregate_revision == expected_revision.value,
+                contents_table.c.current_version_id.is_not_distinct_from(
+                    expected_current
+                ),
+            )
+            .values(
+                current_version_id=new_version_id.value,
+                aggregate_revision=contents_table.c.aggregate_revision + 1,
+                updated_at=updated_at,
+            )
+            .returning(contents_table.c.aggregate_revision)
+        )
+        try:
+            row = self._connection.execute(stmt).one_or_none()
+        except IntegrityError as exc:
+            raise _map_integrity(exc) from exc
+        if row is None:
+            return None
+        return AggregateRevision(int(row.aggregate_revision))

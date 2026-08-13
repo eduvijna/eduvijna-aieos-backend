@@ -7,7 +7,6 @@ import io
 import uuid
 from contextlib import redirect_stdout
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 from alembic import command
@@ -968,4 +967,3 @@ class TestArchitectureBoundary:
                 if needle in text_src:
                     hits.append(f"{path.name}:{needle}")
         assert hits == []
-        assert not Path(REPO_ROOT / "src" / "aieos" / "domains" / "content" / "application").exists()
