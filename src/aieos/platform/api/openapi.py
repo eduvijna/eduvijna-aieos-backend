@@ -10,19 +10,7 @@ from fastapi.openapi.utils import get_openapi
 
 from aieos.platform.api.problems import ProblemDetails, ProblemErrorItem
 
-_ERROR_STATUSES = (
-    "400",
-    "401",
-    "403",
-    "404",
-    "405",
-    "409",
-    "412",
-    "422",
-    "428",
-    "500",
-    "503",
-)
+_SUCCESS_STATUSES = {"200", "201"}
 
 _IDEMPOTENCY_PARAM = {
     "name": "Idempotency-Key",
@@ -140,17 +128,8 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                         "description": "Canonical ContentVersion URL",
                         "schema": {"type": "string"},
                     }
-                if status in _ERROR_STATUSES:
+                if status not in _SUCCESS_STATUSES:
                     response["content"] = problem_content
-            for status in _ERROR_STATUSES:
-                responses.setdefault(
-                    status,
-                    {
-                        "description": "RFC 9457 Problem Details",
-                        "headers": dict(_CONTEXT_HEADERS),
-                        "content": problem_content,
-                    },
-                )
     return schema
 
 

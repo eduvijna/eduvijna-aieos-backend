@@ -1,4 +1,4 @@
-"""GCI-I05 OpenAPI operationIds and required mutation headers."""
+"""GCI-I05 OpenAPI operationIds, headers, and per-operation error statuses."""
 
 from __future__ import annotations
 
@@ -33,6 +33,14 @@ def _schema() -> dict:
     return build_openapi(app)
 
 
+def _header_names(operation: dict) -> set[str]:
+    return {
+        p["name"]
+        for p in operation.get("parameters", [])
+        if isinstance(p, dict) and p.get("in") == "header"
+    }
+
+
 def test_version_operations_and_required_headers() -> None:
     schema = _schema()
     assert schema["openapi"].startswith("3.1")
@@ -43,6 +51,7 @@ def test_version_operations_and_required_headers() -> None:
     get_version = paths["/api/v1/contents/{content_id}/versions/{version_id}"]["get"]
     create = paths["/api/v1/contents"]["post"]
     get_content = paths["/api/v1/contents/{content_id}"]["get"]
+    list_contents = paths["/api/v1/contents"]["get"]
     assert append["operationId"] == "content_version_append"
     assert get_version["operationId"] == "content_version_get"
     assert create["operationId"] == "content_create"
@@ -51,19 +60,36 @@ def test_version_operations_and_required_headers() -> None:
     assert "ContentVersionAppendRequest" in dumped
     assert "ContentVersionResponse" in dumped
 
-    def header_names(operation: dict) -> set[str]:
-        return {
-            p["name"]
-            for p in operation.get("parameters", [])
-            if isinstance(p, dict) and p.get("in") == "header"
-        }
+    assert "Idempotency-Key" in _header_names(create)
+    assert "Idempotency-Key" in _header_names(append)
+    assert "If-Match" in _header_names(append)
+    assert "If-Match" not in _header_names(create)
+    for operation in (get_content, list_contents, get_version):
+        assert "Idempotency-Key" not in _header_names(operation)
+        assert "If-Match" not in _header_names(operation)
 
-    assert "Idempotency-Key" in header_names(create)
-    assert "Idempotency-Key" in header_names(append)
-    assert "If-Match" in header_names(append)
-    assert "Idempotency-Key" not in header_names(get_content)
-    assert "If-Match" not in header_names(get_content)
-    assert "Idempotency-Key" not in header_names(get_version)
-    assert "If-Match" not in header_names(get_version)
-    for status in ("201", "400", "404", "409", "412", "422", "428", "500", "503"):
-        assert status in append["responses"]
+    create_statuses = set(create["responses"])
+    get_statuses = set(get_content["responses"])
+    list_statuses = set(list_contents["responses"])
+    get_version_statuses = set(get_version["responses"])
+    append_statuses = set(append["responses"])
+
+    for status in ("400", "401", "403", "409", "422", "500", "503"):
+        assert status in create_statuses
+    assert "412" not in create_statuses
+    assert "428" not in create_statuses
+
+    assert "409" not in get_statuses
+    assert "412" not in get_statuses
+    assert "428" not in get_statuses
+
+    assert "409" not in list_statuses
+    assert "412" not in list_statuses
+    assert "428" not in list_statuses
+
+    assert "409" not in get_version_statuses
+    assert "412" not in get_version_statuses
+    assert "428" not in get_version_statuses
+
+    for status in ("400", "401", "403", "404", "409", "412", "422", "428", "500", "503"):
+        assert status in append_statuses

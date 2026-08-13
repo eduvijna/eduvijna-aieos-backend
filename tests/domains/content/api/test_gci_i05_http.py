@@ -17,6 +17,7 @@ from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.content.application.errors import PersistenceOperationFailed
 from aieos.domains.content.application.http_append import HttpAppendContentVersionService
 from aieos.domains.content.domain.identities import AggregateRevision, ContentId
+from aieos.domains.content.domain.schema import ContentSchemaRegistry, SchemaId, SchemaVersion
 from aieos.domains.content.domain.version import ContentPayload
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWork,
@@ -87,6 +88,45 @@ def _append(
         json=body or APPEND_BODY,
         headers=headers,
     )
+
+
+class _BrokenTestSchema:
+    content_type = "test.generic"
+    schema_id = SchemaId("test.generic")
+    schema_version = SchemaVersion(1)
+
+    def validate(self, payload: dict) -> None:
+        raise RuntimeError("validator internal defect for GCI-I05R2")
+
+
+def _broken_schema_registry() -> ContentSchemaRegistry:
+    registry = ContentSchemaRegistry()
+    registry.register(_BrokenTestSchema())
+    return registry
+
+
+def _content_head(bootstrap_engine: Engine, content_id: UUID):
+    with bootstrap_engine.connect() as conn:
+        return conn.execute(
+            text(
+                "SELECT aggregate_revision, current_version_id FROM content.contents "
+                "WHERE content_id = :cid"
+            ),
+            {"cid": content_id},
+        ).one()
+
+
+def _append_idempotency_count(bootstrap_engine: Engine, tenant_id: UUID) -> int:
+    with bootstrap_engine.connect() as conn:
+        return int(
+            conn.execute(
+                text(
+                    "SELECT count(*) FROM api.idempotency_records "
+                    "WHERE tenant_id = :tid AND operation = 'content_version_append.v1'"
+                ),
+                {"tid": tenant_id},
+            ).scalar_one()
+        )
 
 
 def _count_versions(bootstrap_engine: Engine, content_id: UUID) -> int:
@@ -169,7 +209,7 @@ class TestAppendContract:
             assert response.status_code == 422
             assert response.json()["code"] == "validation_error"
 
-    def test_schema_and_payload_validation(self, runtime_engine) -> None:
+    def test_schema_and_payload_validation(self, runtime_engine, bootstrap_engine) -> None:
         tenant_id = uuid.uuid7()
         client = _client(runtime_engine, tenant_id, uuid.uuid7())
         content_id = _create(client, tenant_id)["content_id"]
@@ -191,15 +231,63 @@ class TestAppendContract:
         )
         assert mismatch.status_code == 422
         assert mismatch.json()["code"] == "content_schema_mismatch"
+        key = f"invalid-payload-{uuid.uuid7()}"
         invalid = _append(
             client,
             tenant_id,
             content_id,
             etag='"r0"',
             body={"schema_id": "test.generic", "schema_version": 1, "payload": {"nope": 1}},
+            **{"Idempotency-Key": key},
         )
         assert invalid.status_code == 422
         assert invalid.json()["code"] == "content_payload_invalid"
+        assert invalid.headers["content-type"].startswith("application/problem+json")
+        head = _content_head(bootstrap_engine, UUID(content_id))
+        assert int(head.aggregate_revision) == 0
+        assert head.current_version_id is None
+        assert _count_versions(bootstrap_engine, UUID(content_id)) == 0
+        assert _append_idempotency_count(bootstrap_engine, tenant_id) == 0
+
+    def test_validator_defect_is_sanitized_500(
+        self, runtime_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        app = create_app(
+            uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
+            content_types=StaticContentTypeCatalog({"test.generic"}),
+            cursor_signing_key=CURSOR_KEY,
+            schema_registry=_broken_schema_registry(),
+            idempotency_retention=IDEMPOTENCY_RETENTION,
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        content_id = _create(client, tenant_id)["content_id"]
+        key = f"broken-validator-{uuid.uuid7()}"
+        response = _append(
+            client, tenant_id, content_id, etag='"r0"', **{"Idempotency-Key": key}
+        )
+        assert response.status_code == 500
+        assert response.headers["content-type"].startswith("application/problem+json")
+        body = response.json()
+        assert body["code"] == "internal_error"
+        blob = json.dumps(body) + response.text
+        for needle in (
+            "RuntimeError",
+            "validator internal defect",
+            "Traceback",
+            "sqlalchemy",
+            "psycopg",
+            "postgresql://",
+            "SELECT ",
+        ):
+            assert needle.lower() not in blob.lower()
+        head = _content_head(bootstrap_engine, UUID(content_id))
+        assert int(head.aggregate_revision) == 0
+        assert head.current_version_id is None
+        assert _count_versions(bootstrap_engine, UUID(content_id)) == 0
+        assert _append_idempotency_count(bootstrap_engine, tenant_id) == 0
 
 
 class TestIfMatch:

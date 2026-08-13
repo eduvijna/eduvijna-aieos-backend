@@ -125,9 +125,7 @@ class HttpAppendContentVersionService:
             try:
                 registered.validate(payload)
                 domain_payload = ContentPayload.from_mapping(payload)
-            except ContentPayloadInvalid:
-                raise
-            except (InvalidPayloadError, Exception) as exc:
+            except InvalidPayloadError as exc:
                 raise ContentPayloadInvalid("payload failed schema validation") from exc
 
             if head.current_version_id is None:

@@ -54,19 +54,20 @@ MAX_LIST_LIMIT = 100
 
 router = APIRouter(prefix="/api/v1", tags=["contents"])
 
-_PROBLEM_RESPONSES = {
-    400: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-    401: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-    403: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-    404: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-    405: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-    409: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-    412: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-    422: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-    428: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-    500: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-    503: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"},
-}
+def _problem_responses(*statuses: int) -> dict[int, dict[str, object]]:
+    return {
+        status: {"model": ProblemDetails, "description": "RFC 9457 Problem Details"}
+        for status in statuses
+    }
+
+
+_CREATE_RESPONSES = _problem_responses(400, 401, 403, 409, 422, 500, 503)
+_GET_RESPONSES = _problem_responses(400, 401, 403, 404, 422, 500, 503)
+_LIST_RESPONSES = _problem_responses(400, 401, 403, 422, 500, 503)
+_APPEND_RESPONSES = _problem_responses(
+    400, 401, 403, 404, 409, 412, 422, 428, 500, 503
+)
+_VERSION_GET_RESPONSES = _problem_responses(400, 401, 403, 404, 422, 500, 503)
 
 
 def _to_response(model: ContentReadModel) -> ContentResponse:
@@ -128,7 +129,7 @@ def _version_id(value: UUID) -> ContentVersionId:
     status_code=201,
     response_model=ContentResponse,
     operation_id="content_create",
-    responses=_PROBLEM_RESPONSES,
+    responses=_CREATE_RESPONSES,
 )
 def content_create(
     body: ContentCreateRequest,
@@ -158,7 +159,7 @@ def content_create(
     "/contents/{content_id}",
     response_model=ContentResponse,
     operation_id="content_get",
-    responses=_PROBLEM_RESPONSES,
+    responses=_GET_RESPONSES,
 )
 def content_get(
     content_id: UUID,
@@ -175,7 +176,7 @@ def content_get(
     "/contents",
     response_model=ContentListResponse,
     operation_id="content_list",
-    responses=_PROBLEM_RESPONSES,
+    responses=_LIST_RESPONSES,
 )
 def content_list(
     context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
@@ -220,7 +221,7 @@ def content_list(
     status_code=201,
     response_model=ContentVersionResponse,
     operation_id="content_version_append",
-    responses=_PROBLEM_RESPONSES,
+    responses=_APPEND_RESPONSES,
 )
 def content_version_append(
     content_id: UUID,
@@ -254,7 +255,7 @@ def content_version_append(
     "/contents/{content_id}/versions/{version_id}",
     response_model=ContentVersionResponse,
     operation_id="content_version_get",
-    responses=_PROBLEM_RESPONSES,
+    responses=_VERSION_GET_RESPONSES,
 )
 def content_version_get(
     content_id: UUID,

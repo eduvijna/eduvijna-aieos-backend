@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
+from aieos.domains.content.domain.errors import InvalidPayloadError
 from aieos.domains.content.domain.schema import SchemaId, SchemaVersion
 
 
@@ -18,7 +19,7 @@ class TestFixtureSchema:
     def validate(self, payload: Mapping[str, object]) -> None:
         missing = [key for key in self.required_keys if key not in payload]
         if missing:
-            raise ValueError(f"test fixture schema missing keys: {missing}")
+            raise InvalidPayloadError(f"test fixture schema missing keys: {missing}")
 
 
 TEST_GENERIC_V1 = TestFixtureSchema(
