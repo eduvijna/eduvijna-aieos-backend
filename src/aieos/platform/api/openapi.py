@@ -19,6 +19,7 @@ _MUTATION_IDEMPOTENCY_IDS = {
     "content_review_approve",
     "content_review_request_changes",
     "content_review_reject",
+    "content_publish",
 }
 _IF_MATCH_OPERATION_IDS = {
     "content_version_append",
@@ -26,6 +27,7 @@ _IF_MATCH_OPERATION_IDS = {
     "content_review_approve",
     "content_review_request_changes",
     "content_review_reject",
+    "content_publish",
 }
 _GET_OPERATION_IDS = {"content_get", "content_list", "content_version_get"}
 

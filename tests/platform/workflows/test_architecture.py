@@ -62,11 +62,11 @@ def test_content_http_path_does_not_call_temporal() -> None:
     assert "start_workflow" not in review
 
 
-def test_no_audit_or_publication_tables_and_migration_chain() -> None:
+def test_no_audit_or_inbox_tables_and_migration_chain() -> None:
     hits: list[str] = []
     for path in (REPO_ROOT / "src").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        for needle in ("audit_events", "consumer_inbox", "content.publications"):
+        for needle in ("audit_events", "consumer_inbox", "version_asset_refs"):
             if needle in text:
                 hits.append(f"{path.relative_to(REPO_ROOT)}:{needle}")
     assert hits == []
@@ -82,6 +82,7 @@ def test_no_audit_or_publication_tables_and_migration_chain() -> None:
         "gcii060001_review_decisions.py",
         "gcii070001_workflow_intents.py",
         "gcii080001_outbox_messages.py",
+        "gcii090001_publications.py",
     ]
 
 

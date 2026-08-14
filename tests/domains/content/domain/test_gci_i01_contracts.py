@@ -346,15 +346,17 @@ class ReviewDecisionContractTests(unittest.TestCase):
 class PublicationContractTests(unittest.TestCase):
     def test_publication_is_distinct_from_approved_and_binds_version(self) -> None:
         version_id = ContentVersionId.generate()
+        principal = _foreign_uuid()
         publication = Publication(
             publication_id=PublicationId.generate(),
             tenant_id=_foreign_uuid(),
             content_id=ContentId.generate(),
             version_id=version_id,
             approval_decision_id=ReviewDecisionId.generate(),
-            publisher_principal_id=_foreign_uuid(),
+            published_by_principal_id=principal,
+            effective_actor_id=principal,
             published_at=_now(),
-            correlation_id=None,
+            correlation_id=_foreign_uuid(),
         )
         self.assertFalse(publication.is_stewardship_state())
         self.assertIsNone(publication.equivalent_stewardship_state())

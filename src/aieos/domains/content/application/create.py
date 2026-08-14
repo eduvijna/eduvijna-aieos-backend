@@ -148,6 +148,7 @@ class CreateContentService:
                     result_content_id=content.content_id.value,
                     result_version_id=None,
                     result_review_decision_id=None,
+                    result_publication_id=None,
                     result_aggregate_revision=0,
                     created_at=created_at,
                     expires_at=created_at + self._idempotency_retention,

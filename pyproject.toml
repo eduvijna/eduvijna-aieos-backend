@@ -40,4 +40,5 @@ markers = [
     "gci_i06: Generic Content review decision foundation tests",
     "gci_i07: Generic Content review Temporal workflow tests",
     "gci_i08: Generic Content events, transactional outbox, and NATS JetStream tests",
+    "gci_i09: Generic Content publish and Publication history tests",
 ]

@@ -1,4 +1,4 @@
-"""GCI-I06 content.review_decisions schema, RLS, immutability, and Alembic."""
+"""GCI-I09 content.publications schema, RLS, immutability, and Alembic."""
 
 from __future__ import annotations
 
@@ -15,21 +15,18 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from tests.conftest import SCHEMA_OWNER_ROLE, alembic_config, provision_runtime_grants
 from tests.dbutil import REPO_ROOT, set_tenant
 
-pytestmark = pytest.mark.gci_i06
+pytestmark = pytest.mark.gci_i09
 
 SHA = "a" * 64
-REVIEW_COLUMNS = {
-    "review_decision_id",
+PUBLICATION_COLUMNS = {
+    "publication_id",
     "tenant_id",
     "content_id",
     "version_id",
-    "decision",
-    "reason_code",
-    "comment",
-    "reviewer_principal_id",
+    "approval_decision_id",
+    "published_by_principal_id",
     "effective_actor_id",
-    "delegation_id",
-    "decided_at",
+    "published_at",
     "correlation_id",
 }
 
@@ -65,8 +62,8 @@ def _insert_content_version(conn, *, tenant_id: uuid.UUID | None = None):
                 created_by_principal_id, updated_at, archived_at
             ) VALUES (
                 :content_id, :tenant_id, :owner, 'test.generic', 'Title',
-                'Description', 'en-IN', 'GENERATED', NULL,
-                NULL, 1, :created_at, :owner, :created_at, NULL
+                'Description', 'en-IN', 'APPROVED', NULL,
+                NULL, 3, :created_at, :owner, :created_at, NULL
             )
             """
         ),
@@ -106,20 +103,7 @@ def _insert_content_version(conn, *, tenant_id: uuid.UUID | None = None):
         ),
         {"vid": version_id, "cid": content_id},
     )
-    return tenant_id, content_id, version_id
-
-
-def _insert_decision(
-    conn,
-    *,
-    tenant_id: uuid.UUID,
-    content_id: uuid.UUID,
-    version_id: uuid.UUID,
-    decision: str = "APPROVE",
-    comment: str | None = None,
-    reason_code: str | None = None,
-):
-    review_decision_id = uuid.uuid7()
+    decision_id = uuid.uuid7()
     principal = uuid.uuid7()
     conn.execute(
         text(
@@ -129,36 +113,70 @@ def _insert_decision(
                 reason_code, comment, reviewer_principal_id, effective_actor_id,
                 delegation_id, decided_at, correlation_id
             ) VALUES (
-                :rid, :tid, :cid, :vid, :decision,
-                :reason_code, :comment, :pid, :pid, NULL, :decided_at, :corr
+                :rid, :tid, :cid, :vid, 'APPROVE',
+                NULL, NULL, :pid, :pid, NULL, :decided_at, :corr
             )
             """
         ),
         {
-            "rid": review_decision_id,
+            "rid": decision_id,
             "tid": tenant_id,
             "cid": content_id,
             "vid": version_id,
-            "decision": decision,
-            "reason_code": reason_code,
-            "comment": comment,
             "pid": principal,
             "decided_at": _now(),
             "corr": uuid.uuid7(),
         },
     )
-    return review_decision_id
+    return tenant_id, content_id, version_id, decision_id
 
 
-class TestReviewDecisionCatalog:
-    def test_exact_physical_columns(self, bootstrap_engine) -> None:
+def _insert_publication(
+    conn,
+    *,
+    tenant_id: uuid.UUID,
+    content_id: uuid.UUID,
+    version_id: uuid.UUID,
+    approval_decision_id: uuid.UUID,
+):
+    publication_id = uuid.uuid7()
+    principal = uuid.uuid7()
+    conn.execute(
+        text(
+            """
+            INSERT INTO content.publications (
+                publication_id, tenant_id, content_id, version_id,
+                approval_decision_id, published_by_principal_id, effective_actor_id,
+                published_at, correlation_id
+            ) VALUES (
+                :pid, :tid, :cid, :vid,
+                :decision, :principal, :principal, :published_at, :corr
+            )
+            """
+        ),
+        {
+            "pid": publication_id,
+            "tid": tenant_id,
+            "cid": content_id,
+            "vid": version_id,
+            "decision": approval_decision_id,
+            "principal": principal,
+            "published_at": _now(),
+            "corr": uuid.uuid7(),
+        },
+    )
+    return publication_id
+
+
+class TestPublicationCatalog:
+    def test_exact_physical_columns_unique_and_fks(self, bootstrap_engine) -> None:
         with bootstrap_engine.connect() as conn:
             columns = {
                 row[0]
                 for row in conn.execute(
                     text(
                         "SELECT column_name FROM information_schema.columns "
-                        "WHERE table_schema = 'content' AND table_name = 'review_decisions'"
+                        "WHERE table_schema = 'content' AND table_name = 'publications'"
                     )
                 )
             }
@@ -171,60 +189,62 @@ class TestReviewDecisionCatalog:
                     )
                 )
             }
-        assert columns == REVIEW_COLUMNS
-        assert "result_review_decision_id" in idemp
-        fks = inspect(bootstrap_engine).get_foreign_keys(
-            "idempotency_records", schema="api"
+        assert columns == PUBLICATION_COLUMNS
+        assert "result_publication_id" in idemp
+        insp = inspect(bootstrap_engine)
+        fks = insp.get_foreign_keys("publications", schema="content")
+        constrained = {
+            tuple(fk.get("constrained_columns") or []) for fk in fks
+        }
+        assert ("tenant_id", "content_id", "version_id") in constrained or any(
+            set(cols) == {"tenant_id", "content_id", "version_id"} for cols in constrained
         )
-        assert all(
-            "result_review_decision_id" not in (fk.get("constrained_columns") or [])
+        assert any(
+            (fk.get("constrained_columns") or []) == ["approval_decision_id"]
             for fk in fks
         )
+        uniques = insp.get_unique_constraints("publications", schema="content")
+        unique_cols = {tuple(u.get("column_names") or []) for u in uniques}
+        assert ("tenant_id", "content_id", "version_id") in unique_cols
+        idemp_fks = insp.get_foreign_keys("idempotency_records", schema="api")
+        assert all(
+            "result_publication_id" not in (fk.get("constrained_columns") or [])
+            for fk in idemp_fks
+        )
 
-    def test_decision_check_unique_and_version_fk(self, bootstrap_engine) -> None:
+    def test_unique_tenant_content_version_and_version_fk(self, bootstrap_engine) -> None:
         with bootstrap_engine.begin() as conn:
-            tenant_id, content_id, version_id = _insert_content_version(conn)
-            _expect_integrity(
-                conn,
-                lambda: _insert_decision(
-                    conn,
-                    tenant_id=tenant_id,
-                    content_id=content_id,
-                    version_id=version_id,
-                    decision="PENDING",
-                ),
-            )
-            _insert_decision(
+            tenant_id, content_id, version_id, decision_id = _insert_content_version(conn)
+            _insert_publication(
                 conn,
                 tenant_id=tenant_id,
                 content_id=content_id,
                 version_id=version_id,
-                decision="APPROVE",
+                approval_decision_id=decision_id,
             )
             _expect_integrity(
                 conn,
-                lambda: _insert_decision(
+                lambda: _insert_publication(
                     conn,
                     tenant_id=tenant_id,
                     content_id=content_id,
                     version_id=version_id,
-                    decision="REJECT",
-                    comment="no",
+                    approval_decision_id=decision_id,
                 ),
             )
             _expect_integrity(
                 conn,
-                lambda: _insert_decision(
+                lambda: _insert_publication(
                     conn,
                     tenant_id=tenant_id,
                     content_id=content_id,
                     version_id=uuid.uuid7(),
-                    decision="APPROVE",
+                    approval_decision_id=decision_id,
                 ),
             )
 
 
-class TestReviewRlsAndImmutability:
+class TestPublicationRlsAndImmutability:
     def test_rls_enable_and_force(self, bootstrap_engine) -> None:
         with bootstrap_engine.connect() as conn:
             row = conn.execute(
@@ -233,7 +253,7 @@ class TestReviewRlsAndImmutability:
                     SELECT c.relrowsecurity, c.relforcerowsecurity
                     FROM pg_catalog.pg_class c
                     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                    WHERE n.nspname = 'content' AND c.relname = 'review_decisions'
+                    WHERE n.nspname = 'content' AND c.relname = 'publications'
                     """
                 )
             ).one()
@@ -246,7 +266,7 @@ class TestReviewRlsAndImmutability:
                 _expect_dbapi(
                     conn,
                     lambda: conn.execute(
-                        text("SELECT review_decision_id FROM content.review_decisions")
+                        text("SELECT publication_id FROM content.publications")
                     ).fetchall(),
                     match="aieos.tenant_id is not set",
                 )
@@ -255,13 +275,25 @@ class TestReviewRlsAndImmutability:
         tenant_a = uuid.uuid7()
         tenant_b = uuid.uuid7()
         with bootstrap_engine.begin() as conn:
-            _, content_a, version_a = _insert_content_version(conn, tenant_id=tenant_a)
-            _, content_b, version_b = _insert_content_version(conn, tenant_id=tenant_b)
-            id_a = _insert_decision(
-                conn, tenant_id=tenant_a, content_id=content_a, version_id=version_a
+            _, content_a, version_a, decision_a = _insert_content_version(
+                conn, tenant_id=tenant_a
             )
-            id_b = _insert_decision(
-                conn, tenant_id=tenant_b, content_id=content_b, version_id=version_b
+            _, content_b, version_b, decision_b = _insert_content_version(
+                conn, tenant_id=tenant_b
+            )
+            id_a = _insert_publication(
+                conn,
+                tenant_id=tenant_a,
+                content_id=content_a,
+                version_id=version_a,
+                approval_decision_id=decision_a,
+            )
+            id_b = _insert_publication(
+                conn,
+                tenant_id=tenant_b,
+                content_id=content_b,
+                version_id=version_b,
+                approval_decision_id=decision_b,
             )
         with runtime_engine.connect() as conn:
             with conn.begin():
@@ -269,7 +301,7 @@ class TestReviewRlsAndImmutability:
                 ids = {
                     row[0]
                     for row in conn.execute(
-                        text("SELECT review_decision_id FROM content.review_decisions")
+                        text("SELECT publication_id FROM content.publications")
                     )
                 }
                 assert id_a in ids
@@ -278,11 +310,17 @@ class TestReviewRlsAndImmutability:
     def test_runtime_select_insert_only(self, runtime_engine, bootstrap_engine) -> None:
         tenant_id = uuid.uuid7()
         with bootstrap_engine.begin() as conn:
-            _, content_id, version_id = _insert_content_version(conn, tenant_id=tenant_id)
-            review_id = _insert_decision(
-                conn, tenant_id=tenant_id, content_id=content_id, version_id=version_id
+            _, content_id, version_id, decision_id = _insert_content_version(
+                conn, tenant_id=tenant_id
             )
-            _, content_insert, version_insert = _insert_content_version(
+            publication_id = _insert_publication(
+                conn,
+                tenant_id=tenant_id,
+                content_id=content_id,
+                version_id=version_id,
+                approval_decision_id=decision_id,
+            )
+            _, content_insert, version_insert, decision_insert = _insert_content_version(
                 conn, tenant_id=tenant_id
             )
         with runtime_engine.connect() as conn:
@@ -290,40 +328,31 @@ class TestReviewRlsAndImmutability:
                 set_tenant(conn, tenant_id)
                 found = conn.execute(
                     text(
-                        "SELECT review_decision_id FROM content.review_decisions "
-                        "WHERE review_decision_id = :rid"
+                        "SELECT publication_id FROM content.publications "
+                        "WHERE publication_id = :pid"
                     ),
-                    {"rid": review_id},
+                    {"pid": publication_id},
                 ).scalar_one()
-                assert found == review_id
-                inserted = _insert_decision(
+                assert found == publication_id
+                inserted = _insert_publication(
                     conn,
                     tenant_id=tenant_id,
                     content_id=content_insert,
                     version_id=version_insert,
-                    decision="REJECT",
-                    comment="no",
+                    approval_decision_id=decision_insert,
                 )
                 assert inserted is not None
         with runtime_engine.connect() as conn:
             with conn.begin():
                 set_tenant(conn, tenant_id)
-                found = conn.execute(
-                    text(
-                        "SELECT review_decision_id FROM content.review_decisions "
-                        "WHERE review_decision_id = :rid"
-                    ),
-                    {"rid": review_id},
-                ).scalar_one()
-                assert found == review_id
                 _expect_dbapi(
                     conn,
                     lambda: conn.execute(
                         text(
-                            "UPDATE content.review_decisions SET comment = 'x' "
-                            "WHERE review_decision_id = :rid"
+                            "UPDATE content.publications SET correlation_id = :corr "
+                            "WHERE publication_id = :pid"
                         ),
-                        {"rid": review_id},
+                        {"corr": uuid.uuid7(), "pid": publication_id},
                     ),
                     match="permission denied",
                 )
@@ -331,10 +360,10 @@ class TestReviewRlsAndImmutability:
                     conn,
                     lambda: conn.execute(
                         text(
-                            "DELETE FROM content.review_decisions "
-                            "WHERE review_decision_id = :rid"
+                            "DELETE FROM content.publications "
+                            "WHERE publication_id = :pid"
                         ),
-                        {"rid": review_id},
+                        {"pid": publication_id},
                     ),
                     match="permission denied",
                 )
@@ -343,36 +372,44 @@ class TestReviewRlsAndImmutability:
         self, bootstrap_engine
     ) -> None:
         with bootstrap_engine.begin() as conn:
-            tenant_id, content_id, version_id = _insert_content_version(conn)
-            review_id = _insert_decision(
-                conn, tenant_id=tenant_id, content_id=content_id, version_id=version_id
+            tenant_id, content_id, version_id, decision_id = _insert_content_version(conn)
+            publication_id = _insert_publication(
+                conn,
+                tenant_id=tenant_id,
+                content_id=content_id,
+                version_id=version_id,
+                approval_decision_id=decision_id,
             )
             _expect_dbapi(
                 conn,
                 lambda: conn.execute(
                     text(
-                        "UPDATE content.review_decisions SET comment = 'x' "
-                        "WHERE review_decision_id = :rid"
+                        "UPDATE content.publications SET correlation_id = :corr "
+                        "WHERE publication_id = :pid"
                     ),
-                    {"rid": review_id},
+                    {"corr": uuid.uuid7(), "pid": publication_id},
                 ),
-                match="content.review_decisions is immutable",
+                match="content.publications is immutable",
             )
         with bootstrap_engine.begin() as conn:
-            tenant_id, content_id, version_id = _insert_content_version(conn)
-            review_id = _insert_decision(
-                conn, tenant_id=tenant_id, content_id=content_id, version_id=version_id
+            tenant_id, content_id, version_id, decision_id = _insert_content_version(conn)
+            publication_id = _insert_publication(
+                conn,
+                tenant_id=tenant_id,
+                content_id=content_id,
+                version_id=version_id,
+                approval_decision_id=decision_id,
             )
             _expect_dbapi(
                 conn,
                 lambda: conn.execute(
                     text(
-                        "DELETE FROM content.review_decisions "
-                        "WHERE review_decision_id = :rid"
+                        "DELETE FROM content.publications "
+                        "WHERE publication_id = :pid"
                     ),
-                    {"rid": review_id},
+                    {"pid": publication_id},
                 ),
-                match="content.review_decisions is immutable",
+                match="content.publications is immutable",
             )
 
     def test_schema_owner_distinct_from_migrator_and_runtime(
@@ -388,7 +425,7 @@ class TestReviewRlsAndImmutability:
                     SELECT pg_catalog.pg_get_userbyid(c.relowner)
                     FROM pg_catalog.pg_class c
                     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                    WHERE n.nspname = 'content' AND c.relname = 'review_decisions'
+                    WHERE n.nspname = 'content' AND c.relname = 'publications'
                     """
                 )
             ).scalar_one()
@@ -399,7 +436,7 @@ class TestReviewRlsAndImmutability:
                     FROM pg_catalog.pg_proc p
                     JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
                     WHERE n.nspname = 'content'
-                      AND p.proname = 'reject_review_decision_mutation'
+                      AND p.proname = 'reject_publication_mutation'
                     """
                 )
             ).scalar_one()
@@ -413,7 +450,7 @@ class TestReviewRlsAndImmutability:
 class TestAlembicCycleAndOfflineSql:
     def test_online_upgrade_downgrade_upgrade(self, postgres18, bootstrap_engine) -> None:
         cfg = alembic_config(postgres18["migrator_url"])
-        command.downgrade(cfg, "gcii050001")
+        command.downgrade(cfg, "gcii080001")
         with bootstrap_engine.connect() as conn:
             tables = {
                 row[0]
@@ -431,9 +468,9 @@ class TestAlembicCycleAndOfflineSql:
                     )
                 )
             }
-        assert "review_decisions" not in tables
-        assert "result_review_decision_id" not in idemp_cols
-        assert revision == "gcii050001"
+        assert "publications" not in tables
+        assert "result_publication_id" not in idemp_cols
+        assert revision == "gcii080001"
         command.upgrade(cfg, "head")
         command.downgrade(cfg, "base")
         command.upgrade(cfg, "head")
@@ -455,15 +492,15 @@ class TestAlembicCycleAndOfflineSql:
             "publications",
         }
 
-    def test_offline_sql_assumes_owner_before_i06_ddl(self, postgres18) -> None:
+    def test_offline_sql_assumes_owner_before_i09_ddl(self, postgres18) -> None:
         cfg = alembic_config(postgres18["migrator_url"])
         output = io.StringIO()
         with redirect_stdout(output):
             command.upgrade(cfg, "base:head", sql=True)
         sql_text = output.getvalue()
         role_stmt = f"SET LOCAL ROLE {SCHEMA_OWNER_ROLE}"
-        create_table = "CREATE TABLE content.review_decisions"
-        add_column = "result_review_decision_id"
+        create_table = "CREATE TABLE content.publications"
+        add_column = "result_publication_id"
         role_at = sql_text.find(role_stmt)
         table_at = sql_text.find(create_table)
         column_at = sql_text.find(add_column)

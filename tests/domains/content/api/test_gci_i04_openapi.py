@@ -13,7 +13,7 @@ from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.app import create_app
 from aieos.platform.api.openapi import build_openapi, canonical_openapi_json
 from tests.dbutil import REPO_ROOT
-from tests.fakes import StubSecurityContextResolver, AllowReviewAuthorization, AllowReviewCommentPolicy
+from tests.fakes import StubSecurityContextResolver, AllowReviewAuthorization, AllowReviewCommentPolicy, AllowPublicationAuthorization, AllowPublicationGovernance, AllowPublicationAssetValidation
 
 pytestmark = pytest.mark.gci_i04
 
@@ -35,6 +35,9 @@ def _schema() -> dict:
         idempotency_retention=timedelta(hours=24),
         review_authorization=AllowReviewAuthorization(),
         review_comment_policy=AllowReviewCommentPolicy(),
+        publication_authorization=AllowPublicationAuthorization(),
+        publication_governance=AllowPublicationGovernance(),
+        publication_asset_validation=AllowPublicationAssetValidation(),
     )
     return build_openapi(app)
 

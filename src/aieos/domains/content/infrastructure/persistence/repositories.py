@@ -11,6 +11,7 @@ from sqlalchemy.engine import Connection
 
 from aieos.domains.content.application.errors import (
     ContentAlreadyExists,
+    ContentVersionAlreadyPublished,
     ReviewAlreadyDecided,
     VersionAlreadyExists,
 )
@@ -20,9 +21,11 @@ from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
     ContentVersionId,
+    PublicationId,
     ReviewDecisionId,
     VersionNumber,
 )
+from aieos.domains.content.domain.publication import Publication
 from aieos.domains.content.domain.review import ReviewDecision
 from aieos.domains.content.domain.version import ContentVersion
 from aieos.domains.content.infrastructure.persistence.errors import (
@@ -33,11 +36,13 @@ from aieos.domains.content.infrastructure.persistence.mapping import (
     content_version_from_row,
     payload_as_json,
     provenance_as_json,
+    publication_from_row,
     review_decision_from_row,
 )
 from aieos.domains.content.infrastructure.persistence.models import (
     content_versions_table,
     contents_table,
+    publications_table,
     review_decisions_table,
 )
 
@@ -319,6 +324,40 @@ class SqlAlchemyContentRepository:
             return None
         return AggregateRevision(int(row.aggregate_revision))
 
+    def set_published_version(
+        self,
+        *,
+        content_id: ContentId,
+        tenant_id: UUID,
+        version_id: ContentVersionId,
+        expected_revision: AggregateRevision,
+        updated_at: datetime,
+    ) -> AggregateRevision | None:
+        stmt = (
+            update(contents_table)
+            .where(
+                contents_table.c.tenant_id == tenant_id,
+                contents_table.c.content_id == content_id.value,
+                contents_table.c.current_version_id == version_id.value,
+                contents_table.c.stewardship_state == "APPROVED",
+                contents_table.c.aggregate_revision == expected_revision.value,
+                contents_table.c.published_version_id.is_distinct_from(version_id.value),
+            )
+            .values(
+                published_version_id=version_id.value,
+                aggregate_revision=contents_table.c.aggregate_revision + 1,
+                updated_at=updated_at,
+            )
+            .returning(contents_table.c.aggregate_revision)
+        )
+        try:
+            row = self._connection.execute(stmt).one_or_none()
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if row is None:
+            return None
+        return AggregateRevision(int(row.aggregate_revision))
+
 
 class SqlAlchemyReviewDecisionRepository:
     def __init__(self, connection: Connection) -> None:
@@ -386,3 +425,66 @@ class SqlAlchemyReviewDecisionRepository:
         if row is None:
             return None
         return review_decision_from_row(row)
+
+class SqlAlchemyPublicationRepository:
+    def __init__(self, connection: Connection) -> None:
+        self._connection = connection
+
+    def insert(self, publication: Publication) -> None:
+        try:
+            self._connection.execute(
+                publications_table.insert().values(
+                    publication_id=publication.publication_id.value,
+                    tenant_id=publication.tenant_id,
+                    content_id=publication.content_id.value,
+                    version_id=publication.version_id.value,
+                    approval_decision_id=publication.approval_decision_id.value,
+                    published_by_principal_id=publication.published_by_principal_id,
+                    effective_actor_id=publication.effective_actor_id,
+                    published_at=publication.published_at,
+                    correlation_id=publication.correlation_id,
+                )
+            )
+        except Exception as exc:
+            reraise_as_application_error(
+                exc,
+                unique_conflict=ContentVersionAlreadyPublished,
+                unique_message="this ContentVersion already has a Publication",
+            )
+
+    def get(self, publication_id: PublicationId) -> Publication | None:
+        try:
+            row = (
+                self._connection.execute(
+                    select(publications_table).where(
+                        publications_table.c.publication_id == publication_id.value
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if row is None:
+            return None
+        return publication_from_row(row)
+
+    def get_for_version(
+        self, content_id: ContentId, version_id: ContentVersionId
+    ) -> Publication | None:
+        try:
+            row = (
+                self._connection.execute(
+                    select(publications_table).where(
+                        publications_table.c.content_id == content_id.value,
+                        publications_table.c.version_id == version_id.value,
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if row is None:
+            return None
+        return publication_from_row(row)

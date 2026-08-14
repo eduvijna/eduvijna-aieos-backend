@@ -92,3 +92,21 @@ class ReviewDecisionResponse(BaseModel):
     decided_at: datetime
     stewardship_state: str
     aggregate_revision: int
+
+
+class ContentPublishRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version_id: UUID
+
+
+class PublicationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    publication_id: UUID
+    content_id: UUID
+    version_id: UUID
+    approval_decision_id: UUID
+    published_at: datetime
+    published_version_id: UUID
+    aggregate_revision: int

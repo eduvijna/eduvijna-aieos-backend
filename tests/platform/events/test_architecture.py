@@ -5,6 +5,11 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from aieos.platform.events.constants import (
+    EMITTED_CONTENT_EVENT_TYPES,
+    EVENT_CONTENT_ARCHIVED_V1,
+    EVENT_CONTENT_PUBLISHED_V1,
+)
 from tests.dbutil import REPO_ROOT
 
 API_ROOT = REPO_ROOT / "src" / "aieos" / "domains" / "content" / "api"
@@ -38,6 +43,9 @@ def _publish_call_violations(root: Path) -> list[str]:
         if not path.exists():
             continue
         for file_path in path.rglob("*.py"):
+            # PublishContentService.publish is the Content mutation command, not NATS.
+            if file_path.name == "publish.py":
+                continue
             tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
@@ -76,16 +84,21 @@ def test_frontend_has_no_nats_py_when_present() -> None:
     assert hits == []
 
 
-def test_domain_and_application_never_call_publish() -> None:
+def test_domain_and_application_never_call_nats_publish() -> None:
     content_root = REPO_ROOT / "src" / "aieos" / "domains" / "content"
     assert _publish_call_violations(content_root) == []
+
+
+def test_emitted_content_events_include_published_not_archived() -> None:
+    assert EVENT_CONTENT_PUBLISHED_V1 in EMITTED_CONTENT_EVENT_TYPES
+    assert EVENT_CONTENT_ARCHIVED_V1 not in EMITTED_CONTENT_EVENT_TYPES
 
 
 def test_migration_chain_and_forbidden_tables() -> None:
     hits: list[str] = []
     for path in (REPO_ROOT / "migrations").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        for needle in ("consumer_inbox", "audit_events", "content.publications"):
+        for needle in ("consumer_inbox", "audit_events", "version_asset_refs"):
             if needle in text:
                 hits.append(f"{path.name}:{needle}")
     assert hits == []
@@ -100,12 +113,14 @@ def test_migration_chain_and_forbidden_tables() -> None:
         "gcii060001_review_decisions.py",
         "gcii070001_workflow_intents.py",
         "gcii080001_outbox_messages.py",
+        "gcii090001_publications.py",
     ]
 
 
-def test_no_gci_i09_publish_or_archive_routes() -> None:
+def test_no_gci_i10_archive_routes() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
-    for needle in ("/publish", "/archive", "review-queue", "/reviews"):
+    assert "/actions/publish" in routes
+    for needle in ("/archive", "review-queue", "/reviews", "version_asset_refs"):
         assert needle not in routes
 
 

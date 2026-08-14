@@ -1,4 +1,4 @@
-"""GCI-I06 OpenAPI operationIds, headers, and snapshot equality."""
+"""GCI-I09 OpenAPI operationId, headers, and snapshot equality for publish."""
 
 from __future__ import annotations
 
@@ -21,23 +21,10 @@ from tests.fakes import (
     StubSecurityContextResolver,
 )
 
-pytestmark = pytest.mark.gci_i06
+pytestmark = pytest.mark.gci_i09
 
 SNAPSHOT = REPO_ROOT / "contracts" / "openapi" / "aieos-v1.json"
-REVIEW_PATHS = {
-    "/api/v1/contents/{content_id}/versions/{version_id}/actions/submit-for-review": (
-        "content_review_submit"
-    ),
-    "/api/v1/contents/{content_id}/versions/{version_id}/actions/approve": (
-        "content_review_approve"
-    ),
-    "/api/v1/contents/{content_id}/versions/{version_id}/actions/request-changes": (
-        "content_review_request_changes"
-    ),
-    "/api/v1/contents/{content_id}/versions/{version_id}/actions/reject": (
-        "content_review_reject"
-    ),
-}
+PUBLISH_PATH = "/api/v1/contents/{content_id}/actions/publish"
 
 
 class _UnusedUowFactory:
@@ -70,52 +57,74 @@ def _header_names(operation: dict) -> set[str]:
     }
 
 
-def test_four_review_operation_ids_and_required_headers() -> None:
+def _required_header_names(operation: dict) -> set[str]:
+    return {
+        p["name"]
+        for p in operation.get("parameters", [])
+        if isinstance(p, dict) and p.get("in") == "header" and p.get("required") is True
+    }
+
+
+def test_content_publish_operation_contract() -> None:
     schema = _schema()
     assert schema["openapi"].startswith("3.1")
     paths = schema["paths"]
-    for path, operation_id in REVIEW_PATHS.items():
-        assert "post" in paths[path]
-        operation = paths[path]["post"]
-        assert operation["operationId"] == operation_id
-        headers = _header_names(operation)
-        assert "If-Match" in headers
-        assert "Idempotency-Key" in headers
-        statuses = set(operation["responses"])
-        for status in (
-            "200",
-            "400",
-            "401",
-            "403",
-            "404",
-            "409",
-            "412",
-            "422",
-            "428",
-            "500",
-            "503",
-        ):
-            assert status in statuses
-        problem = operation["responses"]["412"]
-        assert "application/problem+json" in problem["content"]
+    assert PUBLISH_PATH in paths
+    assert "post" in paths[PUBLISH_PATH]
+    operation = paths[PUBLISH_PATH]["post"]
+    assert operation["operationId"] == "content_publish"
+
+    headers = _header_names(operation)
+    assert "If-Match" in headers
+    assert "Idempotency-Key" in headers
+    required = _required_header_names(operation)
+    assert "If-Match" in required
+    assert "Idempotency-Key" in required
+
+    body_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    if "$ref" in body_schema:
+        ref = body_schema["$ref"].rsplit("/", 1)[-1]
+        props = schema["components"]["schemas"][ref]["properties"]
+    else:
+        props = body_schema["properties"]
+    assert set(props) == {"version_id"}
+
+    statuses = set(operation["responses"])
+    for status in (
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "409",
+        "412",
+        "422",
+        "428",
+        "500",
+        "503",
+    ):
+        assert status in statuses
+    assert "application/problem+json" in operation["responses"]["412"]["content"]
+    assert "application/problem+json" in operation["responses"]["428"]["content"]
 
     get_content = paths["/api/v1/contents/{content_id}"]["get"]
     list_contents = paths["/api/v1/contents"]["get"]
     get_version = paths["/api/v1/contents/{content_id}/versions/{version_id}"]["get"]
-    for operation in (get_content, list_contents, get_version):
-        headers = _header_names(operation)
-        assert "If-Match" not in headers
-        assert "Idempotency-Key" not in headers
-        statuses = set(operation["responses"])
-        assert "412" not in statuses
-        assert "428" not in statuses
+    for get_operation in (get_content, list_contents, get_version):
+        get_headers = _header_names(get_operation)
+        assert "If-Match" not in get_headers
+        assert "Idempotency-Key" not in get_headers
+        get_statuses = set(get_operation["responses"])
+        assert "412" not in get_statuses
+        assert "428" not in get_statuses
 
     dumped = canonical_openapi_json(schema)
     assert "HTTPValidationError" not in dumped
     assert "ProblemDetails" in dumped
-    assert "ReviewSubmissionResponse" in dumped
-    assert "ReviewDecisionResponse" in dumped
-    assert "review-queue" not in dumped
+    assert "PublicationResponse" in dumped
+    assert "ContentPublishRequest" in dumped
+    assert "/archive" not in dumped
+    assert "version_asset_refs" not in dumped
 
 
 def test_openapi_snapshot_regenerated_twice_identically() -> None:

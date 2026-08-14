@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from uuid import UUID
 
-from datetime import timedelta
-
-from aieos.domains.content.application.errors import ReviewCommentRejected, ReviewForbidden
+from aieos.domains.content.application.errors import (
+    PublicationAssetValidationFailed,
+    PublicationForbidden,
+    PublicationGovernanceRejected,
+    ReviewCommentRejected,
+    ReviewForbidden,
+)
 from aieos.domains.content.application.ports import (
+    CONTENT_PUBLISH,
     CONTENT_REVIEW_DECIDE,
     CONTENT_REVIEW_SUBMIT,
 )
@@ -18,7 +24,6 @@ from aieos.platform.security.context import (
     UnauthorizedError,
 )
 from tests.domains.content.domain.fakes import TEST_GENERIC_V1, TestFixtureSchema
-from aieos.domains.content.domain.schema import SchemaId, SchemaVersion
 
 IDEMPOTENCY_RETENTION = timedelta(hours=24)
 
@@ -86,6 +91,61 @@ class MarkerReviewCommentPolicy:
     def evaluate(self, comment: str | None) -> None:
         if comment is not None and SENSITIVE_TEST_COMMENT in comment:
             raise ReviewCommentRejected("review comment rejected")
+
+
+class AllowPublicationAuthorization:
+    def __init__(self, *, allow: bool = True) -> None:
+        self.allow = allow
+        self.calls: list[tuple[UUID, str]] = []
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        content_id,
+        version_id,
+        capability: str,
+    ) -> None:
+        self.calls.append((principal_id, capability))
+        if capability != CONTENT_PUBLISH or not self.allow:
+            raise PublicationForbidden("content.publish denied")
+
+
+class AllowPublicationGovernance:
+    def __init__(self, *, allow: bool = True) -> None:
+        self.allow = allow
+        self.calls: list[tuple[UUID, UUID]] = []
+
+    def evaluate(
+        self,
+        *,
+        tenant_id: UUID,
+        content_id,
+        version_id,
+    ) -> None:
+        self.calls.append((content_id.value, version_id.value))
+        if not self.allow:
+            raise PublicationGovernanceRejected("publication governance rejected")
+
+
+class AllowPublicationAssetValidation:
+    def __init__(self, *, allow: bool = True) -> None:
+        self.allow = allow
+        self.calls: list[tuple[UUID, UUID]] = []
+
+    def validate(
+        self,
+        *,
+        tenant_id: UUID,
+        content_id,
+        version_id,
+    ) -> None:
+        self.calls.append((content_id.value, version_id.value))
+        if not self.allow:
+            raise PublicationAssetValidationFailed(
+                "publication asset validation failed"
+            )
 
 
 def make_test_schema_registry() -> ContentSchemaRegistry:

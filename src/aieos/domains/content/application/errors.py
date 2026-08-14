@@ -104,3 +104,39 @@ class ReviewAlreadyDecided(ContentApplicationError):
 
 class WorkflowCoordinationFailed(ContentApplicationError):
     """Internal workflow-intent coordination invariant failed."""
+
+
+class PublicationForbidden(ContentApplicationError):
+    """Current principal lacks the content.publish capability."""
+
+
+class PublicationVersionNotCurrent(ContentApplicationError):
+    """Requested version is not the current ContentVersion."""
+
+
+class PublicationApprovalRequired(ContentApplicationError):
+    """Exact-version APPROVE ReviewDecision is required before publish."""
+
+
+class ContentVersionAlreadyPublished(ContentApplicationError):
+    """The exact immutable ContentVersion already has a Publication."""
+
+
+class PublicationAssetValidationFailed(ContentApplicationError):
+    """Required publication asset validation failed."""
+
+
+class PublicationGovernanceRejected(ContentApplicationError):
+    """Publication governance rejected the candidate."""
+
+
+class PublicationPayloadInvalid(ContentApplicationError):
+    """Stored ContentVersion payload failed retained schema validation."""
+
+
+class PublicationSchemaUnavailable(ContentApplicationError):
+    """Stored schema reader for the ContentVersion is unavailable."""
+
+
+class PublicationNotAllowed(ContentApplicationError):
+    """Publish is not allowed in the current Content stewardship state."""

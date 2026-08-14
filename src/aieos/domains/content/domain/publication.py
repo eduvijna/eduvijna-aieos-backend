@@ -30,18 +30,19 @@ class Publication:
     tenant_id: UUID
     content_id: ContentId
     version_id: ContentVersionId
-    approval_decision_id: ReviewDecisionId | None
-    publisher_principal_id: UUID
+    approval_decision_id: ReviewDecisionId
+    published_by_principal_id: UUID
+    effective_actor_id: UUID
     published_at: datetime
-    correlation_id: UUID | None
+    correlation_id: UUID
 
     def __post_init__(self) -> None:
         require_foreign_uuid(self.tenant_id, label="tenant_id")
         require_foreign_uuid(
-            self.publisher_principal_id, label="publisher_principal_id"
+            self.published_by_principal_id, label="published_by_principal_id"
         )
-        if self.correlation_id is not None:
-            require_foreign_uuid(self.correlation_id, label="correlation_id")
+        require_foreign_uuid(self.effective_actor_id, label="effective_actor_id")
+        require_foreign_uuid(self.correlation_id, label="correlation_id")
         if self.version_id is None:
             raise PublicationBindingError("publication requires an exact version_id")
         if self.published_at.tzinfo is None or self.published_at.utcoffset() is None:

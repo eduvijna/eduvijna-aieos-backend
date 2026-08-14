@@ -12,8 +12,10 @@ from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
     ContentVersionId,
+    PublicationId,
     ReviewDecisionId,
 )
+from aieos.domains.content.domain.publication import Publication
 from aieos.domains.content.domain.review import ReviewDecision
 from aieos.domains.content.domain.version import ContentVersion
 from aieos.platform.events.ports import OutboxRepository
@@ -22,6 +24,7 @@ from aieos.platform.workflows.ports import WorkflowIntentRepository
 
 CONTENT_REVIEW_SUBMIT = "content.review.submit"
 CONTENT_REVIEW_DECIDE = "content.review.decide"
+CONTENT_PUBLISH = "content.publish"
 
 
 class ContentVersionRepository(Protocol):
@@ -72,6 +75,56 @@ class ReviewCommentPolicy(Protocol):
     def evaluate(self, comment: str | None) -> None: ...
 
 
+class PublicationAuthorizationPort(Protocol):
+    """Current capability check for content.publish. Does not own users/roles/JWT."""
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        content_id: ContentId,
+        version_id: ContentVersionId,
+        capability: str,
+    ) -> None: ...
+
+
+class PublicationGovernancePort(Protocol):
+    """Local publication-governance gate. No network I/O."""
+
+    def evaluate(
+        self,
+        *,
+        tenant_id: UUID,
+        content_id: ContentId,
+        version_id: ContentVersionId,
+    ) -> None: ...
+
+
+class PublicationAssetValidationPort(Protocol):
+    """Local required-asset gate for publication. GCI-I10 owns Asset persistence."""
+
+    def validate(
+        self,
+        *,
+        tenant_id: UUID,
+        content_id: ContentId,
+        version_id: ContentVersionId,
+    ) -> None: ...
+
+
+class PublicationRepository(Protocol):
+    """INSERT/READ persistence for immutable Publication rows."""
+
+    def insert(self, publication: Publication) -> None: ...
+
+    def get(self, publication_id: PublicationId) -> Publication | None: ...
+
+    def get_for_version(
+        self, content_id: ContentId, version_id: ContentVersionId
+    ) -> Publication | None: ...
+
+
 class ContentRepository(Protocol):
     def insert(self, content: Content) -> None: ...
 
@@ -111,11 +164,22 @@ class ContentRepository(Protocol):
         updated_at: datetime,
     ) -> AggregateRevision | None: ...
 
+    def set_published_version(
+        self,
+        *,
+        content_id: ContentId,
+        tenant_id: UUID,
+        version_id: ContentVersionId,
+        expected_revision: AggregateRevision,
+        updated_at: datetime,
+    ) -> AggregateRevision | None: ...
+
 
 class ContentUnitOfWork(Protocol):
     contents: ContentRepository
     versions: ContentVersionRepository
     reviews: ReviewRepository
+    publications: PublicationRepository
     idempotency: IdempotencyRepository
     workflow_intents: WorkflowIntentRepository
     outbox: OutboxRepository

@@ -12,6 +12,7 @@ from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
     ContentVersionId,
+    PublicationId,
     ReviewDecisionId,
     VersionNumber,
 )
@@ -155,4 +156,15 @@ class ReviewDecisionResult:
     comment: str | None
     decided_at: datetime
     stewardship_state: str
+    aggregate_revision: AggregateRevision
+
+
+@dataclass(frozen=True, slots=True)
+class PublicationResult:
+    publication_id: PublicationId
+    content_id: ContentId
+    version_id: ContentVersionId
+    approval_decision_id: ReviewDecisionId
+    published_at: datetime
+    published_version_id: ContentVersionId
     aggregate_revision: AggregateRevision

@@ -221,7 +221,12 @@ class TestAlembicAndCatalog:
                     )
                 )
             }
-            assert tables == {"contents", "content_versions", "review_decisions"}
+            assert tables == {
+                "contents",
+                "content_versions",
+                "review_decisions",
+                "publications",
+            }
             api_tables = {
                 row[0]
                 for row in conn.execute(
@@ -231,7 +236,7 @@ class TestAlembicAndCatalog:
             assert "api" in schemas
             assert api_tables == {"idempotency_records"}
             revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            assert revision == "gcii080001"
+            assert revision == "gcii090001"
             gcii02 = (
                 REPO_ROOT / "migrations" / "versions" / "gcii020001_content_schema.py"
             ).read_text(encoding="utf-8")
@@ -263,12 +268,13 @@ class TestAlembicAndCatalog:
             "contents",
             "content_versions",
             "review_decisions",
+            "publications",
         }
         assert "api" in insp.get_schema_names()
         assert set(insp.get_table_names(schema="api")) == {"idempotency_records"}
         with bootstrap_engine.connect() as conn:
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "gcii080001"
+                "gcii090001"
             )
         assert "workflow" in insp.get_schema_names()
         assert set(insp.get_table_names(schema="workflow")) == {
@@ -1035,7 +1041,6 @@ class TestArchitectureBoundary:
         for path in (REPO_ROOT / "migrations").rglob("*.py"):
             text_src = path.read_text(encoding="utf-8")
             for needle in (
-                "publications",
                 "version_asset_refs",
                 "audit_events",
                 "consumer_inbox",
@@ -1043,6 +1048,10 @@ class TestArchitectureBoundary:
                 if needle in text_src:
                     hits.append(f"{path.name}:{needle}")
         assert hits == []
+        # GCI-I09 publications are authorized; later slices remain forbidden.
+        assert (
+            REPO_ROOT / "migrations" / "versions" / "gcii090001_publications.py"
+        ).is_file()
         # GCI-I08 outbox is authorized; keep it outside Content domain packages.
         content_infra = (
             SRC_ROOT / "aieos" / "domains" / "content" / "infrastructure"

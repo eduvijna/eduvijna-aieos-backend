@@ -15,9 +15,13 @@ from aieos.domains.content.application.http_append import (
 from aieos.domains.content.application.ports import (
     ContentTypeCatalog,
     ContentUnitOfWorkFactory,
+    PublicationAssetValidationPort,
+    PublicationAuthorizationPort,
+    PublicationGovernancePort,
     ReviewAuthorizationPort,
     ReviewCommentPolicy,
 )
+from aieos.domains.content.application.publish import PublishContentService
 from aieos.domains.content.application.queries import GetContentService, ListContentsService
 from aieos.domains.content.application.review import ReviewCommandService
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
@@ -28,10 +32,11 @@ from aieos.platform.api.problems import install_exception_handlers
 from aieos.platform.security.context import SecurityContextResolver
 
 _APP_DESCRIPTION = (
-    "AIEOS HTTP foundation (GCI-I08). "
-    "Content create, version append, and review mutations are development/test "
-    "foundations only and MUST NOT be authorized for production until required "
-    "security-audit intent persistence is integrated alongside the transactional outbox."
+    "AIEOS HTTP foundation (GCI-I09). "
+    "Content create, version append, review, and publish mutations are "
+    "development/test foundations only and MUST NOT be authorized for production "
+    "until required security-audit intent persistence is integrated alongside the "
+    "transactional outbox."
 )
 
 
@@ -45,6 +50,9 @@ def create_app(
     idempotency_retention: timedelta,
     review_authorization: ReviewAuthorizationPort,
     review_comment_policy: ReviewCommentPolicy,
+    publication_authorization: PublicationAuthorizationPort,
+    publication_governance: PublicationGovernancePort,
+    publication_asset_validation: PublicationAssetValidationPort,
 ) -> FastAPI:
     codec = CursorCodec(cursor_signing_key)
     app = FastAPI(
@@ -72,6 +80,14 @@ def create_app(
         uow_factory,
         review_authorization,
         review_comment_policy,
+        idempotency_retention=idempotency_retention,
+    )
+    app.state.publish_content_service = PublishContentService(
+        uow_factory,
+        publication_authorization,
+        publication_governance,
+        publication_asset_validation,
+        schema_registry,
         idempotency_retention=idempotency_retention,
     )
 

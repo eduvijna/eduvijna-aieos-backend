@@ -2,10 +2,10 @@
 id: GCI-I02-DATABASE-PRIVILEGE-CONTRACT
 title: Generic Content and API infrastructure database privilege contract
 status: draft
-version: 0.7.0
+version: 0.8.0
 ---
 
-# Database privilege contract (GCI-I02R2 / GCI-I05R1 / GCI-I06 / GCI-I07 / GCI-I08)
+# Database privilege contract (GCI-I02R2 / GCI-I05R1 / GCI-I06 / GCI-I07 / GCI-I08 / GCI-I09)
 
 This document describes the required production privilege separation. It does **not** provision cloud or production identities.
 
@@ -19,9 +19,9 @@ Production role creation remains infrastructure/deployment work, not application
 |----------|---------|-------|----------------|
 | Schema owner (`aieos_content_owner` conceptually) | Owns `content`, `api`, `workflow`, and `integration` schema objects | **NOLOGIN** | Application runtime login |
 | Migrator | Alembic upgrade/downgrade only; may `SET ROLE` to schema owner for DDL | LOGIN | Product runtime DML path; `BYPASSRLS` as a substitute for application tenancy; schema ownership of application schemas |
-| Runtime | Ordinary Generic Content DML, synchronous API idempotency DML, workflow-intent INSERT/SELECT, and outbox INSERT | LOGIN | Superuser, `BYPASSRLS`, schema ownership, `DELETE` on Content tables, `UPDATE`/`DELETE` on outbox, dispatcher capabilities |
-| Workflow dispatcher (`aieos_workflow_dispatcher` conceptually) | Claim/retry/deliver/quarantine workflow intents only | LOGIN | Superuser, `BYPASSRLS`, schema ownership, Content/ReviewDecision mutation, workflow-intent INSERT/DELETE |
-| Event dispatcher (`aieos_event_dispatcher` conceptually) | Claim/retry/publish/quarantine outbox delivery metadata only | LOGIN | Superuser, `BYPASSRLS`, schema ownership, outbox INSERT/DELETE, Content/ReviewDecision/workflow-intent mutation |
+| Runtime | Ordinary Generic Content DML, synchronous API idempotency DML, workflow-intent INSERT/SELECT, Publication INSERT/SELECT, and outbox INSERT | LOGIN | Superuser, `BYPASSRLS`, schema ownership, `DELETE` on Content tables, `UPDATE`/`DELETE` on publications or outbox, dispatcher capabilities |
+| Workflow dispatcher (`aieos_workflow_dispatcher` conceptually) | Claim/retry/deliver/quarantine workflow intents only | LOGIN | Superuser, `BYPASSRLS`, schema ownership, Content/ReviewDecision/Publication mutation, workflow-intent INSERT/DELETE |
+| Event dispatcher (`aieos_event_dispatcher` conceptually) | Claim/retry/publish/quarantine outbox delivery metadata only | LOGIN | Superuser, `BYPASSRLS`, schema ownership, outbox INSERT/DELETE, Content/ReviewDecision/Publication/workflow-intent mutation |
 | Backup/restore | Backup and restore | deployment-defined | Ordinary product DML |
 
 A runtime or dispatcher identity must **not** require `BYPASSRLS`, superuser, or schema ownership.
@@ -39,6 +39,7 @@ The migration environment issues `SET LOCAL ROLE` to that role. Online migration
 After upgrade:
 
 - `content` / `api` / `workflow` / `integration` schema owner == schema-owner role
+- `content.publications` owner == schema-owner role
 - `integration.outbox_messages` owner == schema-owner role
 - `integration.current_tenant_id()` owner == schema-owner role
 - session migration identity (`session_user`) remains the migrator
@@ -48,7 +49,20 @@ After upgrade:
 
 ### `content` / `api` / `workflow`
 
-Unchanged from GCI-I07 for Content, API idempotency, and workflow intent INSERT/SELECT boundaries.
+Unchanged from GCI-I07 for Content heads/versions, ReviewDecision INSERT/SELECT, API idempotency, and workflow intent INSERT/SELECT boundaries.
+
+### `content.publications` (GCI-I09)
+
+`content.publications` is immutable Publication history (not a stewardship state).
+
+Runtime:
+
+- `SELECT`, `INSERT` on `content.publications`
+- **not** `UPDATE`, **not** `DELETE`
+
+`content.publications` has ENABLE RLS and FORCE RLS. Tenant isolation uses transaction-local `aieos.tenant_id` via `content.current_tenant_id()`. Missing tenant context must fail closed.
+
+Privileged UPDATE/DELETE are blocked by an immutability trigger even for the schema owner path used in privileged tests.
 
 ### `integration` (GCI-I08 transactional outbox)
 
@@ -68,7 +82,7 @@ Event dispatcher:
   `status`, `attempt_count`, `available_at`, `claimed_by`, `claimed_until`, `published_at`, `broker_stream`, `broker_sequence`, `last_error_code`
 - **not** `INSERT`, **not** `DELETE`
 - `EXECUTE` on `integration.current_tenant_id()`
-- **no** Content / ReviewDecision / workflow-intent mutation grants
+- **no** Content / ReviewDecision / Publication / workflow-intent mutation grants
 - **NOSUPERUSER**, **NOBYPASSRLS**, not schema owner
 
 `integration.outbox_messages` has ENABLE RLS and FORCE RLS. Tenant isolation uses transaction-local `aieos.tenant_id` via `integration.current_tenant_id()`. Missing tenant context must fail closed.

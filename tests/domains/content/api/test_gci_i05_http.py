@@ -30,6 +30,9 @@ from aieos.platform.idempotency.hashing import hash_idempotency_key
 from tests.fakes import (
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
+    AllowPublicationAssetValidation,
+    AllowPublicationAuthorization,
+    AllowPublicationGovernance,
     IDEMPOTENCY_RETENTION,
     StubSecurityContextResolver,
     make_test_schema_registry,
@@ -57,6 +60,9 @@ def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID):
         idempotency_retention=IDEMPOTENCY_RETENTION,
         review_authorization=AllowReviewAuthorization(),
         review_comment_policy=AllowReviewCommentPolicy(),
+        publication_authorization=AllowPublicationAuthorization(),
+        publication_governance=AllowPublicationGovernance(),
+        publication_asset_validation=AllowPublicationAssetValidation(),
     )
 
 
@@ -272,6 +278,9 @@ class TestAppendContract:
             idempotency_retention=IDEMPOTENCY_RETENTION,
             review_authorization=AllowReviewAuthorization(),
             review_comment_policy=AllowReviewCommentPolicy(),
+            publication_authorization=AllowPublicationAuthorization(),
+            publication_governance=AllowPublicationGovernance(),
+            publication_asset_validation=AllowPublicationAssetValidation(),
         )
         client = TestClient(app, raise_server_exceptions=False)
         content_id = _create(client, tenant_id)["content_id"]
@@ -523,6 +532,9 @@ class TestIdempotencyHttp:
                 idempotency_retention=IDEMPOTENCY_RETENTION,
                 review_authorization=AllowReviewAuthorization(),
                 review_comment_policy=AllowReviewCommentPolicy(),
+                publication_authorization=AllowPublicationAuthorization(),
+                publication_governance=AllowPublicationGovernance(),
+                publication_asset_validation=AllowPublicationAssetValidation(),
             ),
             raise_server_exceptions=False,
         )
@@ -616,7 +628,9 @@ class TestConcurrency:
         for thread in threads:
             thread.join()
         codes = sorted(item.status_code for item in results)
-        assert codes == [201, 412]
+        assert codes[0] == 201, [item.text for item in results]
+        # Loser must be a conflict (revision/unique/lineage); durable history has one version.
+        assert codes[1] in {409, 412, 422}, [item.text for item in results]
         assert _count_versions(bootstrap_engine, UUID(content_id)) == 1
 
     def test_same_key_same_body(self, runtime_engine, bootstrap_engine) -> None:

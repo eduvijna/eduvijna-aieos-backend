@@ -14,15 +14,18 @@ from aieos.domains.content.api.v1.dependencies import (
     get_content_version_service,
     http_append_service,
     list_contents_service,
+    publish_content_service,
     resolve_trusted_context,
     review_command_service,
 )
 from aieos.domains.content.api.v1.models import (
     ContentCreateRequest,
     ContentListResponse,
+    ContentPublishRequest,
     ContentResponse,
     ContentVersionAppendRequest,
     ContentVersionResponse,
+    PublicationResponse,
     ReviewDecisionRequest,
     ReviewDecisionResponse,
     ReviewSubmissionResponse,
@@ -38,9 +41,11 @@ from aieos.domains.content.application.models import (
     ContentVersionReadModel,
     CreateContentCommand,
     ListContentsQuery,
+    PublicationResult,
     ReviewDecisionResult,
     ReviewSubmissionResult,
 )
+from aieos.domains.content.application.publish import PublishContentService
 from aieos.domains.content.application.queries import GetContentService, ListContentsService
 from aieos.domains.content.application.review import ReviewCommandService
 from aieos.domains.content.domain.errors import InvalidContentIdentityError
@@ -88,6 +93,9 @@ _APPEND_RESPONSES = _problem_responses(
 )
 _VERSION_GET_RESPONSES = _problem_responses(400, 401, 403, 404, 422, 500, 503)
 _REVIEW_RESPONSES = _problem_responses(
+    400, 401, 403, 404, 409, 412, 422, 428, 500, 503
+)
+_PUBLISH_RESPONSES = _problem_responses(
     400, 401, 403, 404, 409, 412, 422, 428, 500, 503
 )
 
@@ -471,3 +479,47 @@ def content_review_reject(
         if_match,
         idempotency_key,
     )
+
+
+def _to_publication_response(model: PublicationResult) -> PublicationResponse:
+    return PublicationResponse(
+        publication_id=model.publication_id.value,
+        content_id=model.content_id.value,
+        version_id=model.version_id.value,
+        approval_decision_id=model.approval_decision_id.value,
+        published_at=model.published_at,
+        published_version_id=model.published_version_id.value,
+        aggregate_revision=int(model.aggregate_revision),
+    )
+
+
+@router.post(
+    "/contents/{content_id}/actions/publish",
+    status_code=200,
+    response_model=PublicationResponse,
+    operation_id="content_publish",
+    responses=_PUBLISH_RESPONSES,
+)
+def content_publish(
+    content_id: UUID,
+    request: Request,
+    response: Response,
+    body: ContentPublishRequest,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[PublishContentService, Depends(publish_content_service)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> PublicationResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    model = service.publish(
+        context.tenant_id,
+        context.principal_id,
+        content_id=_content_id(content_id),
+        version_id=_version_id(body.version_id),
+        expected_aggregate_revision=expected,
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_publication_response(model)

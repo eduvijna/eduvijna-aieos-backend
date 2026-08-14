@@ -13,6 +13,7 @@ CONTENT_REVIEW_SUBMIT_V1 = "content_review_submit.v1"
 CONTENT_REVIEW_APPROVE_V1 = "content_review_approve.v1"
 CONTENT_REVIEW_REQUEST_CHANGES_V1 = "content_review_request_changes.v1"
 CONTENT_REVIEW_REJECT_V1 = "content_review_reject.v1"
+CONTENT_PUBLISH_V1 = "content_publish.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +34,7 @@ class IdempotencyOutcome:
     result_content_id: UUID
     result_version_id: UUID | None
     result_review_decision_id: UUID | None
+    result_publication_id: UUID | None
     result_aggregate_revision: int
     created_at: datetime
     expires_at: datetime

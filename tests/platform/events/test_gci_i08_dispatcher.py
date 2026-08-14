@@ -706,7 +706,7 @@ class TestAtLeastOnceDelivery:
 
 
 class TestForbiddenPersistenceArtifacts:
-    def test_no_consumer_inbox_audit_or_publications_tables(
+    def test_no_consumer_inbox_audit_or_asset_ref_tables(
         self, bootstrap_engine
     ) -> None:
         with bootstrap_engine.connect() as conn:
@@ -725,6 +725,7 @@ class TestForbiddenPersistenceArtifacts:
         forbidden = {
             "integration.consumer_inbox",
             "content.audit_events",
-            "content.publications",
+            "content.version_asset_refs",
         }
         assert forbidden.isdisjoint(tables)
+        assert "content.publications" in tables

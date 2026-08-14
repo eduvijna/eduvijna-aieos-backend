@@ -596,6 +596,7 @@ class TestArchitectureAndNoSchemaChange:
             "gcii060001_review_decisions.py",
             "gcii070001_workflow_intents.py",
             "gcii080001_outbox_messages.py",
+            "gcii090001_publications.py",
         ]
         assert not Path(
             REPO_ROOT / "src" / "aieos" / "domains" / "content" / "infrastructure" / "outbox"

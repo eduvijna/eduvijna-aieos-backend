@@ -9,6 +9,7 @@ from aieos.platform.events.cloudevents import build_content_cloudevent
 from aieos.platform.events.constants import (
     AGGREGATE_TYPE_CONTENT,
     EVENT_CONTENT_CREATED_V1,
+    EVENT_CONTENT_PUBLISHED_V1,
     EVENT_CONTENT_REVIEW_APPROVED_V1,
     EVENT_CONTENT_REVIEW_CHANGES_REQUESTED_V1,
     EVENT_CONTENT_REVIEW_REJECTED_V1,
@@ -201,6 +202,42 @@ def review_decision_outbox(
         event_id=event_id,
         tenant_id=tenant_id,
         event_type=event_type,
+        content_id=content_id,
+        aggregate_revision=aggregate_revision,
+        envelope=envelope,
+        created_at=created_at,
+    )
+
+
+def published_outbox(
+    *,
+    tenant_id: UUID,
+    content_id: UUID,
+    published_version_id: UUID,
+    publication_id: UUID,
+    aggregate_revision: int,
+    context: MutationEventContext,
+    created_at: datetime,
+) -> OutboxMessage:
+    event_id = EventId.generate()
+    envelope = build_content_cloudevent(
+        event_id=event_id,
+        event_type=EVENT_CONTENT_PUBLISHED_V1,
+        content_id=content_id,
+        time=created_at,
+        context=context,
+        tenant_id=tenant_id,
+        aggregate_revision=aggregate_revision,
+        data={
+            "content_id": str(content_id),
+            "published_version_id": str(published_version_id),
+            "publication_id": str(publication_id),
+        },
+    )
+    return _base(
+        event_id=event_id,
+        tenant_id=tenant_id,
+        event_type=EVENT_CONTENT_PUBLISHED_V1,
         content_id=content_id,
         aggregate_revision=aggregate_revision,
         envelope=envelope,

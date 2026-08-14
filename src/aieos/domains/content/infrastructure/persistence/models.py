@@ -231,3 +231,43 @@ review_decisions_table = Table(
     Index("ix_review_decisions_tenant_id", "tenant_id"),
     schema="content",
 )
+
+publications_table = Table(
+    "publications",
+    content_metadata,
+    Column("publication_id", UUID(as_uuid=True), nullable=False),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("content_id", UUID(as_uuid=True), nullable=False),
+    Column("version_id", UUID(as_uuid=True), nullable=False),
+    Column("approval_decision_id", UUID(as_uuid=True), nullable=False),
+    Column("published_by_principal_id", UUID(as_uuid=True), nullable=False),
+    Column("effective_actor_id", UUID(as_uuid=True), nullable=False),
+    Column("published_at", DateTime(timezone=True), nullable=False),
+    Column("correlation_id", UUID(as_uuid=True), nullable=False),
+    PrimaryKeyConstraint("publication_id", name="pk_publications"),
+    UniqueConstraint(
+        "tenant_id",
+        "content_id",
+        "version_id",
+        name="uq_publications_tenant_content_version",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "content_id", "version_id"],
+        [
+            "content.content_versions.tenant_id",
+            "content.content_versions.content_id",
+            "content.content_versions.version_id",
+        ],
+        name="fk_publications_version",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ["approval_decision_id"],
+        ["content.review_decisions.review_decision_id"],
+        name="fk_publications_approval_decision",
+        ondelete="RESTRICT",
+    ),
+    Index("ix_publications_tenant_id", "tenant_id"),
+    Index("ix_publications_content_id", "tenant_id", "content_id"),
+    schema="content",
+)

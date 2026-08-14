@@ -64,16 +64,17 @@ def test_get_does_not_perform_privileged_second_lookup() -> None:
     assert text.count(".get(") == 1
 
 
-def test_no_gci_i09_or_later_http_structures() -> None:
+def test_no_gci_i10_or_later_structures() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
-    for needle in ("PATCH", "/publish", "/archive", "review-queue", "/reviews"):
+    for needle in ("PATCH", "/archive", "review-queue", "/reviews", "version_asset_refs"):
         assert needle not in routes
+    assert "/actions/publish" in routes
     hits: list[str] = []
     for path in (REPO_ROOT / "migrations").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         for needle in (
             "audit_events",
-            "publications",
+            "version_asset_refs",
             "review_queue",
             "consumer_inbox",
         ):
@@ -95,6 +96,30 @@ def test_review_repository_is_insert_read_only() -> None:
     ).read_text(encoding="utf-8")
     marker = "class SqlAlchemyReviewDecisionRepository:"
     start = source.index(marker)
+    end = source.index("class SqlAlchemyPublicationRepository:")
+    body = source[start:end]
+    assert "def insert(" in body
+    assert "def get(" in body
+    assert "def get_for_version(" in body
+    assert "def update(" not in body
+    assert "def delete(" not in body
+    assert ".commit(" not in body
+    assert ".rollback(" not in body
+
+
+def test_publication_repository_is_insert_read_only() -> None:
+    source = (
+        REPO_ROOT
+        / "src"
+        / "aieos"
+        / "domains"
+        / "content"
+        / "infrastructure"
+        / "persistence"
+        / "repositories.py"
+    ).read_text(encoding="utf-8")
+    marker = "class SqlAlchemyPublicationRepository:"
+    start = source.index(marker)
     body = source[start:]
     assert "def insert(" in body
     assert "def get(" in body
@@ -103,6 +128,14 @@ def test_review_repository_is_insert_read_only() -> None:
     assert "def delete(" not in body
     assert ".commit(" not in body
     assert ".rollback(" not in body
+    routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
+    assert "/actions/publish" in routes
+    for needle in ("version_asset_refs", "/archive", "PUBLISHED", "audit_events"):
+        assert needle not in routes
+    for path in (REPO_ROOT / "migrations").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for needle in ("version_asset_refs", "audit_events", "consumer_inbox"):
+            assert needle not in text, f"{path.name}:{needle}"
 
 
 def test_no_nats_under_domains_routes_and_migration_chain() -> None:
@@ -134,4 +167,5 @@ def test_no_nats_under_domains_routes_and_migration_chain() -> None:
         "gcii060001_review_decisions.py",
         "gcii070001_workflow_intents.py",
         "gcii080001_outbox_messages.py",
+        "gcii090001_publications.py",
     ]

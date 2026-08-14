@@ -52,3 +52,7 @@ def get_content_version_service(request: Request) -> GetContentVersionService:
 
 def review_command_service(request: Request):
     return request.app.state.review_command_service
+
+
+def publish_content_service(request: Request):
+    return request.app.state.publish_content_service

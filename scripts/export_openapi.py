@@ -36,6 +36,21 @@ class _ExportReviewCommentPolicy:
         return None
 
 
+class _ExportPublicationAuthorization:
+    def authorize(self, **kwargs) -> None:
+        return None
+
+
+class _ExportPublicationGovernance:
+    def evaluate(self, **kwargs) -> None:
+        return None
+
+
+class _ExportPublicationAssetValidation:
+    def validate(self, **kwargs) -> None:
+        return None
+
+
 def main() -> None:
     app = create_app(
         uow_factory=_UnusedUowFactory(),
@@ -46,6 +61,9 @@ def main() -> None:
         idempotency_retention=timedelta(hours=24),
         review_authorization=_ExportReviewAuthorization(),
         review_comment_policy=_ExportReviewCommentPolicy(),
+        publication_authorization=_ExportPublicationAuthorization(),
+        publication_governance=_ExportPublicationGovernance(),
+        publication_asset_validation=_ExportPublicationAssetValidation(),
     )
     SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
     SNAPSHOT.write_text(canonical_openapi_json(build_openapi(app)), encoding="utf-8")

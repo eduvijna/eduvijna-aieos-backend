@@ -660,7 +660,16 @@ class TestHttpMutationBoundaries:
             APPLICATION_ROOT / "create.py",
             APPLICATION_ROOT / "http_append.py",
             APPLICATION_ROOT / "review.py",
+            APPLICATION_ROOT / "publish.py",
         ]
+        broker_publish_receivers = {
+            "publisher",
+            "js",
+            "jetstream",
+            "nc",
+            "nats",
+            "client",
+        }
         violations: list[str] = []
         for path in targets:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -673,6 +682,18 @@ class TestHttpMutationBoundaries:
                     if node.module.split(".")[0] == "nats":
                         violations.append(f"{path.name}: from {node.module}")
                 elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                    if node.func.attr == "publish":
+                    if node.func.attr != "publish":
+                        continue
+                    # Content HTTP publish command (service.publish) is authorized;
+                    # broker EventPublisher / NATS .publish must stay out of mutation path.
+                    recv = node.func.value
+                    if isinstance(recv, ast.Name) and recv.id in {
+                        "service",
+                        "self",
+                    }:
+                        continue
+                    if isinstance(recv, ast.Name) and recv.id in broker_publish_receivers:
+                        violations.append(f"{path.name}: broker .publish() call")
+                    elif not isinstance(recv, ast.Name):
                         violations.append(f"{path.name}: .publish() call")
         assert violations == []

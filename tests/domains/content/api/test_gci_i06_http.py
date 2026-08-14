@@ -33,6 +33,9 @@ from aieos.platform.idempotency.hashing import hash_idempotency_key
 from tests.fakes import (
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
+    AllowPublicationAssetValidation,
+    AllowPublicationAuthorization,
+    AllowPublicationGovernance,
     IDEMPOTENCY_RETENTION,
     MarkerReviewCommentPolicy,
     SENSITIVE_TEST_COMMENT,
@@ -70,6 +73,9 @@ def _app(
         idempotency_retention=IDEMPOTENCY_RETENTION,
         review_authorization=authorization or AllowReviewAuthorization(),
         review_comment_policy=comment_policy or AllowReviewCommentPolicy(),
+        publication_authorization=AllowPublicationAuthorization(),
+        publication_governance=AllowPublicationGovernance(),
+        publication_asset_validation=AllowPublicationAssetValidation(),
     )
 
 
