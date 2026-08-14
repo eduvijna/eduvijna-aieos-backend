@@ -44,6 +44,9 @@ from aieos.domains.content.infrastructure.persistence.repositories import (
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
 )
+from aieos.domains.content.infrastructure.persistence.source_serialization import (
+    SqlAlchemyMigrationSourceSerializationGate,
+)
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.events.persistence.repositories import SqlAlchemyOutboxRepository
 from aieos.platform.resources import ResourceRef
@@ -111,6 +114,7 @@ def _importer(
     *,
     auth=None,
     assets=None,
+    after_target_failure=None,
 ) -> ImportMigratedContentService:
     return ImportMigratedContentService(
         SqlAlchemyContentUnitOfWorkFactory(engine),
@@ -118,6 +122,8 @@ def _importer(
         make_test_schema_registry(),
         assets or AllowAssetReferenceValidation(),
         auth or AllowMigrationAuthorization(),
+        SqlAlchemyMigrationSourceSerializationGate(engine),
+        after_target_failure=after_target_failure,
     )
 
 
@@ -254,7 +260,7 @@ def _mig_row(bootstrap_engine: Engine, tenant_id: UUID, source_resource_id: str 
                 """
             ),
             {"tid": tenant_id, "sid": source_resource_id},
-        ).one()
+        ).one_or_none()
 
 
 class TestDirectAppendImportProvenance:
@@ -748,6 +754,101 @@ class TestResumeAndConcurrency:
         for thread in threads:
             thread.join()
         assert sorted(outcomes) == ["conflict", "ok"]
+        assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 1
+
+    def test_no_gap_failure_finalization_blocks_changed_digest(
+        self, migration_runtime_engine, bootstrap_engine, monkeypatch
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        in_gap = threading.Event()
+        release_gap = threading.Event()
+        b_outcomes: list[str] = []
+
+        def after_failure() -> None:
+            in_gap.set()
+            assert release_gap.wait(timeout=15)
+
+        original_insert = SqlAlchemyContentRepository.insert
+
+        def boom(self, content):  # noqa: ANN001
+            raise PersistenceOperationFailed("forced content insert failure")
+
+        monkeypatch.setattr(SqlAlchemyContentRepository, "insert", boom)
+        importer_a = _importer(
+            migration_runtime_engine, after_target_failure=after_failure
+        )
+
+        def run_a() -> None:
+            with pytest.raises(PersistenceOperationFailed):
+                importer_a.import_content(
+                    tenant_id,
+                    uuid.uuid7(),
+                    _candidate(source_resource_id="no-gap", digest=DIGEST_A),
+                    event_context=_event_context(),
+                    now=FIXED_NOW,
+                )
+
+        thread_a = threading.Thread(target=run_a)
+        thread_a.start()
+        assert in_gap.wait(timeout=15)
+
+        # Target rolled back; FAILED not yet durable; B must not establish D2.
+        assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 0
+        assert _counts(bootstrap_engine, tenant_id=tenant_id)["versions"] == 0
+        assert _counts(bootstrap_engine, tenant_id=tenant_id)["created"] == 0
+        assert _counts(bootstrap_engine, tenant_id=tenant_id)["versioned"] == 0
+        assert _mig_row(bootstrap_engine, tenant_id, "no-gap") is None
+
+        def run_b() -> None:
+            try:
+                _importer(migration_runtime_engine).import_content(
+                    tenant_id,
+                    uuid.uuid7(),
+                    _candidate(source_resource_id="no-gap", digest=DIGEST_B),
+                    event_context=_event_context(),
+                    now=FIXED_NOW,
+                )
+                b_outcomes.append("ok")
+            except MigrationSourceConflict:
+                b_outcomes.append("conflict")
+
+        thread_b = threading.Thread(target=run_b)
+        thread_b.start()
+        # While A holds the gap, B must still see zero targets.
+        threading.Event().wait(0.5)
+        assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 0
+        assert _mig_row(bootstrap_engine, tenant_id, "no-gap") is None
+
+        monkeypatch.setattr(SqlAlchemyContentRepository, "insert", original_insert)
+        release_gap.set()
+        thread_a.join(timeout=15)
+        thread_b.join(timeout=15)
+        assert not thread_a.is_alive()
+        assert not thread_b.is_alive()
+
+        row = _mig_row(bootstrap_engine, tenant_id, "no-gap")
+        assert row is not None
+        assert row.outcome == "FAILED"
+        assert row.source_digest_sha256 == DIGEST_A
+        assert row.attempt_count == 1
+        assert b_outcomes == ["conflict"]
+        assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 0
+        assert _counts(bootstrap_engine, tenant_id=tenant_id)["versions"] == 0
+        assert _counts(bootstrap_engine, tenant_id=tenant_id)["created"] == 0
+        assert _counts(bootstrap_engine, tenant_id=tenant_id)["versioned"] == 0
+
+        recovered = _importer(migration_runtime_engine).import_content(
+            tenant_id,
+            uuid.uuid7(),
+            _candidate(source_resource_id="no-gap", digest=DIGEST_A),
+            event_context=_event_context(),
+            now=FIXED_NOW,
+        )
+        assert recovered.replayed is False
+        imported = _mig_row(bootstrap_engine, tenant_id, "no-gap")
+        assert imported.outcome == "IMPORTED"
+        assert imported.attempt_count == 2
+        assert imported.source_digest_sha256 == DIGEST_A
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 1
 
 

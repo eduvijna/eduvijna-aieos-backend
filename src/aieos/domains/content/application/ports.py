@@ -150,6 +150,18 @@ class AIGenerationAuthorizationPort(Protocol):
     ) -> None: ...
 
 
+class MigrationSourceSerializationGate(Protocol):
+    """Durable-safe source serialization spanning target attempt + FAILED finalization."""
+
+    def hold(
+        self,
+        execution_tenant_id: UUID,
+        source_system: str,
+        source_resource_type: str,
+        source_resource_id: str,
+    ): ...
+
+
 class ContentMigrationAuthorizationPort(Protocol):
     """Current capability check for content.migrate.import."""
 
@@ -164,13 +176,6 @@ class ContentMigrationAuthorizationPort(Protocol):
 
 class MigrationImportRecordRepository(Protocol):
     """Durable migration source→target evidence. Not Content aggregate state."""
-
-    def lock_source(
-        self,
-        source_system: str,
-        source_resource_type: str,
-        source_resource_id: str,
-    ) -> None: ...
 
     def get(
         self,

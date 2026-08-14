@@ -774,24 +774,6 @@ class SqlAlchemyMigrationImportRecordRepository:
         self._connection = connection
         self._execution_tenant_id = execution_tenant_id
 
-    def lock_source(
-        self,
-        source_system: str,
-        source_resource_type: str,
-        source_resource_id: str,
-    ) -> None:
-        key = (
-            f"{self._execution_tenant_id}|{source_system}|"
-            f"{source_resource_type}|{source_resource_id}"
-        )
-        try:
-            self._connection.execute(
-                text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
-                {"lock_key": key},
-            )
-        except Exception as exc:
-            reraise_as_application_error(exc)
-
     def get(
         self,
         source_system: str,

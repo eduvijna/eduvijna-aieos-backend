@@ -28,6 +28,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GCI-I12 Teacher OS Review Queue: read-only exact-version projection of `IN_REVIEW` current Content; no queue SoR table, no assignment/notifications, mutations unchanged and still non-production.
 - GCI-I12R1: Review Queue integer limits outside 1..100 return 400 via queue-specific `ReviewQueueInvalidRequest`; malformed `limit` remains 422; Content list semantics unchanged.
 - GCI-I13 Migration Adapter Foundation: typed `MigrationImportProvenanceV1`, durable `content.migration_import_records`, shared append IMPORT hardening, internal `ImportMigratedContentService` with GCI-G12 replay/conflict detection. Still non-production: no migration HTTP, no legacy connector, no audit intent, no production migration.
+- GCI-I13R1: no-gap source serialization via session advisory lock spanning target rollback and FAILED evidence finalization.
 
 ### Changed
 

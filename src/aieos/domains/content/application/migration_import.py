@@ -40,6 +40,7 @@ from aieos.domains.content.application.ports import (
     ContentMigrationAuthorizationPort,
     ContentTypeCatalog,
     ContentUnitOfWorkFactory,
+    MigrationSourceSerializationGate,
 )
 from aieos.domains.content.application.services import append_version_in_uow
 from aieos.domains.content.domain.content import Content, ContentType
@@ -137,12 +138,18 @@ class ImportMigratedContentService:
         schema_registry: ContentSchemaRegistry,
         asset_reference_validation: AssetReferenceValidationPort,
         migration_authorization: ContentMigrationAuthorizationPort,
+        source_serialization: MigrationSourceSerializationGate,
+        *,
+        after_target_failure: object | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._catalog = catalog
         self._schema_registry = schema_registry
         self._asset_reference_validation = asset_reference_validation
         self._migration_authorization = migration_authorization
+        self._source_serialization = source_serialization
+        # Optional test hook invoked after target rollback, before FAILED finalization.
+        self._after_target_failure = after_target_failure
 
     def import_content(
         self,
@@ -162,85 +169,99 @@ class ImportMigratedContentService:
         )
 
         identity = candidate.source_identity
-        failure_code: str | None = None
-        try:
-            with self._uow_factory(execution_tenant_id) as uow:
-                uow.migration_imports.lock_source(
-                    identity.source_system,
-                    identity.source_resource_type,
-                    identity.source_resource_id,
-                )
-                existing = uow.migration_imports.get(
-                    identity.source_system,
-                    identity.source_resource_type,
-                    identity.source_resource_id,
-                )
-                if existing is not None:
-                    _assert_no_source_conflict(existing, candidate)
-                    if existing.outcome == MIGRATION_OUTCOME_IMPORTED:
-                        return self._replay_imported(
-                            uow, existing, execution_tenant_id
+        with self._source_serialization.hold(
+            execution_tenant_id,
+            identity.source_system,
+            identity.source_resource_type,
+            identity.source_resource_id,
+        ):
+            failure_code: str | None = None
+            try:
+                with self._uow_factory(execution_tenant_id) as uow:
+                    existing = uow.migration_imports.get(
+                        identity.source_system,
+                        identity.source_resource_type,
+                        identity.source_resource_id,
+                    )
+                    if existing is not None:
+                        _assert_no_source_conflict(existing, candidate)
+                        if existing.outcome == MIGRATION_OUTCOME_IMPORTED:
+                            return self._replay_imported(
+                                uow, existing, execution_tenant_id
+                            )
+                    try:
+                        validated = self._validate_target_inputs(
+                            execution_tenant_id, principal_id, candidate
                         )
-                try:
-                    validated = self._validate_target_inputs(
-                        execution_tenant_id, principal_id, candidate
+                    except UnknownContentType:
+                        failure_code = _FAILURE_CONTENT_TYPE
+                        raise
+                    except (
+                        ContentSchemaNotFound,
+                        ContentSchemaMismatch,
+                        ContentPayloadInvalid,
+                    ):
+                        failure_code = _FAILURE_SCHEMA
+                        raise
+                    except AssetReferenceValidationFailed as exc:
+                        msg = str(exc).lower()
+                        failure_code = (
+                            _FAILURE_ASSET_SLOT
+                            if "duplicate" in msg
+                            else _FAILURE_ASSET
+                        )
+                        raise
+                    result = self._materialize_new(
+                        uow,
+                        execution_tenant_id,
+                        principal_id,
+                        candidate,
+                        validated,
+                        event_context=event_context,
+                        created_at=created_at,
+                        prior=existing,
                     )
-                except UnknownContentType:
-                    failure_code = _FAILURE_CONTENT_TYPE
-                    raise
-                except (ContentSchemaNotFound, ContentSchemaMismatch, ContentPayloadInvalid):
-                    failure_code = _FAILURE_SCHEMA
-                    raise
-                except AssetReferenceValidationFailed as exc:
-                    msg = str(exc).lower()
-                    failure_code = (
-                        _FAILURE_ASSET_SLOT
-                        if "duplicate" in msg
-                        else _FAILURE_ASSET
-                    )
-                    raise
-                result = self._materialize_new(
-                    uow,
+                    uow.commit()
+                    return result
+            except (
+                MigrationSourceConflict,
+                MigrationForbidden,
+                MigrationInvariantViolation,
+                MigrationCandidateInvalid,
+                MigrationImportProvenanceInvalid,
+            ):
+                raise
+            except (
+                UnknownContentType,
+                ContentSchemaNotFound,
+                ContentSchemaMismatch,
+                ContentPayloadInvalid,
+                AssetReferenceValidationFailed,
+            ):
+                self._notify_after_target_failure()
+                self._record_failure(
                     execution_tenant_id,
-                    principal_id,
                     candidate,
-                    validated,
-                    event_context=event_context,
-                    created_at=created_at,
-                    prior=existing,
+                    failure_code=failure_code or _FAILURE_PERSISTENCE,
+                    now=created_at,
                 )
-                uow.commit()
-                return result
-        except (
-            MigrationSourceConflict,
-            MigrationForbidden,
-            MigrationInvariantViolation,
-            MigrationCandidateInvalid,
-            MigrationImportProvenanceInvalid,
-        ):
-            raise
-        except (
-            UnknownContentType,
-            ContentSchemaNotFound,
-            ContentSchemaMismatch,
-            ContentPayloadInvalid,
-            AssetReferenceValidationFailed,
-        ):
-            self._record_failure_safe(
-                execution_tenant_id,
-                candidate,
-                failure_code=failure_code or _FAILURE_PERSISTENCE,
-                now=created_at,
-            )
-            raise
-        except Exception:
-            self._record_failure_safe(
-                execution_tenant_id,
-                candidate,
-                failure_code=_FAILURE_PERSISTENCE,
-                now=created_at,
-            )
-            raise
+                raise
+            except Exception:
+                self._notify_after_target_failure()
+                self._record_failure(
+                    execution_tenant_id,
+                    candidate,
+                    failure_code=_FAILURE_PERSISTENCE,
+                    now=created_at,
+                )
+                raise
+
+    def _notify_after_target_failure(self) -> None:
+        hook = self._after_target_failure
+        if hook is None:
+            return
+        if callable(hook):
+            hook()
 
     def _replay_imported(
         self,
@@ -469,7 +490,7 @@ class ImportMigratedContentService:
             replayed=False,
         )
 
-    def _record_failure_safe(
+    def _record_failure(
         self,
         execution_tenant_id: UUID,
         candidate: MigrationContentCandidate,
@@ -477,54 +498,49 @@ class ImportMigratedContentService:
         failure_code: str,
         now: datetime | None = None,
     ) -> None:
+        """Persist FAILED evidence while outer source serialization remains held."""
         attempted_at = now if now is not None else datetime.now(UTC)
         identity = candidate.source_identity
-        try:
-            with self._uow_factory(execution_tenant_id) as uow:
-                uow.migration_imports.lock_source(
-                    identity.source_system,
-                    identity.source_resource_type,
-                    identity.source_resource_id,
+        with self._uow_factory(execution_tenant_id) as uow:
+            existing = uow.migration_imports.get(
+                identity.source_system,
+                identity.source_resource_type,
+                identity.source_resource_id,
+            )
+            if existing is not None and existing.outcome == MIGRATION_OUTCOME_IMPORTED:
+                return
+            if existing is not None:
+                if not _fingerprints_match(existing, candidate):
+                    raise MigrationSourceConflict(
+                        "source fingerprint conflicts with migration evidence"
+                    )
+                uow.migration_imports.update_failed_retry(
+                    existing,
+                    migration_batch_id=candidate.migration_batch_id,
+                    failure_code=failure_code,
+                    attempted_at=attempted_at,
                 )
-                existing = uow.migration_imports.get(
-                    identity.source_system,
-                    identity.source_resource_type,
-                    identity.source_resource_id,
-                )
-                if existing is not None and existing.outcome == MIGRATION_OUTCOME_IMPORTED:
-                    return
-                if existing is not None:
-                    if not _fingerprints_match(existing, candidate):
-                        return
-                    uow.migration_imports.update_failed_retry(
-                        existing,
-                        migration_batch_id=candidate.migration_batch_id,
+            else:
+                uow.migration_imports.insert_failed(
+                    MigrationImportRecord(
+                        tenant_id=execution_tenant_id,
+                        source_system=identity.source_system,
+                        source_resource_type=identity.source_resource_type,
+                        source_resource_id=identity.source_resource_id,
+                        source_version=candidate.source_version,
+                        source_digest_sha256=candidate.source_digest_sha256,
+                        mapping_id=candidate.mapping_id,
+                        mapping_version=candidate.mapping_version,
+                        first_migration_batch_id=candidate.migration_batch_id,
+                        last_migration_batch_id=candidate.migration_batch_id,
+                        outcome=MIGRATION_OUTCOME_FAILED,
+                        target_content_id=None,
+                        target_version_id=None,
+                        attempt_count=1,
+                        first_attempt_at=attempted_at,
+                        last_attempt_at=attempted_at,
+                        completed_at=None,
                         failure_code=failure_code,
-                        attempted_at=attempted_at,
                     )
-                else:
-                    uow.migration_imports.insert_failed(
-                        MigrationImportRecord(
-                            tenant_id=execution_tenant_id,
-                            source_system=identity.source_system,
-                            source_resource_type=identity.source_resource_type,
-                            source_resource_id=identity.source_resource_id,
-                            source_version=candidate.source_version,
-                            source_digest_sha256=candidate.source_digest_sha256,
-                            mapping_id=candidate.mapping_id,
-                            mapping_version=candidate.mapping_version,
-                            first_migration_batch_id=candidate.migration_batch_id,
-                            last_migration_batch_id=candidate.migration_batch_id,
-                            outcome=MIGRATION_OUTCOME_FAILED,
-                            target_content_id=None,
-                            target_version_id=None,
-                            attempt_count=1,
-                            first_attempt_at=attempted_at,
-                            last_attempt_at=attempted_at,
-                            completed_at=None,
-                            failure_code=failure_code,
-                        )
-                    )
-                uow.commit()
-        except Exception:
-            return
+                )
+            uow.commit()
