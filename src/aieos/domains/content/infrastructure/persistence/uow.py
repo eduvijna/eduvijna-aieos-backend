@@ -17,6 +17,7 @@ from aieos.domains.content.infrastructure.persistence.repositories import (
     SqlAlchemyContentVersionRepository,
     SqlAlchemyPublicationRepository,
     SqlAlchemyReviewDecisionRepository,
+    SqlAlchemyVersionAssetRefRepository,
 )
 from aieos.platform.api.infrastructure.persistence.repositories import (
     SqlAlchemyIdempotencyRepository,
@@ -37,6 +38,7 @@ class SqlAlchemyContentUnitOfWork:
         self.versions: SqlAlchemyContentVersionRepository
         self.reviews: SqlAlchemyReviewDecisionRepository
         self.publications: SqlAlchemyPublicationRepository
+        self.version_asset_refs: SqlAlchemyVersionAssetRefRepository
         self.idempotency: SqlAlchemyIdempotencyRepository
         self.workflow_intents: SqlAlchemyWorkflowIntentRepository
         self.outbox: SqlAlchemyOutboxRepository
@@ -55,6 +57,9 @@ class SqlAlchemyContentUnitOfWork:
             self.versions = SqlAlchemyContentVersionRepository(self._connection)
             self.reviews = SqlAlchemyReviewDecisionRepository(self._connection)
             self.publications = SqlAlchemyPublicationRepository(self._connection)
+            self.version_asset_refs = SqlAlchemyVersionAssetRefRepository(
+                self._connection
+            )
             self.idempotency = SqlAlchemyIdempotencyRepository(
                 self._connection, self._execution_tenant_id
             )

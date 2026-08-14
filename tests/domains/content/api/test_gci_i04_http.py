@@ -23,7 +23,8 @@ from aieos.platform.api.pagination import CursorCodec, ListCursor
 from tests.fakes import (
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
-    AllowPublicationAssetValidation,
+    AllowAssetCurrentGovernance,
+    AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
     AllowPublicationGovernance,
     IDEMPOTENCY_RETENTION,
@@ -66,7 +67,8 @@ def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID, **resolver
         review_comment_policy=AllowReviewCommentPolicy(),
         publication_authorization=AllowPublicationAuthorization(),
         publication_governance=AllowPublicationGovernance(),
-        publication_asset_validation=AllowPublicationAssetValidation(),
+        asset_reference_validation=AllowAssetReferenceValidation(),
+        asset_current_governance=AllowAssetCurrentGovernance(),
     )
 
 

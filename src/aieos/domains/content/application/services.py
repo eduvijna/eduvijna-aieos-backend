@@ -1,4 +1,4 @@
-"""Append one immutable ContentVersion onto a Content aggregate."""
+"""Authoritative ContentVersion append. Not a product-facing API entrypoint."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
+from aieos.domains.content.application.asset_refs import validate_asset_bindings
 from aieos.domains.content.application.errors import (
     AggregateRevisionConflict,
     ContentNotFound,
@@ -19,7 +20,11 @@ from aieos.domains.content.application.models import (
     AppendContentVersionResult,
     LockedContentHead,
 )
-from aieos.domains.content.application.ports import ContentUnitOfWork, ContentUnitOfWorkFactory
+from aieos.domains.content.application.ports import (
+    AssetReferenceValidationPort,
+    ContentUnitOfWork,
+    ContentUnitOfWorkFactory,
+)
 from aieos.domains.content.domain.origin import ContentOrigin
 from aieos.domains.content.domain.states import StewardshipState
 from aieos.domains.content.domain.version import ContentVersion
@@ -100,7 +105,18 @@ def append_version_in_uow(
             "ContentVersion append is not allowed in the current stewardship state"
         )
     _assert_linear_append(head, version)
+    for ref in command.asset_refs:
+        if (
+            ref.content_id != version.content_id
+            or ref.version_id != version.version_id
+            or ref.tenant_id != version.tenant_id
+        ):
+            raise PersistenceInvariantViolation(
+                "VersionAssetRef must match ContentVersion identity"
+            )
     uow.versions.insert(version, command.provenance)
+    if command.asset_refs:
+        uow.version_asset_refs.insert_many(command.asset_refs)
     resulting = uow.contents.advance_current_version(
         content_id=version.content_id,
         tenant_id=execution_tenant_id,
@@ -137,8 +153,13 @@ def append_version_in_uow(
 class AppendContentVersionService:
     """Authoritative transactional append. Not a product-facing API entrypoint."""
 
-    def __init__(self, uow_factory: ContentUnitOfWorkFactory) -> None:
+    def __init__(
+        self,
+        uow_factory: ContentUnitOfWorkFactory,
+        asset_reference_validation: AssetReferenceValidationPort,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._asset_reference_validation = asset_reference_validation
 
     def append(
         self,
@@ -146,9 +167,22 @@ class AppendContentVersionService:
         command: AppendContentVersionCommand,
         *,
         event_context: MutationEventContext,
+        principal_id: UUID | None = None,
         now: datetime | None = None,
     ) -> AppendContentVersionResult:
         updated_at = now if now is not None else datetime.now(UTC)
+        actor_id = (
+            principal_id
+            if principal_id is not None
+            else command.version.created_by_principal_id
+        )
+        if command.asset_refs:
+            validate_asset_bindings(
+                self._asset_reference_validation,
+                execution_tenant_id,
+                actor_id,
+                tuple(ref.resource_ref for ref in command.asset_refs),
+            )
         with self._uow_factory(execution_tenant_id) as uow:
             result = append_version_in_uow(
                 uow,

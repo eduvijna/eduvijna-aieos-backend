@@ -24,6 +24,8 @@ from aieos.domains.content.domain.version import (
     PayloadSha256,
     thaw_json_value,
 )
+from aieos.domains.content.domain.version_asset_ref import VersionAssetRef
+from aieos.platform.resources import ResourceRef
 
 
 def payload_as_json(version: ContentVersion) -> dict[str, Any]:
@@ -118,4 +120,22 @@ def publication_from_row(row: Any) -> Publication:
         effective_actor_id=_row_value(row, "effective_actor_id"),
         published_at=_row_value(row, "published_at"),
         correlation_id=_row_value(row, "correlation_id"),
+    )
+
+
+def version_asset_ref_from_row(row: Any) -> VersionAssetRef:
+    revision = _row_value(row, "asset_resource_revision")
+    return VersionAssetRef(
+        tenant_id=_row_value(row, "tenant_id"),
+        content_id=ContentId(_row_value(row, "content_id")),
+        version_id=ContentVersionId(_row_value(row, "version_id")),
+        resource_ref=ResourceRef(
+            resource_type=_row_value(row, "asset_resource_type"),
+            resource_id=_row_value(row, "asset_resource_id"),
+            resource_revision=None if revision is None else int(revision),
+        ),
+        role=_row_value(row, "role"),
+        ordinal=int(_row_value(row, "ordinal")),
+        required=bool(_row_value(row, "required")),
+        created_at=_row_value(row, "created_at"),
     )

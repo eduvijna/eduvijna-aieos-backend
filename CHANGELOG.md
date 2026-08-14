@@ -21,6 +21,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GCI-I08 Content Events + Transactional Outbox + NATS JetStream publication foundation: `integration.outbox_messages`, MutationEventContext CloudEvents 1.0 envelopes, Content UoW outbox inserts for the six emitted Content event types, tenant-scoped claim-fenced outbox dispatcher, nats-py JetStream publisher. Still non-production: required security-audit intent is absent; no consumer inbox, no publish/archive, no production NATS/dispatcher daemon.
 - GCI-I09 Content Publish: immutable `content.publications`, `POST .../actions/publish` with If-Match + Idempotency-Key, published pointer update without a `PUBLISHED` stewardship state, `content.published.v1` outbox event, publication authorization/governance/asset ports. Still non-production: no audit intent, no archive, no `version_asset_refs`, no GET publications APIs.
 - GCI-I09R1: publish IdempotencyOutcome stores `result_publication_id` and leaves `result_review_decision_id` NULL; replay-after-head-advance returns the original Publication/ETag.
+- GCI-I10 Version Asset Refs: immutable `content.version_asset_refs`, append-time `asset_refs` with ResourceRef binding validation + canonical idempotency fingerprint, publish-time current-use asset governance over stored refs. Still non-production: no Asset storage/S3, no archive, no audit intent, no GET asset-ref routes, no event payload changes.
 
 ### Changed
 

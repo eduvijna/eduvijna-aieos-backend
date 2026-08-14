@@ -67,5 +67,9 @@ class PublicationBindingError(ContentDomainError):
     """Raised when a Publication is not bound to an exact ContentVersion."""
 
 
+class InvalidVersionAssetRefError(ContentDomainError):
+    """Raised when a VersionAssetRef association violates domain invariants."""
+
+
 class InvalidContentAggregateError(ContentDomainError):
     """Raised when a Content aggregate violates domain invariants."""

@@ -22,6 +22,7 @@ from aieos.domains.content.application.errors import (
 )
 from aieos.domains.content.application.models import AppendContentVersionCommand
 from aieos.domains.content.application.services import AppendContentVersionService
+from tests.fakes import AllowAssetReferenceValidation
 from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
@@ -53,7 +54,7 @@ def _event_context() -> MutationEventContext:
 
 
 def _service(engine: Engine) -> AppendContentVersionService:
-    return AppendContentVersionService(SqlAlchemyContentUnitOfWorkFactory(engine))
+    return AppendContentVersionService(SqlAlchemyContentUnitOfWorkFactory(engine), AllowAssetReferenceValidation())
 
 
 def _seed_content(
@@ -597,6 +598,7 @@ class TestArchitectureAndNoSchemaChange:
             "gcii070001_workflow_intents.py",
             "gcii080001_outbox_messages.py",
             "gcii090001_publications.py",
+            "gcii100001_version_asset_refs.py",
         ]
         assert not Path(
             REPO_ROOT / "src" / "aieos" / "domains" / "content" / "infrastructure" / "outbox"

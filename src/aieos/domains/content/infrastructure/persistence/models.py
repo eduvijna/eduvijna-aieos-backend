@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -269,5 +270,59 @@ publications_table = Table(
     ),
     Index("ix_publications_tenant_id", "tenant_id"),
     Index("ix_publications_content_id", "tenant_id", "content_id"),
+    schema="content",
+)
+
+version_asset_refs_table = Table(
+    "version_asset_refs",
+    content_metadata,
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("content_id", UUID(as_uuid=True), nullable=False),
+    Column("version_id", UUID(as_uuid=True), nullable=False),
+    Column("asset_resource_type", Text, nullable=False),
+    Column("asset_resource_id", UUID(as_uuid=True), nullable=False),
+    Column("asset_resource_revision", BigInteger, nullable=True),
+    Column("role", Text, nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("required", Boolean, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    PrimaryKeyConstraint(
+        "tenant_id",
+        "content_id",
+        "version_id",
+        "role",
+        "ordinal",
+        name="pk_version_asset_refs",
+    ),
+    CheckConstraint(
+        "asset_resource_type ~ '^[a-z][a-z0-9._-]{0,63}$'",
+        name="ck_version_asset_refs_resource_type",
+    ),
+    CheckConstraint(
+        "role ~ '^[a-z][a-z0-9._-]{0,63}$'",
+        name="ck_version_asset_refs_role",
+    ),
+    CheckConstraint("ordinal >= 0", name="ck_version_asset_refs_ordinal"),
+    CheckConstraint(
+        "asset_resource_revision IS NULL OR asset_resource_revision >= 0",
+        name="ck_version_asset_refs_revision",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "content_id", "version_id"],
+        [
+            "content.content_versions.tenant_id",
+            "content.content_versions.content_id",
+            "content.content_versions.version_id",
+        ],
+        name="fk_version_asset_refs_version",
+        ondelete="RESTRICT",
+    ),
+    Index("ix_version_asset_refs_tenant_id", "tenant_id"),
+    Index(
+        "ix_version_asset_refs_version",
+        "tenant_id",
+        "content_id",
+        "version_id",
+    ),
     schema="content",
 )

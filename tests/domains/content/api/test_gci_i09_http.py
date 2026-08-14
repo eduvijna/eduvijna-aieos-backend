@@ -23,7 +23,8 @@ from aieos.platform.api.app import create_app
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.events.persistence.repositories import SqlAlchemyOutboxRepository
 from tests.fakes import (
-    AllowPublicationAssetValidation,
+    AllowAssetCurrentGovernance,
+    AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
     AllowPublicationGovernance,
     AllowReviewAuthorization,
@@ -55,7 +56,8 @@ def _app(
     *,
     publication_authorization=None,
     publication_governance=None,
-    publication_asset_validation=None,
+    asset_current_governance=None,
+    asset_reference_validation=None,
     schema_registry=None,
 ):
     return create_app(
@@ -70,8 +72,10 @@ def _app(
         publication_authorization=publication_authorization
         or AllowPublicationAuthorization(),
         publication_governance=publication_governance or AllowPublicationGovernance(),
-        publication_asset_validation=publication_asset_validation
-        or AllowPublicationAssetValidation(),
+        asset_reference_validation=asset_reference_validation
+        or AllowAssetReferenceValidation(),
+        asset_current_governance=asset_current_governance
+        or AllowAssetCurrentGovernance(),
     )
 
 
@@ -527,7 +531,7 @@ class TestIdempotency:
         tenant_id = uuid.uuid7()
         principal_id = uuid.uuid7()
         auth = AllowPublicationAuthorization()
-        asset = AllowPublicationAssetValidation()
+        asset = AllowAssetCurrentGovernance()
         gov = AllowPublicationGovernance()
 
         class _CountingSchema:
@@ -557,7 +561,7 @@ class TestIdempotency:
             tenant_id,
             principal_id,
             publication_authorization=auth,
-            publication_asset_validation=asset,
+            asset_current_governance=asset,
             publication_governance=gov,
             schema_registry=registry,
         )
@@ -750,7 +754,7 @@ class TestAssetAndGovernance:
             runtime_engine,
             tenant_id,
             principal_id,
-            publication_asset_validation=AllowPublicationAssetValidation(allow=False),
+            asset_current_governance=AllowAssetCurrentGovernance(deny=True),
         )
         response = _publish(denied, tenant_id, content_id, version_id, etag=etag)
         _assert_problem(
@@ -851,7 +855,7 @@ class TestReplaySideEffects:
         content_id, version_id, etag = _approved(setup, tenant_id)
 
         auth = AllowPublicationAuthorization()
-        asset = AllowPublicationAssetValidation()
+        asset = AllowAssetCurrentGovernance()
         gov = AllowPublicationGovernance()
 
         class _CountingSchema:
@@ -881,7 +885,7 @@ class TestReplaySideEffects:
             tenant_id,
             principal_id,
             publication_authorization=auth,
-            publication_asset_validation=asset,
+            asset_current_governance=asset,
             publication_governance=gov,
             schema_registry=registry,
         )

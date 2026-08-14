@@ -46,8 +46,13 @@ class _ExportPublicationGovernance:
         return None
 
 
-class _ExportPublicationAssetValidation:
-    def validate(self, **kwargs) -> None:
+class _ExportAssetReferenceValidation:
+    def validate_binding(self, **kwargs) -> None:
+        return None
+
+
+class _ExportAssetCurrentGovernance:
+    def validate_current_use(self, **kwargs) -> None:
         return None
 
 
@@ -63,7 +68,8 @@ def main() -> None:
         review_comment_policy=_ExportReviewCommentPolicy(),
         publication_authorization=_ExportPublicationAuthorization(),
         publication_governance=_ExportPublicationGovernance(),
-        publication_asset_validation=_ExportPublicationAssetValidation(),
+        asset_reference_validation=_ExportAssetReferenceValidation(),
+        asset_current_governance=_ExportAssetCurrentGovernance(),
     )
     SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
     SNAPSHOT.write_text(canonical_openapi_json(build_openapi(app)), encoding="utf-8")

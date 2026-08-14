@@ -6,6 +6,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from aieos.domains.content.application.errors import (
+    AssetReferenceValidationFailed,
     PublicationAssetValidationFailed,
     PublicationForbidden,
     PublicationGovernanceRejected,
@@ -129,20 +130,45 @@ class AllowPublicationGovernance:
             raise PublicationGovernanceRejected("publication governance rejected")
 
 
-class AllowPublicationAssetValidation:
-    def __init__(self, *, allow: bool = True) -> None:
-        self.allow = allow
+class AllowAssetReferenceValidation:
+    def __init__(
+        self, *, deny_ids: set[UUID] | None = None, raise_runtime: bool = False
+    ) -> None:
+        self.deny_ids = deny_ids or set()
+        self.raise_runtime = raise_runtime
+        self.calls: list[UUID] = []
+
+    def validate_binding(
+        self, *, tenant_id: UUID, principal_id: UUID, resource_ref
+    ) -> None:
+        self.calls.append(resource_ref.resource_id)
+        if self.raise_runtime:
+            raise RuntimeError("SECRET_ASSET_VALIDATOR_BUG")
+        if resource_ref.resource_id in self.deny_ids:
+            raise AssetReferenceValidationFailed("asset reference invalid")
+
+
+class AllowAssetCurrentGovernance:
+    def __init__(
+        self, *, deny: bool = False, quarantined_ids: set[UUID] | None = None
+    ) -> None:
+        self.deny = deny
+        self.quarantined_ids = quarantined_ids or set()
         self.calls: list[tuple[UUID, UUID]] = []
 
-    def validate(
+    def validate_current_use(
         self,
         *,
         tenant_id: UUID,
+        principal_id: UUID,
         content_id,
         version_id,
+        asset_refs,
     ) -> None:
         self.calls.append((content_id.value, version_id.value))
-        if not self.allow:
+        if self.deny or any(
+            ref.resource_ref.resource_id in self.quarantined_ids for ref in asset_refs
+        ):
             raise PublicationAssetValidationFailed(
                 "publication asset validation failed"
             )

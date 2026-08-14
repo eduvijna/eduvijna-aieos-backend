@@ -98,7 +98,7 @@ def test_migration_chain_and_forbidden_tables() -> None:
     hits: list[str] = []
     for path in (REPO_ROOT / "migrations").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        for needle in ("consumer_inbox", "audit_events", "version_asset_refs"):
+        for needle in ("consumer_inbox", "audit_events"):
             if needle in text:
                 hits.append(f"{path.name}:{needle}")
     assert hits == []
@@ -114,10 +114,11 @@ def test_migration_chain_and_forbidden_tables() -> None:
         "gcii070001_workflow_intents.py",
         "gcii080001_outbox_messages.py",
         "gcii090001_publications.py",
+        "gcii100001_version_asset_refs.py",
     ]
 
 
-def test_no_gci_i10_archive_routes() -> None:
+def test_no_gci_i11_archive_routes() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
     assert "/actions/publish" in routes
     for needle in ("/archive", "review-queue", "/reviews", "version_asset_refs"):

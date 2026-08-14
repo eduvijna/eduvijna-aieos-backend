@@ -11,7 +11,7 @@ from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.app import create_app
 from aieos.platform.api.openapi import build_openapi, canonical_openapi_json
-from tests.fakes import StubSecurityContextResolver, AllowReviewAuthorization, AllowReviewCommentPolicy, AllowPublicationAuthorization, AllowPublicationGovernance, AllowPublicationAssetValidation
+from tests.fakes import StubSecurityContextResolver, AllowReviewAuthorization, AllowReviewCommentPolicy, AllowPublicationAuthorization, AllowPublicationGovernance, AllowAssetReferenceValidation, AllowAssetCurrentGovernance
 
 pytestmark = pytest.mark.gci_i05
 
@@ -33,7 +33,8 @@ def _schema() -> dict:
         review_comment_policy=AllowReviewCommentPolicy(),
         publication_authorization=AllowPublicationAuthorization(),
         publication_governance=AllowPublicationGovernance(),
-        publication_asset_validation=AllowPublicationAssetValidation(),
+        asset_reference_validation=AllowAssetReferenceValidation(),
+        asset_current_governance=AllowAssetCurrentGovernance(),
     )
     return build_openapi(app)
 

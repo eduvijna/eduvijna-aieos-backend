@@ -23,9 +23,9 @@ from aieos.domains.content.application.errors import (
 from aieos.domains.content.application.models import PublicationResult
 from aieos.domains.content.application.ports import (
     CONTENT_PUBLISH,
+    AssetCurrentGovernancePort,
     ContentUnitOfWork,
     ContentUnitOfWorkFactory,
-    PublicationAssetValidationPort,
     PublicationAuthorizationPort,
     PublicationGovernancePort,
 )
@@ -71,7 +71,7 @@ class PublishContentService:
         uow_factory: ContentUnitOfWorkFactory,
         authorization: PublicationAuthorizationPort,
         governance: PublicationGovernancePort,
-        asset_validation: PublicationAssetValidationPort,
+        asset_governance: AssetCurrentGovernancePort,
         schema_registry: ContentSchemaRegistry,
         *,
         idempotency_retention: timedelta,
@@ -81,7 +81,7 @@ class PublishContentService:
         self._uow_factory = uow_factory
         self._authorization = authorization
         self._governance = governance
-        self._asset_validation = asset_validation
+        self._asset_governance = asset_governance
         self._schema_registry = schema_registry
         self._idempotency_retention = idempotency_retention
 
@@ -241,11 +241,14 @@ class PublishContentService:
             raise PublicationPayloadInvalid(
                 "stored ContentVersion payload failed schema validation"
             ) from exc
+        refs = uow.version_asset_refs.list_for_version(content_id, version_id)
         try:
-            self._asset_validation.validate(
+            self._asset_governance.validate_current_use(
                 tenant_id=execution_tenant_id,
+                principal_id=principal_id,
                 content_id=content_id,
                 version_id=version_id,
+                asset_refs=refs,
             )
         except PublicationAssetValidationFailed:
             raise

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Mapping
 from uuid import UUID
 
 from sqlalchemy import and_, or_, select, update
@@ -28,6 +28,7 @@ from aieos.domains.content.domain.identities import (
 from aieos.domains.content.domain.publication import Publication
 from aieos.domains.content.domain.review import ReviewDecision
 from aieos.domains.content.domain.version import ContentVersion
+from aieos.domains.content.domain.version_asset_ref import VersionAssetRef
 from aieos.domains.content.infrastructure.persistence.errors import (
     reraise_as_application_error,
 )
@@ -38,12 +39,14 @@ from aieos.domains.content.infrastructure.persistence.mapping import (
     provenance_as_json,
     publication_from_row,
     review_decision_from_row,
+    version_asset_ref_from_row,
 )
 from aieos.domains.content.infrastructure.persistence.models import (
     content_versions_table,
     contents_table,
     publications_table,
     review_decisions_table,
+    version_asset_refs_table,
 )
 
 
@@ -488,3 +491,56 @@ class SqlAlchemyPublicationRepository:
         if row is None:
             return None
         return publication_from_row(row)
+
+
+class SqlAlchemyVersionAssetRefRepository:
+    def __init__(self, connection: Connection) -> None:
+        self._connection = connection
+
+    def insert_many(self, refs: Sequence[VersionAssetRef]) -> None:
+        if not refs:
+            return
+        values = [
+            {
+                "tenant_id": ref.tenant_id,
+                "content_id": ref.content_id.value,
+                "version_id": ref.version_id.value,
+                "asset_resource_type": ref.resource_ref.resource_type,
+                "asset_resource_id": ref.resource_ref.resource_id,
+                "asset_resource_revision": ref.resource_ref.resource_revision,
+                "role": ref.role,
+                "ordinal": ref.ordinal,
+                "required": ref.required,
+                "created_at": ref.created_at,
+            }
+            for ref in refs
+        ]
+        try:
+            self._connection.execute(version_asset_refs_table.insert(), values)
+        except Exception as exc:
+            reraise_as_application_error(exc)
+
+    def list_for_version(
+        self, content_id: ContentId, version_id: ContentVersionId
+    ) -> list[VersionAssetRef]:
+        try:
+            rows = (
+                self._connection.execute(
+                    select(version_asset_refs_table)
+                    .where(
+                        version_asset_refs_table.c.content_id == content_id.value,
+                        version_asset_refs_table.c.version_id == version_id.value,
+                    )
+                    .order_by(
+                        version_asset_refs_table.c.role.asc(),
+                        version_asset_refs_table.c.ordinal.asc(),
+                        version_asset_refs_table.c.asset_resource_type.asc(),
+                        version_asset_refs_table.c.asset_resource_id.asc(),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return [version_asset_ref_from_row(row) for row in rows]

@@ -26,7 +26,8 @@ from aieos.platform.workflows.temporal.dispatchers import (
 )
 from aieos.platform.workflows.temporal.worker import create_content_review_worker
 from tests.fakes import (
-    AllowPublicationAssetValidation,
+    AllowAssetCurrentGovernance,
+    AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
     AllowPublicationGovernance,
     AllowReviewAuthorization,
@@ -66,7 +67,8 @@ def app_for(
     comment_policy=None,
     publication_authorization=None,
     publication_governance=None,
-    publication_asset_validation=None,
+    asset_reference_validation=None,
+    asset_current_governance=None,
 ):
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
@@ -80,8 +82,10 @@ def app_for(
         publication_authorization=publication_authorization
         or AllowPublicationAuthorization(),
         publication_governance=publication_governance or AllowPublicationGovernance(),
-        publication_asset_validation=publication_asset_validation
-        or AllowPublicationAssetValidation(),
+        asset_reference_validation=asset_reference_validation
+        or AllowAssetReferenceValidation(),
+        asset_current_governance=asset_current_governance
+        or AllowAssetCurrentGovernance(),
     )
 
 

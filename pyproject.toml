@@ -41,4 +41,5 @@ markers = [
     "gci_i07: Generic Content review Temporal workflow tests",
     "gci_i08: Generic Content events, transactional outbox, and NATS JetStream tests",
     "gci_i09: Generic Content publish and Publication history tests",
+    "gci_i10: Generic Content version asset ResourceRef association tests",
 ]

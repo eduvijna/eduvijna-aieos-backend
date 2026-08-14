@@ -207,6 +207,16 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                     f"REVOKE UPDATE, DELETE ON content.publications FROM {RUNTIME_USER}"
                 )
             )
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT ON content.version_asset_refs TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE UPDATE, DELETE ON content.version_asset_refs FROM {RUNTIME_USER}"
+                )
+            )
             conn.execute(text(f"GRANT USAGE ON SCHEMA api TO {RUNTIME_USER}"))
             conn.execute(
                 text(

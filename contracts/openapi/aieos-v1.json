@@ -176,6 +176,13 @@
       "ContentVersionAppendRequest": {
         "additionalProperties": false,
         "properties": {
+          "asset_refs": {
+            "items": {
+              "$ref": "#/components/schemas/VersionAssetRefRequest"
+            },
+            "title": "Asset Refs",
+            "type": "array"
+          },
           "payload": {
             "additionalProperties": true,
             "title": "Payload",
@@ -437,6 +444,37 @@
         "title": "PublicationResponse",
         "type": "object"
       },
+      "ResourceRefRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "format": "uuid",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Revision"
+          },
+          "resource_type": {
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "title": "ResourceRefRequest",
+        "type": "object"
+      },
       "ReviewDecisionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -568,11 +606,40 @@
         ],
         "title": "ReviewSubmissionResponse",
         "type": "object"
+      },
+      "VersionAssetRefRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ordinal": {
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "resource_ref": {
+            "$ref": "#/components/schemas/ResourceRefRequest"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_ref",
+          "role",
+          "ordinal",
+          "required"
+        ],
+        "title": "VersionAssetRefRequest",
+        "type": "object"
       }
     }
   },
   "info": {
-    "description": "AIEOS HTTP foundation (GCI-I09). Content create, version append, review, and publish mutations are development/test foundations only and MUST NOT be authorized for production until required security-audit intent persistence is integrated alongside the transactional outbox.",
+    "description": "AIEOS HTTP foundation (GCI-I10). Content create, version append, review, and publish mutations are development/test foundations only and MUST NOT be authorized for production until required security-audit intent persistence is integrated alongside the transactional outbox.",
     "title": "AIEOS HTTP API",
     "version": "0.1.0"
   },

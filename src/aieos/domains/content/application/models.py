@@ -17,6 +17,7 @@ from aieos.domains.content.domain.identities import (
     VersionNumber,
 )
 from aieos.domains.content.domain.version import ContentVersion
+from aieos.domains.content.domain.version_asset_ref import VersionAssetRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +25,7 @@ class AppendContentVersionCommand:
     expected_aggregate_revision: AggregateRevision
     version: ContentVersion
     provenance: Mapping[str, object] | None = None
+    asset_refs: tuple[VersionAssetRef, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

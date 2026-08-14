@@ -41,12 +41,30 @@ class ContentListResponse(BaseModel):
     next_cursor: str | None
 
 
+class ResourceRefRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_type: str
+    resource_id: UUID
+    resource_revision: int | None = None
+
+
+class VersionAssetRefRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_ref: ResourceRefRequest
+    role: str
+    ordinal: int = Field(ge=0)
+    required: bool
+
+
 class ContentVersionAppendRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_id: str = Field(min_length=1)
     schema_version: int = Field(ge=1)
     payload: dict[str, object]
+    asset_refs: list[VersionAssetRefRequest] = Field(default_factory=list)
 
 
 class ContentVersionResponse(BaseModel):

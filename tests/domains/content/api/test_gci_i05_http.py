@@ -30,7 +30,8 @@ from aieos.platform.idempotency.hashing import hash_idempotency_key
 from tests.fakes import (
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
-    AllowPublicationAssetValidation,
+    AllowAssetCurrentGovernance,
+    AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
     AllowPublicationGovernance,
     IDEMPOTENCY_RETENTION,
@@ -62,7 +63,8 @@ def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID):
         review_comment_policy=AllowReviewCommentPolicy(),
         publication_authorization=AllowPublicationAuthorization(),
         publication_governance=AllowPublicationGovernance(),
-        publication_asset_validation=AllowPublicationAssetValidation(),
+        asset_reference_validation=AllowAssetReferenceValidation(),
+        asset_current_governance=AllowAssetCurrentGovernance(),
     )
 
 
@@ -280,7 +282,8 @@ class TestAppendContract:
             review_comment_policy=AllowReviewCommentPolicy(),
             publication_authorization=AllowPublicationAuthorization(),
             publication_governance=AllowPublicationGovernance(),
-            publication_asset_validation=AllowPublicationAssetValidation(),
+            asset_reference_validation=AllowAssetReferenceValidation(),
+        asset_current_governance=AllowAssetCurrentGovernance(),
         )
         client = TestClient(app, raise_server_exceptions=False)
         content_id = _create(client, tenant_id)["content_id"]
@@ -534,7 +537,8 @@ class TestIdempotencyHttp:
                 review_comment_policy=AllowReviewCommentPolicy(),
                 publication_authorization=AllowPublicationAuthorization(),
                 publication_governance=AllowPublicationGovernance(),
-                publication_asset_validation=AllowPublicationAssetValidation(),
+                asset_reference_validation=AllowAssetReferenceValidation(),
+        asset_current_governance=AllowAssetCurrentGovernance(),
             ),
             raise_server_exceptions=False,
         )
@@ -790,6 +794,7 @@ class TestRollbackAtomicity:
         service = HttpAppendContentVersionService(
             SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
             make_test_schema_registry(),
+            AllowAssetReferenceValidation(),
             idempotency_retention=IDEMPOTENCY_RETENTION,
         )
         with pytest.raises(PersistenceOperationFailed):

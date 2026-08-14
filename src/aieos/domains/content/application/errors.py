@@ -126,6 +126,10 @@ class PublicationAssetValidationFailed(ContentApplicationError):
     """Required publication asset validation failed."""
 
 
+class AssetReferenceValidationFailed(ContentApplicationError):
+    """A VersionAssetRef ResourceRef failed binding-time validation."""
+
+
 class PublicationGovernanceRejected(ContentApplicationError):
     """Publication governance rejected the candidate."""
 

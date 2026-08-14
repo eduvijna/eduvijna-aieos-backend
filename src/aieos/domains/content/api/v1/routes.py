@@ -277,6 +277,7 @@ def content_version_append(
         payload=body.payload,
         idempotency_key=key,
         event_context=_mutation_event_context(request, context),
+        asset_refs=[ref.model_dump(mode="python") for ref in body.asset_refs],
     )
     response.headers["Location"] = (
         f"/api/v1/contents/{model.content_id}/versions/{model.version_id}"

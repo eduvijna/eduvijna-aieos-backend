@@ -725,7 +725,7 @@ class TestForbiddenPersistenceArtifacts:
         forbidden = {
             "integration.consumer_inbox",
             "content.audit_events",
-            "content.version_asset_refs",
         }
         assert forbidden.isdisjoint(tables)
         assert "content.publications" in tables
+        assert "content.version_asset_refs" in tables

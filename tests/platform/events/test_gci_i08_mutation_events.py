@@ -15,6 +15,7 @@ from aieos.domains.content.application.errors import PersistenceOperationFailed
 from aieos.domains.content.application.models import AppendContentVersionCommand
 from aieos.domains.content.application.review import ReviewCommandService
 from aieos.domains.content.application.services import AppendContentVersionService
+from tests.fakes import AllowAssetReferenceValidation
 from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
@@ -143,7 +144,7 @@ def _direct_append(
     parent_version_id,
     expected_revision: int,
 ) -> None:
-    service = AppendContentVersionService(SqlAlchemyContentUnitOfWorkFactory(runtime_engine))
+    service = AppendContentVersionService(SqlAlchemyContentUnitOfWorkFactory(runtime_engine), AllowAssetReferenceValidation())
     version = _make_version(
         tenant_id=tenant_id,
         content_id=content_id,
@@ -348,7 +349,7 @@ class TestAppendEvents:
             raise PersistenceOperationFailed("inject outbox insert failure")
 
         monkeypatch.setattr(SqlAlchemyOutboxRepository, "insert", boom)
-        service = AppendContentVersionService(SqlAlchemyContentUnitOfWorkFactory(runtime_engine))
+        service = AppendContentVersionService(SqlAlchemyContentUnitOfWorkFactory(runtime_engine), AllowAssetReferenceValidation())
         version = _make_version(
             tenant_id=tenant_id,
             content_id=content_id,

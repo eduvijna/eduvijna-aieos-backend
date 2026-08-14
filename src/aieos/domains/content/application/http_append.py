@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
+from aieos.domains.content.application.asset_refs import (
+    build_version_asset_refs,
+    canonical_asset_ref_fingerprint_items,
+    validate_asset_bindings,
+)
 from aieos.domains.content.application.errors import (
     ContentNotFound,
     ContentPayloadInvalid,
@@ -20,7 +26,10 @@ from aieos.domains.content.application.models import (
     ContentVersionReadModel,
     content_version_read_model,
 )
-from aieos.domains.content.application.ports import ContentUnitOfWorkFactory
+from aieos.domains.content.application.ports import (
+    AssetReferenceValidationPort,
+    ContentUnitOfWorkFactory,
+)
 from aieos.domains.content.application.services import append_version_in_uow
 from aieos.domains.content.domain.errors import InvalidPayloadError, SchemaNotFoundError
 from aieos.domains.content.domain.identities import (
@@ -46,6 +55,7 @@ class HttpAppendContentVersionService:
         self,
         uow_factory: ContentUnitOfWorkFactory,
         schema_registry: ContentSchemaRegistry,
+        asset_reference_validation: AssetReferenceValidationPort,
         *,
         idempotency_retention: timedelta,
     ) -> None:
@@ -53,6 +63,7 @@ class HttpAppendContentVersionService:
             raise ValueError("idempotency_retention must be a positive duration")
         self._uow_factory = uow_factory
         self._schema_registry = schema_registry
+        self._asset_reference_validation = asset_reference_validation
         self._idempotency_retention = idempotency_retention
 
     def append(
@@ -67,9 +78,13 @@ class HttpAppendContentVersionService:
         payload: Mapping[str, object],
         idempotency_key: str,
         event_context: MutationEventContext,
+        asset_refs: Sequence[Mapping[str, Any]] | None = None,
         now: datetime | None = None,
     ) -> tuple[ContentVersionReadModel, AggregateRevision]:
         created_at = now if now is not None else datetime.now(UTC)
+        raw_asset_refs: list[Mapping[str, Any]] = (
+            [] if asset_refs is None else list(asset_refs)
+        )
         fingerprint = fingerprint_material(
             {
                 "content_id": str(content_id),
@@ -77,6 +92,7 @@ class HttpAppendContentVersionService:
                 "schema_id": schema_id,
                 "schema_version": schema_version,
                 "payload": dict(payload),
+                "asset_refs": canonical_asset_ref_fingerprint_items(raw_asset_refs),
             }
         )
         scope = IdempotencyScope(
@@ -146,6 +162,20 @@ class HttpAppendContentVersionService:
                 created_at=created_at,
                 created_by_principal_id=principal_id,
             )
+            built_refs = build_version_asset_refs(
+                tenant_id=execution_tenant_id,
+                content_id=content_id,
+                version_id=version.version_id,
+                created_at=created_at,
+                items=raw_asset_refs,
+            )
+            if built_refs:
+                validate_asset_bindings(
+                    self._asset_reference_validation,
+                    execution_tenant_id,
+                    principal_id,
+                    tuple(ref.resource_ref for ref in built_refs),
+                )
             result = append_version_in_uow(
                 uow,
                 execution_tenant_id,
@@ -153,6 +183,7 @@ class HttpAppendContentVersionService:
                     expected_aggregate_revision=expected_aggregate_revision,
                     version=version,
                     provenance=None,
+                    asset_refs=built_refs,
                 ),
                 now=created_at,
                 event_context=event_context,

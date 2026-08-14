@@ -7,15 +7,19 @@ from datetime import timedelta
 from fastapi import FastAPI
 
 from aieos.domains.content.api.v1.routes import router as content_v1_router
+from aieos.domains.content.application.asset_governance import (
+    ValidateVersionAssetGovernanceService,
+)
 from aieos.domains.content.application.create import CreateContentService
 from aieos.domains.content.application.http_append import (
     GetContentVersionService,
     HttpAppendContentVersionService,
 )
 from aieos.domains.content.application.ports import (
+    AssetCurrentGovernancePort,
+    AssetReferenceValidationPort,
     ContentTypeCatalog,
     ContentUnitOfWorkFactory,
-    PublicationAssetValidationPort,
     PublicationAuthorizationPort,
     PublicationGovernancePort,
     ReviewAuthorizationPort,
@@ -32,7 +36,7 @@ from aieos.platform.api.problems import install_exception_handlers
 from aieos.platform.security.context import SecurityContextResolver
 
 _APP_DESCRIPTION = (
-    "AIEOS HTTP foundation (GCI-I09). "
+    "AIEOS HTTP foundation (GCI-I10). "
     "Content create, version append, review, and publish mutations are "
     "development/test foundations only and MUST NOT be authorized for production "
     "until required security-audit intent persistence is integrated alongside the "
@@ -52,7 +56,8 @@ def create_app(
     review_comment_policy: ReviewCommentPolicy,
     publication_authorization: PublicationAuthorizationPort,
     publication_governance: PublicationGovernancePort,
-    publication_asset_validation: PublicationAssetValidationPort,
+    asset_reference_validation: AssetReferenceValidationPort,
+    asset_current_governance: AssetCurrentGovernancePort,
 ) -> FastAPI:
     codec = CursorCodec(cursor_signing_key)
     app = FastAPI(
@@ -73,7 +78,10 @@ def create_app(
     app.state.get_content_service = GetContentService(uow_factory)
     app.state.list_contents_service = ListContentsService(uow_factory)
     app.state.http_append_service = HttpAppendContentVersionService(
-        uow_factory, schema_registry, idempotency_retention=idempotency_retention
+        uow_factory,
+        schema_registry,
+        asset_reference_validation,
+        idempotency_retention=idempotency_retention,
     )
     app.state.get_content_version_service = GetContentVersionService(uow_factory)
     app.state.review_command_service = ReviewCommandService(
@@ -86,9 +94,12 @@ def create_app(
         uow_factory,
         publication_authorization,
         publication_governance,
-        publication_asset_validation,
+        asset_current_governance,
         schema_registry,
         idempotency_retention=idempotency_retention,
+    )
+    app.state.validate_version_asset_governance_service = (
+        ValidateVersionAssetGovernanceService(uow_factory, asset_current_governance)
     )
 
     def _openapi() -> dict:

@@ -477,7 +477,7 @@ class TestAlembicCycleAndOfflineSql:
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "gcii090001"
+                "gcii100001"
             )
             tables = {
                 row[0]
@@ -490,6 +490,7 @@ class TestAlembicCycleAndOfflineSql:
             "content_versions",
             "review_decisions",
             "publications",
+            "version_asset_refs",
         }
 
     def test_offline_sql_assumes_owner_before_i09_ddl(self, postgres18) -> None:
@@ -523,4 +524,5 @@ class TestAlembicCycleAndOfflineSql:
             "gcii070001_workflow_intents.py",
             "gcii080001_outbox_messages.py",
             "gcii090001_publications.py",
+            "gcii100001_version_asset_refs.py",
         ]

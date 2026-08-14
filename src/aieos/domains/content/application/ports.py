@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Mapping, Protocol
 from uuid import UUID
@@ -18,8 +19,10 @@ from aieos.domains.content.domain.identities import (
 from aieos.domains.content.domain.publication import Publication
 from aieos.domains.content.domain.review import ReviewDecision
 from aieos.domains.content.domain.version import ContentVersion
+from aieos.domains.content.domain.version_asset_ref import VersionAssetRef
 from aieos.platform.events.ports import OutboxRepository
 from aieos.platform.idempotency.ports import IdempotencyRepository
+from aieos.platform.resources import ResourceRef
 from aieos.platform.workflows.ports import WorkflowIntentRepository
 
 CONTENT_REVIEW_SUBMIT = "content.review.submit"
@@ -101,16 +104,34 @@ class PublicationGovernancePort(Protocol):
     ) -> None: ...
 
 
-class PublicationAssetValidationPort(Protocol):
-    """Local required-asset gate for publication. GCI-I10 owns Asset persistence."""
+class AssetReferenceValidationPort(Protocol):
+    """Binding-time validation that a ResourceRef may be associated to Content."""
 
-    def validate(
+    def validate_binding(
+        self, *, tenant_id: UUID, principal_id: UUID, resource_ref: ResourceRef
+    ) -> None: ...
+
+
+class AssetCurrentGovernancePort(Protocol):
+    """Current-use governance for stored VersionAssetRef associations at publish."""
+
+    def validate_current_use(
         self,
         *,
         tenant_id: UUID,
+        principal_id: UUID,
         content_id: ContentId,
         version_id: ContentVersionId,
+        asset_refs: Sequence[VersionAssetRef],
     ) -> None: ...
+
+
+class VersionAssetRefRepository(Protocol):
+    def insert_many(self, refs: Sequence[VersionAssetRef]) -> None: ...
+
+    def list_for_version(
+        self, content_id: ContentId, version_id: ContentVersionId
+    ) -> list[VersionAssetRef]: ...
 
 
 class PublicationRepository(Protocol):
@@ -180,6 +201,7 @@ class ContentUnitOfWork(Protocol):
     versions: ContentVersionRepository
     reviews: ReviewRepository
     publications: PublicationRepository
+    version_asset_refs: VersionAssetRefRepository
     idempotency: IdempotencyRepository
     workflow_intents: WorkflowIntentRepository
     outbox: OutboxRepository
