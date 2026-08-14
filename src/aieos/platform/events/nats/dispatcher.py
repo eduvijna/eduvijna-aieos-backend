@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Callable
 from uuid import UUID
 
-from aieos.platform.events.constants import ERROR_RETRY_EXHAUSTED
-from aieos.platform.events.nats.publisher import EventPublisher
+from aieos.platform.events.constants import ERROR_NATS_UNAVAILABLE, ERROR_RETRY_EXHAUSTED
+from aieos.platform.events.nats.publisher import EventPublisher, PublishResult
 from aieos.platform.events.persistence.repositories import (
     SqlAlchemyOutboxDispatcherRepository,
 )
@@ -61,7 +62,15 @@ class ContentOutboxDispatcher:
             return False
         fence_by = claimed.claimed_by or self._config.claimed_by
         fence_attempt = claimed.attempt_count
-        result = await self._publisher.publish(claimed)
+        try:
+            async with asyncio.timeout(self._config.publish_timeout_seconds):
+                result = await self._publisher.publish(claimed)
+        except TimeoutError:
+            result = PublishResult(
+                published=False,
+                error_code=ERROR_NATS_UNAVAILABLE,
+                permanent=False,
+            )
         if result.published and result.ack is not None:
             return self._repository.mark_published(
                 tenant_id=tenant_id,

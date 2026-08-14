@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -73,6 +74,20 @@ class ClaimVisiblePublisher:
         assert row["claimed_by"] is not None
         self.calls.append(message)
         return self.result
+
+
+class StalledPublisher:
+    """Never completes until cancelled by the dispatcher publish timeout."""
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.calls: list[OutboxMessage] = []
+
+    async def publish(self, message: OutboxMessage) -> PublishResult:
+        self.calls.append(message)
+        self.started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("stalled publisher must not complete")
 
 
 def _repo(engine: Engine) -> SqlAlchemyOutboxDispatcherRepository:
@@ -318,6 +333,108 @@ class TestDispatchSemantics:
         )
         row = _pending_row(bootstrap_engine, created["content_id"])
         assert row["status"] == OUTBOX_PUBLISHED
+
+
+class TestPublishTimeout:
+    def test_stalled_publisher_times_out_to_pending(
+        self, runtime_engine, event_dispatcher_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        client = client_for(runtime_engine, tenant_id, uuid.uuid7())
+        created = create_content(client, tenant_id)
+        before = _pending_row(bootstrap_engine, created["content_id"])
+        publisher = StalledPublisher()
+        dispatcher = make_dispatcher(
+            event_dispatcher_engine,
+            publisher,
+            max_attempts=3,
+            publish_timeout_seconds=0.05,
+        )
+        assert run_async(dispatcher.dispatch_once(tenant_id)) is False
+        row = _pending_row(bootstrap_engine, created["content_id"])
+        assert row["status"] == OUTBOX_PENDING
+        assert row["last_error_code"] == ERROR_NATS_UNAVAILABLE
+        assert int(row["attempt_count"]) == 1
+        assert row["event_id"] == before["event_id"]
+        assert dict(row["envelope"]) == dict(before["envelope"])
+        with bootstrap_engine.connect() as conn:
+            content = conn.execute(
+                text(
+                    "SELECT content_id FROM content.contents WHERE content_id = :cid"
+                ),
+                {"cid": created["content_id"]},
+            ).one_or_none()
+        assert content is not None
+
+    def test_stalled_publisher_exhausts_to_quarantined(
+        self, runtime_engine, event_dispatcher_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        client = client_for(runtime_engine, tenant_id, uuid.uuid7())
+        created = create_content(client, tenant_id)
+        before = _pending_row(bootstrap_engine, created["content_id"])
+        publisher = StalledPublisher()
+        dispatcher = make_dispatcher(
+            event_dispatcher_engine,
+            publisher,
+            max_attempts=1,
+            publish_timeout_seconds=0.05,
+        )
+        assert run_async(dispatcher.dispatch_once(tenant_id)) is False
+        row = _pending_row(bootstrap_engine, created["content_id"])
+        assert row["status"] == OUTBOX_QUARANTINED
+        assert row["last_error_code"] == ERROR_RETRY_EXHAUSTED
+        assert row["event_id"] == before["event_id"]
+        assert dict(row["envelope"]) == dict(before["envelope"])
+
+    def test_timeout_finalization_loses_to_reclaimed_published_claim(
+        self, runtime_engine, event_dispatcher_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        client = client_for(runtime_engine, tenant_id, uuid.uuid7())
+        created = create_content(client, tenant_id)
+        before = _pending_row(bootstrap_engine, created["content_id"])
+        publisher = StalledPublisher()
+        repo = _repo(event_dispatcher_engine)
+        claim_started = datetime.now(UTC)
+
+        async def race() -> bool:
+            dispatcher_a = make_dispatcher(
+                event_dispatcher_engine,
+                publisher,
+                claimed_by="A",
+                max_attempts=3,
+                claim_lease=timedelta(milliseconds=50),
+                publish_timeout_seconds=0.4,
+            )
+            task = asyncio.create_task(dispatcher_a.dispatch_once(tenant_id))
+            await publisher.started.wait()
+            claim_b = repo.claim_once(
+                tenant_id=tenant_id,
+                claimed_by="B",
+                now=claim_started + timedelta(seconds=1),
+                claim_until=claim_started + timedelta(seconds=31),
+            )
+            assert claim_b is not None
+            assert claim_b.attempt_count == 2
+            assert repo.mark_published(
+                tenant_id=tenant_id,
+                event_id=claim_b.event_id.value,
+                claimed_by="B",
+                attempt_count=claim_b.attempt_count,
+                published_at=claim_started + timedelta(seconds=2),
+                broker_stream=TEST_STREAM_NAME,
+                broker_sequence=42,
+            )
+            return await task
+
+        assert run_async(race()) is False
+        row = _pending_row(bootstrap_engine, created["content_id"])
+        assert row["status"] == OUTBOX_PUBLISHED
+        assert int(row["attempt_count"]) == 2
+        assert row["event_id"] == before["event_id"]
+        assert dict(row["envelope"]) == dict(before["envelope"])
+        assert row["last_error_code"] is None
 
 
 class TestOutboxImmutabilityAndPrivileges:

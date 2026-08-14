@@ -192,6 +192,7 @@ def make_dispatcher(
     max_attempts: int = 3,
     claim_lease: timedelta = timedelta(seconds=30),
     retry_delay: timedelta = timedelta(milliseconds=1),
+    publish_timeout_seconds: float = 10.0,
 ) -> ContentOutboxDispatcher:
     return ContentOutboxDispatcher(
         SqlAlchemyOutboxDispatcherRepository(engine),
@@ -201,6 +202,7 @@ def make_dispatcher(
             max_attempts=max_attempts,
             retry_delay=retry_delay,
             claimed_by=claimed_by,
+            publish_timeout_seconds=publish_timeout_seconds,
         ),
     )
 
