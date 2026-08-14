@@ -38,6 +38,7 @@ from aieos.domains.content.application.errors import (
     UnknownContentType,
     VersionAlreadyExists,
     VersionLineageConflict,
+    WorkflowCoordinationFailed,
 )
 from aieos.platform.api.context import (
     InvalidTenantHeaderError,
@@ -304,6 +305,12 @@ _APPLICATION_PROBLEMS: dict[type[ContentApplicationError], tuple[int, str, str, 
         "review_already_decided",
         "Review already decided",
         "This ContentVersion already has a terminal ReviewDecision",
+    ),
+    WorkflowCoordinationFailed: (
+        500,
+        "workflow_coordination_failed",
+        "Workflow coordination failed",
+        "Internal workflow coordination failed",
     ),
 }
 

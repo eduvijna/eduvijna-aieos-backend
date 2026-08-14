@@ -17,6 +17,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GCI-I04 FastAPI/Pydantic HTTP foundation: `POST/GET /api/v1/contents` and `GET /api/v1/contents/{content_id}` with RFC 9457 Problem Details, revision ETags, and opaque list cursors. Development/test mutation only; no production create, outbox, audit, Idempotency-Key, or ContentVersion HTTP.
 - GCI-I05 ContentVersion append HTTP (`POST/GET .../versions`), mandatory If-Match, transactional Idempotency-Key for create and append, schema-registry payload validation, and `api.idempotency_records`. Still non-production: no outbox/audit intent.
 - GCI-I06 Review Decision Foundation: submit/approve/request-changes/reject on an exact ContentVersion, immutable `content.review_decisions`, expected-revision concurrency, transactional Idempotency-Key, review authorization and comment-governance ports. Still non-production: no Temporal, outbox, audit, or publication.
+- GCI-I07 Content Review Temporal Workflow: durable `workflow.workflow_start_intents` / `workflow.workflow_command_intents`, ContentReviewWorkflowV1 on task queue `aieos.content.review`, tenant-scoped start/command dispatchers, history replay gate. Still non-production: no outbox/audit, no production worker/dispatcher daemon.
 
 ### Changed
 

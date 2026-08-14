@@ -31,6 +31,7 @@ from aieos.domains.content.application.errors import (
     UnknownContentType,
     VersionAlreadyExists,
     VersionLineageConflict,
+    WorkflowCoordinationFailed,
 )
 from aieos.domains.content.application.http_append import (
     GetContentVersionService,
@@ -117,4 +118,5 @@ __all__ = [
     "UnknownContentType",
     "VersionAlreadyExists",
     "VersionLineageConflict",
+    "WorkflowCoordinationFailed",
 ]

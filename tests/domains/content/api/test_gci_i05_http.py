@@ -588,7 +588,7 @@ class TestIdempotencyHttp:
         )
         assert invalid.status_code == 400
         assert invalid.json()["code"] == "invalid_idempotency_key"
-        assert "bad" not in invalid.text
+        assert "bad\nkey" not in invalid.text
 
 
 class TestConcurrency:

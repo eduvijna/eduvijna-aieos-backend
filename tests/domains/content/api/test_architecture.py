@@ -64,7 +64,7 @@ def test_get_does_not_perform_privileged_second_lookup() -> None:
     assert text.count(".get(") == 1
 
 
-def test_no_gci_i07_or_later_http_or_intent_structures() -> None:
+def test_no_gci_i08_or_later_http_or_intent_structures() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
     for needle in ("PATCH", "/publish", "/archive", "review-queue", "/reviews"):
         assert needle not in routes
@@ -75,7 +75,6 @@ def test_no_gci_i07_or_later_http_or_intent_structures() -> None:
             "outbox_messages",
             "audit_events",
             "publications",
-            "workflow_start",
             "review_queue",
         ):
             if needle in text:
@@ -106,11 +105,19 @@ def test_review_repository_is_insert_read_only() -> None:
     assert ".rollback(" not in body
 
 
-def test_no_temporal_nats_outbox_or_publication_tables() -> None:
+def test_no_nats_outbox_or_publication_and_migration_chain() -> None:
     hits: list[str] = []
-    for path in SRC_ROOT.rglob("*.py"):
+    domains = SRC_ROOT / "domains"
+    for path in domains.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         for needle in ("temporalio", "nats.", "import nats", "outbox_messages", "audit_events"):
+            if needle in text:
+                hits.append(f"{path.relative_to(SRC_ROOT)}:{needle}")
+    for path in SRC_ROOT.rglob("*.py"):
+        if "domains" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for needle in ("nats.", "import nats", "outbox_messages", "audit_events"):
             if needle in text:
                 hits.append(f"{path.relative_to(SRC_ROOT)}:{needle}")
     assert hits == []
@@ -123,4 +130,5 @@ def test_no_temporal_nats_outbox_or_publication_tables() -> None:
         "gcii020001_content_schema.py",
         "gcii050001_api_idempotency.py",
         "gcii060001_review_decisions.py",
+        "gcii070001_workflow_intents.py",
     ]

@@ -1,4 +1,4 @@
-"""SQLAlchemy persistence mappings, repositories, and Unit of Work."""
+"""SQLAlchemy persistence mappings and repositories."""
 
 from aieos.domains.content.infrastructure.persistence.metadata import (
     CONTENT_SCHEMA,
@@ -14,16 +14,10 @@ from aieos.domains.content.infrastructure.persistence.repositories import (
     SqlAlchemyContentVersionRepository,
     SqlAlchemyReviewDecisionRepository,
 )
-from aieos.domains.content.infrastructure.persistence.uow import (
-    SqlAlchemyContentUnitOfWork,
-    SqlAlchemyContentUnitOfWorkFactory,
-)
 
 __all__ = [
     "CONTENT_SCHEMA",
     "SqlAlchemyContentRepository",
-    "SqlAlchemyContentUnitOfWork",
-    "SqlAlchemyContentUnitOfWorkFactory",
     "SqlAlchemyContentVersionRepository",
     "SqlAlchemyReviewDecisionRepository",
     "content_metadata",

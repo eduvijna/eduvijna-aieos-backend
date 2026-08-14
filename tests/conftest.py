@@ -23,6 +23,7 @@ BOOTSTRAP_USER = "aieos_bootstrap"
 SCHEMA_OWNER_ROLE = "aieos_content_owner"
 MIGRATOR_USER = "aieos_migrator"
 RUNTIME_USER = "aieos_runtime"
+WORKFLOW_DISPATCHER_USER = "aieos_workflow_dispatcher"
 DB_NAME = "aieos"
 DB_PASSWORD = "aieos_test"
 HOST_PORT = os.environ.get("AIEOS_TEST_PG_PORT", "55432")
@@ -45,6 +46,13 @@ def migrator_url(port: str) -> str:
 def runtime_url(port: str) -> str:
     return (
         f"postgresql+psycopg://{RUNTIME_USER}:{DB_PASSWORD}"
+        f"@127.0.0.1:{port}/{DB_NAME}"
+    )
+
+
+def workflow_dispatcher_url(port: str) -> str:
+    return (
+        f"postgresql+psycopg://{WORKFLOW_DISPATCHER_USER}:{DB_PASSWORD}"
         f"@127.0.0.1:{port}/{DB_NAME}"
     )
 
@@ -121,6 +129,12 @@ def provision_identities(bootstrap: Engine) -> None:
                         CREATE ROLE {RUNTIME_USER} LOGIN PASSWORD '{DB_PASSWORD}'
                             NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
                     END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_roles WHERE rolname = '{WORKFLOW_DISPATCHER_USER}'
+                    ) THEN
+                        CREATE ROLE {WORKFLOW_DISPATCHER_USER} LOGIN PASSWORD '{DB_PASSWORD}'
+                            NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+                    END IF;
                 END
                 $$
                 """
@@ -130,6 +144,9 @@ def provision_identities(bootstrap: Engine) -> None:
         conn.execute(text(f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} TO {SCHEMA_OWNER_ROLE}"))
         conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {MIGRATOR_USER}"))
         conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {RUNTIME_USER}"))
+        conn.execute(
+            text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {WORKFLOW_DISPATCHER_USER}")
+        )
         conn.execute(text(f"GRANT USAGE, CREATE ON SCHEMA public TO {SCHEMA_OWNER_ROLE}"))
         conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {MIGRATOR_USER}"))
 
@@ -179,6 +196,70 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                     f"GRANT EXECUTE ON FUNCTION api.current_tenant_id() TO {RUNTIME_USER}"
                 )
             )
+            conn.execute(text(f"GRANT USAGE ON SCHEMA workflow TO {RUNTIME_USER}"))
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT ON workflow.workflow_start_intents "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT ON workflow.workflow_command_intents "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE UPDATE, DELETE ON workflow.workflow_start_intents "
+                    f"FROM {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE UPDATE, DELETE ON workflow.workflow_command_intents "
+                    f"FROM {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION workflow.current_tenant_id() "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(f"GRANT USAGE ON SCHEMA workflow TO {WORKFLOW_DISPATCHER_USER}")
+            )
+            conn.execute(
+                text(
+                    f"GRANT SELECT, UPDATE ON workflow.workflow_start_intents "
+                    f"TO {WORKFLOW_DISPATCHER_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT SELECT, UPDATE ON workflow.workflow_command_intents "
+                    f"TO {WORKFLOW_DISPATCHER_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE INSERT, DELETE ON workflow.workflow_start_intents "
+                    f"FROM {WORKFLOW_DISPATCHER_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE INSERT, DELETE ON workflow.workflow_command_intents "
+                    f"FROM {WORKFLOW_DISPATCHER_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION workflow.current_tenant_id() "
+                    f"TO {WORKFLOW_DISPATCHER_USER}"
+                )
+            )
 
 
 @pytest.fixture(scope="session")
@@ -189,6 +270,7 @@ def postgres18() -> Iterator[dict[str, str]]:
         b_url = os.environ.get("AIEOS_TEST_BOOTSTRAP_DATABASE_URL", external)
         m_url = external
         r_url = os.environ.get("AIEOS_TEST_RUNTIME_DATABASE_URL", external)
+        d_url = os.environ.get("AIEOS_TEST_WORKFLOW_DISPATCHER_DATABASE_URL", r_url)
         port = HOST_PORT
     else:
         port = start_postgres()
@@ -196,6 +278,7 @@ def postgres18() -> Iterator[dict[str, str]]:
         b_url = bootstrap_url(port)
         m_url = migrator_url(port)
         r_url = runtime_url(port)
+        d_url = workflow_dispatcher_url(port)
 
     bootstrap = wait_for_engine(b_url)
     with bootstrap.connect() as conn:
@@ -215,11 +298,13 @@ def postgres18() -> Iterator[dict[str, str]]:
             "bootstrap_url": b_url,
             "migrator_url": m_url,
             "runtime_url": r_url,
+            "workflow_dispatcher_url": d_url,
             "server_version": str(version),
             "port": port,
             "schema_owner_role": SCHEMA_OWNER_ROLE,
             "migrator_user": MIGRATOR_USER,
             "runtime_user": RUNTIME_USER,
+            "workflow_dispatcher_user": WORKFLOW_DISPATCHER_USER,
         }
     finally:
         bootstrap.dispose()
@@ -252,6 +337,15 @@ def migrator_engine(postgres18: dict[str, str]) -> Iterator[Engine]:
 @pytest.fixture(scope="session")
 def runtime_engine(postgres18: dict[str, str]) -> Iterator[Engine]:
     engine = create_engine(postgres18["runtime_url"])
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def workflow_dispatcher_engine(postgres18: dict[str, str]) -> Iterator[Engine]:
+    engine = create_engine(postgres18["workflow_dispatcher_url"])
     try:
         yield engine
     finally:

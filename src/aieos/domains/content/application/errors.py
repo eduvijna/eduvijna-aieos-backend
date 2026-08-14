@@ -100,3 +100,7 @@ class ReviewRequiresNewVersion(ContentApplicationError):
 
 class ReviewAlreadyDecided(ContentApplicationError):
     """A terminal ReviewDecision already exists for the exact version."""
+
+
+class WorkflowCoordinationFailed(ContentApplicationError):
+    """Internal workflow-intent coordination invariant failed."""

@@ -17,6 +17,7 @@ from aieos.domains.content.application.errors import (
     ReviewRequiresNewVersion,
     ReviewSubmitNotAllowed,
     ReviewVersionNotCurrent,
+    WorkflowCoordinationFailed,
 )
 from aieos.domains.content.application.models import (
     ReviewDecisionResult,
@@ -53,6 +54,23 @@ from aieos.platform.idempotency.models import (
     IdempotencyOutcome,
     IdempotencyScope,
 )
+from aieos.platform.workflows.constants import (
+    CONTENT_REVIEW_TASK_QUEUE,
+    CONTENT_REVIEW_WORKFLOW_MAJOR,
+    CONTENT_REVIEW_WORKFLOW_TYPE,
+    INTENT_PENDING,
+    SIGNAL_REVIEW_DECISION_RECORDED,
+    content_review_business_key,
+    content_review_temporal_workflow_id,
+    review_decision_command_business_key,
+)
+from aieos.platform.workflows.identities import (
+    WorkflowCommandId,
+    WorkflowCommandIntentId,
+    WorkflowInstanceId,
+    WorkflowStartIntentId,
+)
+from aieos.platform.workflows.models import WorkflowCommandIntent, WorkflowStartIntent
 
 _FROZEN_SUBMIT_STATE = StewardshipState.IN_REVIEW.value
 _FROZEN_APPROVE_STATE = StewardshipState.APPROVED.value
@@ -196,6 +214,7 @@ class ReviewCommandService:
                 content_id=content_id,
                 version_id=version_id,
                 expected_aggregate_revision=expected_aggregate_revision,
+                correlation_id=correlation_id,
                 updated_at=decided_at,
             )
             uow.idempotency.insert(
@@ -421,6 +440,7 @@ class ReviewCommandService:
         content_id: ContentId,
         version_id: ContentVersionId,
         expected_aggregate_revision: AggregateRevision,
+        correlation_id: UUID,
         updated_at: datetime,
     ) -> AggregateRevision:
         head = uow.contents.get_head_for_update(content_id)
@@ -453,6 +473,41 @@ class ReviewCommandService:
             raise AggregateRevisionConflict(
                 "aggregate head changed before submit could commit"
             )
+        workflow_instance_id = WorkflowInstanceId.generate()
+        business_key = content_review_business_key(
+            content_id=str(content_id),
+            version_id=str(version_id),
+        )
+        temporal_workflow_id = content_review_temporal_workflow_id(
+            str(workflow_instance_id)
+        )
+        uow.workflow_intents.insert_start_intent(
+            WorkflowStartIntent(
+                workflow_start_intent_id=WorkflowStartIntentId.generate(),
+                tenant_id=execution_tenant_id,
+                workflow_instance_id=workflow_instance_id,
+                workflow_type=CONTENT_REVIEW_WORKFLOW_TYPE,
+                workflow_major_version=CONTENT_REVIEW_WORKFLOW_MAJOR,
+                temporal_workflow_id=temporal_workflow_id,
+                task_queue=CONTENT_REVIEW_TASK_QUEUE,
+                business_key=business_key,
+                input={
+                    "workflow_instance_id": str(workflow_instance_id),
+                    "tenant_id": str(execution_tenant_id),
+                    "content_id": str(content_id),
+                    "version_id": str(version_id),
+                    "correlation_id": str(correlation_id),
+                },
+                status=INTENT_PENDING,
+                attempt_count=0,
+                available_at=updated_at,
+                claimed_by=None,
+                claimed_until=None,
+                delivered_at=None,
+                last_error_code=None,
+                created_at=updated_at,
+            )
+        )
         return resulting
 
     def _decide_new(
@@ -488,6 +543,17 @@ class ReviewCommandService:
             raise ReviewAlreadyDecided(
                 "this ContentVersion already has a terminal ReviewDecision"
             )
+        start_intent = uow.workflow_intents.get_start_intent_by_business_key(
+            workflow_type=CONTENT_REVIEW_WORKFLOW_TYPE,
+            business_key=content_review_business_key(
+                content_id=str(content_id),
+                version_id=str(version_id),
+            ),
+        )
+        if start_intent is None:
+            raise WorkflowCoordinationFailed(
+                "review workflow start intent is missing for the review cycle"
+            )
         stored = ReviewDecision(
             review_decision_id=ReviewDecisionId.generate(),
             tenant_id=execution_tenant_id,
@@ -516,6 +582,37 @@ class ReviewCommandService:
             raise AggregateRevisionConflict(
                 "aggregate head changed before the review decision could commit"
             )
+        command_id = WorkflowCommandId.generate()
+        uow.workflow_intents.insert_command_intent(
+            WorkflowCommandIntent(
+                workflow_command_intent_id=WorkflowCommandIntentId.generate(),
+                tenant_id=execution_tenant_id,
+                workflow_instance_id=start_intent.workflow_instance_id,
+                temporal_workflow_id=start_intent.temporal_workflow_id,
+                command_id=command_id,
+                command_type=SIGNAL_REVIEW_DECISION_RECORDED,
+                business_key=review_decision_command_business_key(
+                    str(stored.review_decision_id)
+                ),
+                payload={
+                    "command_id": str(command_id),
+                    "workflow_instance_id": str(start_intent.workflow_instance_id),
+                    "review_decision_id": str(stored.review_decision_id),
+                    "content_id": str(content_id),
+                    "version_id": str(version_id),
+                    "decision": decision.value,
+                    "correlation_id": str(correlation_id),
+                },
+                status=INTENT_PENDING,
+                attempt_count=0,
+                available_at=decided_at,
+                claimed_by=None,
+                claimed_until=None,
+                delivered_at=None,
+                last_error_code=None,
+                created_at=decided_at,
+            )
+        )
         return stored, resulting
 
     def _replay_decision(
