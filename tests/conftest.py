@@ -23,6 +23,7 @@ BOOTSTRAP_USER = "aieos_bootstrap"
 SCHEMA_OWNER_ROLE = "aieos_content_owner"
 MIGRATOR_USER = "aieos_migrator"
 RUNTIME_USER = "aieos_runtime"
+MIGRATION_RUNTIME_USER = "aieos_content_migration_runtime"
 WORKFLOW_DISPATCHER_USER = "aieos_workflow_dispatcher"
 EVENT_DISPATCHER_USER = "aieos_event_dispatcher"
 DB_NAME = "aieos"
@@ -47,6 +48,13 @@ def migrator_url(port: str) -> str:
 def runtime_url(port: str) -> str:
     return (
         f"postgresql+psycopg://{RUNTIME_USER}:{DB_PASSWORD}"
+        f"@127.0.0.1:{port}/{DB_NAME}"
+    )
+
+
+def migration_runtime_url(port: str) -> str:
+    return (
+        f"postgresql+psycopg://{MIGRATION_RUNTIME_USER}:{DB_PASSWORD}"
         f"@127.0.0.1:{port}/{DB_NAME}"
     )
 
@@ -138,6 +146,12 @@ def provision_identities(bootstrap: Engine) -> None:
                             NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
                     END IF;
                     IF NOT EXISTS (
+                        SELECT 1 FROM pg_roles WHERE rolname = '{MIGRATION_RUNTIME_USER}'
+                    ) THEN
+                        CREATE ROLE {MIGRATION_RUNTIME_USER} LOGIN PASSWORD '{DB_PASSWORD}'
+                            NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+                    END IF;
+                    IF NOT EXISTS (
                         SELECT 1 FROM pg_roles WHERE rolname = '{WORKFLOW_DISPATCHER_USER}'
                     ) THEN
                         CREATE ROLE {WORKFLOW_DISPATCHER_USER} LOGIN PASSWORD '{DB_PASSWORD}'
@@ -158,6 +172,9 @@ def provision_identities(bootstrap: Engine) -> None:
         conn.execute(text(f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} TO {SCHEMA_OWNER_ROLE}"))
         conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {MIGRATOR_USER}"))
         conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {RUNTIME_USER}"))
+        conn.execute(
+            text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {MIGRATION_RUNTIME_USER}")
+        )
         conn.execute(
             text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {WORKFLOW_DISPATCHER_USER}")
         )
@@ -215,6 +232,107 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
             conn.execute(
                 text(
                     f"REVOKE UPDATE, DELETE ON content.version_asset_refs FROM {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE ALL ON content.migration_import_records FROM {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT SELECT ON content.migration_import_records TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE INSERT, UPDATE, DELETE ON content.migration_import_records "
+                    f"FROM {RUNTIME_USER}"
+                )
+            )
+            conn.execute(text(f"GRANT USAGE ON SCHEMA content TO {MIGRATION_RUNTIME_USER}"))
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT, UPDATE ON content.contents "
+                    f"TO {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT ON content.content_versions "
+                    f"TO {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE UPDATE, DELETE ON content.content_versions "
+                    f"FROM {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(f"REVOKE DELETE ON content.contents FROM {MIGRATION_RUNTIME_USER}")
+            )
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT ON content.version_asset_refs "
+                    f"TO {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE UPDATE, DELETE ON content.version_asset_refs "
+                    f"FROM {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT, UPDATE ON content.migration_import_records "
+                    f"TO {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE DELETE ON content.migration_import_records "
+                    f"FROM {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE INSERT, UPDATE, DELETE ON content.review_decisions "
+                    f"FROM {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE INSERT, UPDATE, DELETE ON content.publications "
+                    f"FROM {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION content.current_tenant_id() "
+                    f"TO {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(f"GRANT USAGE ON SCHEMA integration TO {MIGRATION_RUNTIME_USER}")
+            )
+            conn.execute(
+                text(
+                    f"GRANT INSERT ON integration.outbox_messages "
+                    f"TO {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE SELECT, UPDATE, DELETE ON integration.outbox_messages "
+                    f"FROM {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION integration.current_tenant_id() "
+                    f"TO {MIGRATION_RUNTIME_USER}"
                 )
             )
             conn.execute(text(f"GRANT USAGE ON SCHEMA api TO {RUNTIME_USER}"))
@@ -354,6 +472,7 @@ def postgres18() -> Iterator[dict[str, str]]:
         b_url = os.environ.get("AIEOS_TEST_BOOTSTRAP_DATABASE_URL", external)
         m_url = external
         r_url = os.environ.get("AIEOS_TEST_RUNTIME_DATABASE_URL", external)
+        mig_url = os.environ.get("AIEOS_TEST_MIGRATION_RUNTIME_DATABASE_URL", r_url)
         d_url = os.environ.get("AIEOS_TEST_WORKFLOW_DISPATCHER_DATABASE_URL", r_url)
         e_url = os.environ.get("AIEOS_TEST_EVENT_DISPATCHER_DATABASE_URL", r_url)
         port = HOST_PORT
@@ -363,6 +482,7 @@ def postgres18() -> Iterator[dict[str, str]]:
         b_url = bootstrap_url(port)
         m_url = migrator_url(port)
         r_url = runtime_url(port)
+        mig_url = migration_runtime_url(port)
         d_url = workflow_dispatcher_url(port)
         e_url = event_dispatcher_url(port)
 
@@ -384,6 +504,7 @@ def postgres18() -> Iterator[dict[str, str]]:
             "bootstrap_url": b_url,
             "migrator_url": m_url,
             "runtime_url": r_url,
+            "migration_runtime_url": mig_url,
             "workflow_dispatcher_url": d_url,
             "event_dispatcher_url": e_url,
             "server_version": str(version),
@@ -391,6 +512,7 @@ def postgres18() -> Iterator[dict[str, str]]:
             "schema_owner_role": SCHEMA_OWNER_ROLE,
             "migrator_user": MIGRATOR_USER,
             "runtime_user": RUNTIME_USER,
+            "migration_runtime_user": MIGRATION_RUNTIME_USER,
             "workflow_dispatcher_user": WORKFLOW_DISPATCHER_USER,
             "event_dispatcher_user": EVENT_DISPATCHER_USER,
         }
@@ -425,6 +547,15 @@ def migrator_engine(postgres18: dict[str, str]) -> Iterator[Engine]:
 @pytest.fixture(scope="session")
 def runtime_engine(postgres18: dict[str, str]) -> Iterator[Engine]:
     engine = create_engine(postgres18["runtime_url"])
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def migration_runtime_engine(postgres18: dict[str, str]) -> Iterator[Engine]:
+    engine = create_engine(postgres18["migration_runtime_url"])
     try:
         yield engine
     finally:

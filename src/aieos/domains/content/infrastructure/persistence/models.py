@@ -132,6 +132,10 @@ content_versions_table = Table(
         "origin <> 'AI' OR content.ai_generation_provenance_v1_is_valid(provenance)",
         name="ck_content_versions_ai_provenance_v1",
     ),
+    CheckConstraint(
+        "origin <> 'IMPORT' OR content.migration_import_provenance_v1_is_valid(provenance)",
+        name="ck_content_versions_migration_import_provenance_v1",
+    ),
     ForeignKeyConstraint(
         ["tenant_id", "content_id"],
         ["content.contents.tenant_id", "content.contents.content_id"],
@@ -328,5 +332,97 @@ version_asset_refs_table = Table(
         "content_id",
         "version_id",
     ),
+    schema="content",
+)
+
+migration_import_records_table = Table(
+    "migration_import_records",
+    content_metadata,
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("source_system", Text, nullable=False),
+    Column("source_resource_type", Text, nullable=False),
+    Column("source_resource_id", Text, nullable=False),
+    Column("source_version", Text, nullable=True),
+    Column("source_digest_sha256", String(64), nullable=False),
+    Column("mapping_id", Text, nullable=False),
+    Column("mapping_version", Integer, nullable=False),
+    Column("first_migration_batch_id", UUID(as_uuid=True), nullable=False),
+    Column("last_migration_batch_id", UUID(as_uuid=True), nullable=False),
+    Column("outcome", Text, nullable=False),
+    Column("target_content_id", UUID(as_uuid=True), nullable=True),
+    Column("target_version_id", UUID(as_uuid=True), nullable=True),
+    Column("attempt_count", Integer, nullable=False),
+    Column("first_attempt_at", DateTime(timezone=True), nullable=False),
+    Column("last_attempt_at", DateTime(timezone=True), nullable=False),
+    Column("completed_at", DateTime(timezone=True), nullable=True),
+    Column("failure_code", Text, nullable=True),
+    PrimaryKeyConstraint(
+        "tenant_id",
+        "source_system",
+        "source_resource_type",
+        "source_resource_id",
+        name="pk_migration_import_records",
+    ),
+    CheckConstraint(
+        "source_system ~ '^[a-z][a-z0-9._-]{0,63}$'",
+        name="ck_migration_import_records_source_system",
+    ),
+    CheckConstraint(
+        "source_resource_type ~ '^[a-z][a-z0-9._-]{0,63}$'",
+        name="ck_migration_import_records_source_resource_type",
+    ),
+    CheckConstraint(
+        "length(source_resource_id) BETWEEN 1 AND 255 "
+        "AND source_resource_id = btrim(source_resource_id) "
+        "AND source_resource_id !~ '[[:cntrl:]]'",
+        name="ck_migration_import_records_source_resource_id",
+    ),
+    CheckConstraint(
+        "source_version IS NULL OR ("
+        "length(source_version) BETWEEN 1 AND 255 "
+        "AND source_version = btrim(source_version) "
+        "AND source_version !~ '[[:cntrl:]]'"
+        ")",
+        name="ck_migration_import_records_source_version",
+    ),
+    CheckConstraint(
+        "source_digest_sha256 ~ '^[0-9a-f]{64}$'",
+        name="ck_migration_import_records_source_digest",
+    ),
+    CheckConstraint(
+        "mapping_id ~ '^[a-z][a-z0-9._-]{0,63}$'",
+        name="ck_migration_import_records_mapping_id",
+    ),
+    CheckConstraint(
+        "mapping_version >= 1",
+        name="ck_migration_import_records_mapping_version",
+    ),
+    CheckConstraint(
+        "attempt_count >= 1",
+        name="ck_migration_import_records_attempt_count",
+    ),
+    CheckConstraint(
+        "failure_code IS NULL OR ("
+        "char_length(failure_code) <= 64 AND "
+        "failure_code ~ '^[a-z][a-z0-9._-]*$'"
+        ")",
+        name="ck_migration_import_records_failure_code",
+    ),
+    CheckConstraint(
+        "("
+        "outcome = 'IMPORTED' "
+        "AND target_content_id IS NOT NULL "
+        "AND target_version_id IS NOT NULL "
+        "AND completed_at IS NOT NULL "
+        "AND failure_code IS NULL"
+        ") OR ("
+        "outcome = 'FAILED' "
+        "AND target_content_id IS NULL "
+        "AND target_version_id IS NULL "
+        "AND failure_code IS NOT NULL"
+        ")",
+        name="ck_migration_import_records_outcome",
+    ),
+    Index("ix_migration_import_records_tenant_id", "tenant_id"),
     schema="content",
 )

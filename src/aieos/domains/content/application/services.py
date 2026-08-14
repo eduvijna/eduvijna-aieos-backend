@@ -16,6 +16,7 @@ from aieos.domains.content.application.errors import (
     AIProvenanceInvalid,
     ContentNotFound,
     ContentVersionAppendNotAllowed,
+    MigrationImportProvenanceInvalid,
     PersistenceInvariantViolation,
     TenantContextMismatch,
     VersionLineageConflict,
@@ -30,7 +31,15 @@ from aieos.domains.content.application.ports import (
     ContentUnitOfWork,
     ContentUnitOfWorkFactory,
 )
-from aieos.domains.content.domain.errors import InvalidAIGenerationProvenanceError
+from aieos.domains.content.domain.errors import (
+    InvalidAIGenerationProvenanceError,
+    InvalidMigrationImportProvenanceError,
+)
+from aieos.domains.content.domain.migration_provenance import (
+    MigrationImportProvenanceV1,
+    migration_import_provenance_as_json,
+    migration_import_provenance_from_json,
+)
 from aieos.domains.content.domain.origin import ContentOrigin
 from aieos.domains.content.domain.provenance import (
     AIGenerationProvenanceV1,
@@ -61,8 +70,15 @@ def _require_object_mapping(value: Mapping[str, object] | None, *, label: str) -
 
 
 def _normalize_ai_provenance(
-    value: AIGenerationProvenanceV1 | Mapping[str, object] | None,
+    value: AIGenerationProvenanceV1
+    | MigrationImportProvenanceV1
+    | Mapping[str, object]
+    | None,
 ) -> tuple[AIGenerationProvenanceV1, dict[str, object]]:
+    if isinstance(value, MigrationImportProvenanceV1):
+        raise PersistenceInvariantViolation(
+            "MigrationImportProvenanceV1 is only valid for origin IMPORT"
+        )
     if value is None:
         raise AIProvenanceInvalid("origin AI requires typed AIGenerationProvenanceV1")
     try:
@@ -77,6 +93,34 @@ def _normalize_ai_provenance(
     except InvalidAIGenerationProvenanceError as exc:
         raise AIProvenanceInvalid(str(exc)) from exc
     return typed, ai_generation_provenance_as_json(typed)
+
+
+def _normalize_migration_provenance(
+    value: AIGenerationProvenanceV1
+    | MigrationImportProvenanceV1
+    | Mapping[str, object]
+    | None,
+) -> tuple[MigrationImportProvenanceV1, dict[str, object]]:
+    if isinstance(value, AIGenerationProvenanceV1):
+        raise PersistenceInvariantViolation(
+            "AIGenerationProvenanceV1 is only valid for origin AI"
+        )
+    if value is None:
+        raise MigrationImportProvenanceInvalid(
+            "origin IMPORT requires typed MigrationImportProvenanceV1"
+        )
+    try:
+        if isinstance(value, MigrationImportProvenanceV1):
+            typed = value
+        elif isinstance(value, Mapping):
+            typed = migration_import_provenance_from_json(value)
+        else:
+            raise MigrationImportProvenanceInvalid(
+                "origin IMPORT requires typed MigrationImportProvenanceV1"
+            )
+    except InvalidMigrationImportProvenanceError as exc:
+        raise MigrationImportProvenanceInvalid(str(exc)) from exc
+    return typed, migration_import_provenance_as_json(typed)
 
 
 def _assert_linear_append(head: LockedContentHead, version: ContentVersion) -> None:
@@ -116,10 +160,16 @@ def append_version_in_uow(
     provenance_payload: Mapping[str, Any] | None
     if version.origin is ContentOrigin.AI:
         _typed, provenance_payload = _normalize_ai_provenance(command.provenance)
+    elif version.origin is ContentOrigin.IMPORT:
+        _typed, provenance_payload = _normalize_migration_provenance(command.provenance)
     else:
         if isinstance(command.provenance, AIGenerationProvenanceV1):
             raise PersistenceInvariantViolation(
                 "AIGenerationProvenanceV1 is only valid for origin AI"
+            )
+        if isinstance(command.provenance, MigrationImportProvenanceV1):
+            raise PersistenceInvariantViolation(
+                "MigrationImportProvenanceV1 is only valid for origin IMPORT"
             )
         _require_object_mapping(command.provenance, label="provenance")
         provenance_payload = (

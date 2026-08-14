@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, or_, select, text, update
 from sqlalchemy.engine import Connection
 
 from aieos.domains.content.application.errors import (
@@ -16,6 +16,7 @@ from aieos.domains.content.application.errors import (
     ReviewAlreadyDecided,
     VersionAlreadyExists,
 )
+from aieos.domains.content.application.migration_models import MigrationImportRecord
 from aieos.domains.content.application.models import LockedContentHead
 from aieos.domains.content.application.review_queue_models import (
     ARTIFACT_STATUS_IN_REVIEW,
@@ -50,6 +51,7 @@ from aieos.domains.content.infrastructure.persistence.mapping import (
 from aieos.domains.content.infrastructure.persistence.models import (
     content_versions_table,
     contents_table,
+    migration_import_records_table,
     publications_table,
     review_decisions_table,
     version_asset_refs_table,
@@ -738,3 +740,190 @@ class SqlAlchemyReviewQueueReadRepository:
             payload=thawed,
             payload_sha256=str(row["payload_sha256"]),
         )
+
+
+def _migration_import_record_from_row(row: Mapping[str, object]) -> MigrationImportRecord:
+    return MigrationImportRecord(
+        tenant_id=row["tenant_id"],  # type: ignore[arg-type]
+        source_system=str(row["source_system"]),
+        source_resource_type=str(row["source_resource_type"]),
+        source_resource_id=str(row["source_resource_id"]),
+        source_version=(
+            None if row["source_version"] is None else str(row["source_version"])
+        ),
+        source_digest_sha256=str(row["source_digest_sha256"]).rstrip(),
+        mapping_id=str(row["mapping_id"]),
+        mapping_version=int(row["mapping_version"]),  # type: ignore[arg-type]
+        first_migration_batch_id=row["first_migration_batch_id"],  # type: ignore[arg-type]
+        last_migration_batch_id=row["last_migration_batch_id"],  # type: ignore[arg-type]
+        outcome=str(row["outcome"]),
+        target_content_id=row["target_content_id"],  # type: ignore[arg-type]
+        target_version_id=row["target_version_id"],  # type: ignore[arg-type]
+        attempt_count=int(row["attempt_count"]),  # type: ignore[arg-type]
+        first_attempt_at=row["first_attempt_at"],  # type: ignore[arg-type]
+        last_attempt_at=row["last_attempt_at"],  # type: ignore[arg-type]
+        completed_at=row["completed_at"],  # type: ignore[arg-type]
+        failure_code=(
+            None if row["failure_code"] is None else str(row["failure_code"])
+        ),
+    )
+
+
+class SqlAlchemyMigrationImportRecordRepository:
+    def __init__(self, connection: Connection, execution_tenant_id: UUID) -> None:
+        self._connection = connection
+        self._execution_tenant_id = execution_tenant_id
+
+    def lock_source(
+        self,
+        source_system: str,
+        source_resource_type: str,
+        source_resource_id: str,
+    ) -> None:
+        key = (
+            f"{self._execution_tenant_id}|{source_system}|"
+            f"{source_resource_type}|{source_resource_id}"
+        )
+        try:
+            self._connection.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                {"lock_key": key},
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+
+    def get(
+        self,
+        source_system: str,
+        source_resource_type: str,
+        source_resource_id: str,
+    ) -> MigrationImportRecord | None:
+        try:
+            row = (
+                self._connection.execute(
+                    select(migration_import_records_table).where(
+                        migration_import_records_table.c.tenant_id
+                        == self._execution_tenant_id,
+                        migration_import_records_table.c.source_system == source_system,
+                        migration_import_records_table.c.source_resource_type
+                        == source_resource_type,
+                        migration_import_records_table.c.source_resource_id
+                        == source_resource_id,
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if row is None:
+            return None
+        return _migration_import_record_from_row(row)
+
+    def insert_imported(self, record: MigrationImportRecord) -> None:
+        self._insert(record)
+
+    def insert_failed(self, record: MigrationImportRecord) -> None:
+        self._insert(record)
+
+    def mark_imported_from_failed(
+        self,
+        prior: MigrationImportRecord,
+        *,
+        target_content_id: UUID,
+        target_version_id: UUID,
+        migration_batch_id: UUID,
+        completed_at: datetime,
+    ) -> None:
+        stmt = (
+            update(migration_import_records_table)
+            .where(
+                migration_import_records_table.c.tenant_id == prior.tenant_id,
+                migration_import_records_table.c.source_system == prior.source_system,
+                migration_import_records_table.c.source_resource_type
+                == prior.source_resource_type,
+                migration_import_records_table.c.source_resource_id
+                == prior.source_resource_id,
+                migration_import_records_table.c.outcome == "FAILED",
+            )
+            .values(
+                outcome="IMPORTED",
+                target_content_id=target_content_id,
+                target_version_id=target_version_id,
+                last_migration_batch_id=migration_batch_id,
+                attempt_count=prior.attempt_count + 1,
+                last_attempt_at=completed_at,
+                completed_at=completed_at,
+                failure_code=None,
+            )
+        )
+        try:
+            result = self._connection.execute(stmt)
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if result.rowcount != 1:
+            raise PersistenceInvariantViolation(
+                "FAILED migration record could not be marked IMPORTED"
+            )
+
+    def update_failed_retry(
+        self,
+        prior: MigrationImportRecord,
+        *,
+        migration_batch_id: UUID,
+        failure_code: str,
+        attempted_at: datetime,
+    ) -> None:
+        stmt = (
+            update(migration_import_records_table)
+            .where(
+                migration_import_records_table.c.tenant_id == prior.tenant_id,
+                migration_import_records_table.c.source_system == prior.source_system,
+                migration_import_records_table.c.source_resource_type
+                == prior.source_resource_type,
+                migration_import_records_table.c.source_resource_id
+                == prior.source_resource_id,
+                migration_import_records_table.c.outcome == "FAILED",
+            )
+            .values(
+                last_migration_batch_id=migration_batch_id,
+                attempt_count=prior.attempt_count + 1,
+                last_attempt_at=attempted_at,
+                failure_code=failure_code,
+            )
+        )
+        try:
+            result = self._connection.execute(stmt)
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if result.rowcount != 1:
+            raise PersistenceInvariantViolation(
+                "FAILED migration record could not be updated for retry"
+            )
+
+    def _insert(self, record: MigrationImportRecord) -> None:
+        try:
+            self._connection.execute(
+                migration_import_records_table.insert().values(
+                    tenant_id=record.tenant_id,
+                    source_system=record.source_system,
+                    source_resource_type=record.source_resource_type,
+                    source_resource_id=record.source_resource_id,
+                    source_version=record.source_version,
+                    source_digest_sha256=record.source_digest_sha256,
+                    mapping_id=record.mapping_id,
+                    mapping_version=record.mapping_version,
+                    first_migration_batch_id=record.first_migration_batch_id,
+                    last_migration_batch_id=record.last_migration_batch_id,
+                    outcome=record.outcome,
+                    target_content_id=record.target_content_id,
+                    target_version_id=record.target_version_id,
+                    attempt_count=record.attempt_count,
+                    first_attempt_at=record.first_attempt_at,
+                    last_attempt_at=record.last_attempt_at,
+                    completed_at=record.completed_at,
+                    failure_code=record.failure_code,
+                )
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)

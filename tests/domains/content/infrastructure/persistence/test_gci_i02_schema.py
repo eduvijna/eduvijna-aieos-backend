@@ -227,6 +227,7 @@ class TestAlembicAndCatalog:
                 "review_decisions",
                 "publications",
                 "version_asset_refs",
+                "migration_import_records",
             }
             api_tables = {
                 row[0]
@@ -237,7 +238,7 @@ class TestAlembicAndCatalog:
             assert "api" in schemas
             assert api_tables == {"idempotency_records"}
             revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            assert revision == "gcii110001"
+            assert revision == "gcii130001"
             gcii02 = (
                 REPO_ROOT / "migrations" / "versions" / "gcii020001_content_schema.py"
             ).read_text(encoding="utf-8")
@@ -271,12 +272,13 @@ class TestAlembicAndCatalog:
             "review_decisions",
             "publications",
             "version_asset_refs",
+            "migration_import_records",
         }
         assert "api" in insp.get_schema_names()
         assert set(insp.get_table_names(schema="api")) == {"idempotency_records"}
         with bootstrap_engine.connect() as conn:
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "gcii110001"
+                "gcii130001"
             )
         assert "workflow" in insp.get_schema_names()
         assert set(insp.get_table_names(schema="workflow")) == {
@@ -345,6 +347,24 @@ class TestConstraints:
             for origin in ("HUMAN", "IMPORT", "SYSTEM"):
                 tenant_id, content_id, version_id = _ids()
                 _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
+                if origin == "IMPORT":
+                    import json
+
+                    prov = {
+                        "kind": "migration_import",
+                        "schema_version": 1,
+                        "migration_batch_id": str(uuid.uuid7()),
+                        "source_system": "legacy.edu",
+                        "source_resource_type": "lesson",
+                        "source_resource_id": "42",
+                        "source_version": None,
+                        "source_digest_sha256": "a" * 64,
+                        "mapping_id": "edu.lesson.v1",
+                        "mapping_version": 1,
+                    }
+                    provenance_sql = f"'{json.dumps(prov)}'::jsonb"
+                else:
+                    provenance_sql = "NULL"
                 _insert_version_json(
                     conn,
                     tenant_id=tenant_id,
@@ -353,6 +373,7 @@ class TestConstraints:
                     version_number=1,
                     parent_version_id=None,
                     origin=origin,
+                    provenance_sql=provenance_sql,
                 )
 
     def test_aggregate_revision_and_version_number(self, bootstrap_engine) -> None:
@@ -1094,6 +1115,9 @@ class TestArchitectureBoundary:
         ).is_file()
         assert (
             REPO_ROOT / "migrations" / "versions" / "gcii110001_ai_provenance.py"
+        ).is_file()
+        assert (
+            REPO_ROOT / "migrations" / "versions" / "gcii130001_migration_import.py"
         ).is_file()
         assert (
             REPO_ROOT / "migrations" / "versions" / "gcii090001_publications.py"

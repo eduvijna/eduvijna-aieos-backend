@@ -15,6 +15,7 @@ from aieos.domains.content.infrastructure.persistence.errors import (
 from aieos.domains.content.infrastructure.persistence.repositories import (
     SqlAlchemyContentRepository,
     SqlAlchemyContentVersionRepository,
+    SqlAlchemyMigrationImportRecordRepository,
     SqlAlchemyPublicationRepository,
     SqlAlchemyReviewDecisionRepository,
     SqlAlchemyReviewQueueReadRepository,
@@ -41,6 +42,7 @@ class SqlAlchemyContentUnitOfWork:
         self.publications: SqlAlchemyPublicationRepository
         self.version_asset_refs: SqlAlchemyVersionAssetRefRepository
         self.review_queue: SqlAlchemyReviewQueueReadRepository
+        self.migration_imports: SqlAlchemyMigrationImportRecordRepository
         self.idempotency: SqlAlchemyIdempotencyRepository
         self.workflow_intents: SqlAlchemyWorkflowIntentRepository
         self.outbox: SqlAlchemyOutboxRepository
@@ -63,6 +65,9 @@ class SqlAlchemyContentUnitOfWork:
                 self._connection
             )
             self.review_queue = SqlAlchemyReviewQueueReadRepository(
+                self._connection, self._execution_tenant_id
+            )
+            self.migration_imports = SqlAlchemyMigrationImportRecordRepository(
                 self._connection, self._execution_tenant_id
             )
             self.idempotency = SqlAlchemyIdempotencyRepository(

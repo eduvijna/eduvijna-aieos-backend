@@ -478,5 +478,5 @@ class TestAlembicOwnership:
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "gcii110001"
+                "gcii130001"
             )

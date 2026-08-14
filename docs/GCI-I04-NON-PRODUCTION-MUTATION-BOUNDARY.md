@@ -1,11 +1,11 @@
 ---
-id: GCI-I12-NON-PRODUCTION-MUTATION-BOUNDARY
-title: Generic Content HTTP mutations are not production mutations
+id: GCI-I13-NON-PRODUCTION-MUTATION-BOUNDARY
+title: Generic Content HTTP mutations and controlled migration remain non-production
 status: draft
-version: 0.9.0
+version: 1.0.0
 ---
 
-# GCI-I12 non-production mutation boundary
+# GCI-I13 non-production mutation boundary
 
 Idempotency-Key is now required for:
 
@@ -24,24 +24,32 @@ GCI-I12 adds a durable **read-only** Teacher OS Review Queue projection:
 
 derived from authoritative Content `IN_REVIEW` current versions. There is no separate Review Queue table or mutation surface.
 
+GCI-I13 adds a controlled **migration adapter foundation**:
+
+- typed `MigrationImportProvenanceV1` for `origin=IMPORT`
+- durable `content.migration_import_records` source→target evidence
+- GCI-G12 replay / digest / mapping conflict detection
+- internal `ImportMigratedContentService` (no public migration HTTP)
+
 All of the HTTP mutation routes above remain a **development / test mutation foundation**.
 
 They MUST NOT be authorized for production mutation until later slices integrate the required transactional:
 
 - security-audit intent persistence
 
-GCI-I08–I12 provide transactional event-publication intent (including publish), ResourceRef dual validation, typed AI provenance materialization, and Teacher OS Review Queue reads, but still lack required security-audit intent for mutations. Therefore Content mutations remain **NON-PRODUCTION**.
+GCI-I08–I13 provide transactional event-publication intent (including publish), ResourceRef dual validation, typed AI provenance materialization, Teacher OS Review Queue reads, and a controlled migration import foundation, but still lack required security-audit intent for mutations. Therefore Content mutations and controlled migration import remain **NON-PRODUCTION**.
 
-GCI-I12 does **not** create:
+GCI-I13 does **not** create:
 
-- `review_queue` / assignment / claim / notification tables
-- Teacher OS frontend wiring / feature flags
-- review-decision mutation aliases under Teacher OS
+- public migration HTTP routes (`/migrate`, `/imports`, `/legacy`)
+- production legacy connectors (PostgREST, `edu.content`, legacy APIs)
+- review/publication trust import from legacy approval/publish state
 - archive HTTP or `content.archived` emission
 - audit tables / audit dispatchers
-- GCI-I13 or later structures (migration adapter, adversarial suite)
+- GCI-I14 adversarial suite structures
 - a production NATS topology, credentials, or dispatcher daemon
+- authorization to read production legacy data or write production AIEOS Content
 
-Durable outbox event-publication intent exists (including publish). Required security-audit intent still does not. Idempotency remains synchronous API retry state, not Content business authority and not a substitute for audit intent.
+Durable outbox event-publication intent exists (including publish and import). Required security-audit intent still does not. Idempotency remains synchronous API retry state, not Content business authority and not a substitute for audit intent. Migration replay identity is source evidence, not `Idempotency-Key`.
 
-No production deployment or production database mutation entrypoint is authorized by this slice.
+No production deployment, production database mutation entrypoint, or real production migration batch is authorized by this slice.

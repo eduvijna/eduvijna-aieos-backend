@@ -75,5 +75,13 @@ class InvalidAIGenerationProvenanceError(ContentDomainError):
     """Raised when AI generation provenance fails the allow-listed V1 contract."""
 
 
+class InvalidMigrationSourceIdentityError(ContentDomainError):
+    """Raised when migration source identity or mapping identifiers are invalid."""
+
+
+class InvalidMigrationImportProvenanceError(ContentDomainError):
+    """Raised when migration import provenance fails the allow-listed V1 contract."""
+
+
 class InvalidContentAggregateError(ContentDomainError):
     """Raised when a Content aggregate violates domain invariants."""

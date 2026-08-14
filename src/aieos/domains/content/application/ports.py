@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Mapping, Protocol
 from uuid import UUID
 
+from aieos.domains.content.application.migration_models import MigrationImportRecord
 from aieos.domains.content.application.models import LockedContentHead
 from aieos.domains.content.application.review_queue_models import (
     TeacherReviewQueueDetail,
@@ -33,6 +34,7 @@ CONTENT_REVIEW_SUBMIT = "content.review.submit"
 CONTENT_REVIEW_DECIDE = "content.review.decide"
 CONTENT_PUBLISH = "content.publish"
 CONTENT_VERSION_CREATE = "content.version.create"
+CONTENT_MIGRATE_IMPORT = "content.migrate.import"
 
 
 class ContentVersionRepository(Protocol):
@@ -148,6 +150,59 @@ class AIGenerationAuthorizationPort(Protocol):
     ) -> None: ...
 
 
+class ContentMigrationAuthorizationPort(Protocol):
+    """Current capability check for content.migrate.import."""
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+    ) -> None: ...
+
+
+class MigrationImportRecordRepository(Protocol):
+    """Durable migration source→target evidence. Not Content aggregate state."""
+
+    def lock_source(
+        self,
+        source_system: str,
+        source_resource_type: str,
+        source_resource_id: str,
+    ) -> None: ...
+
+    def get(
+        self,
+        source_system: str,
+        source_resource_type: str,
+        source_resource_id: str,
+    ) -> MigrationImportRecord | None: ...
+
+    def insert_imported(self, record: MigrationImportRecord) -> None: ...
+
+    def insert_failed(self, record: MigrationImportRecord) -> None: ...
+
+    def mark_imported_from_failed(
+        self,
+        prior: MigrationImportRecord,
+        *,
+        target_content_id: UUID,
+        target_version_id: UUID,
+        migration_batch_id: UUID,
+        completed_at: datetime,
+    ) -> None: ...
+
+    def update_failed_retry(
+        self,
+        prior: MigrationImportRecord,
+        *,
+        migration_batch_id: UUID,
+        failure_code: str,
+        attempted_at: datetime,
+    ) -> None: ...
+
+
 class VersionAssetRefRepository(Protocol):
     def insert_many(self, refs: Sequence[VersionAssetRef]) -> None: ...
 
@@ -241,6 +296,7 @@ class ContentUnitOfWork(Protocol):
     publications: PublicationRepository
     version_asset_refs: VersionAssetRefRepository
     review_queue: ReviewQueueReadRepository
+    migration_imports: MigrationImportRecordRepository
     idempotency: IdempotencyRepository
     workflow_intents: WorkflowIntentRepository
     outbox: OutboxRepository

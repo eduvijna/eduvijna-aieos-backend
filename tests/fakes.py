@@ -194,6 +194,26 @@ class AllowAIGenerationAuthorization:
             raise AIGenerationForbidden("AI generation materialization forbidden")
 
 
+class AllowMigrationAuthorization:
+    def __init__(self, *, allow: bool = True) -> None:
+        self.allow = allow
+        self.calls: list[tuple[UUID, str]] = []
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+    ) -> None:
+        from aieos.domains.content.application.errors import MigrationForbidden
+        from aieos.domains.content.application.ports import CONTENT_MIGRATE_IMPORT
+
+        self.calls.append((principal_id, capability))
+        if not self.allow or capability != CONTENT_MIGRATE_IMPORT:
+            raise MigrationForbidden("content.migrate.import denied")
+
+
 def make_test_schema_registry() -> ContentSchemaRegistry:
     registry = ContentSchemaRegistry()
     registry.register(TEST_GENERIC_V1)

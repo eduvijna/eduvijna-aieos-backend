@@ -146,6 +146,26 @@ class ReviewQueueInvalidRequest(ContentApplicationError):
     """Teacher OS Review Queue request violates a queue-specific contract."""
 
 
+class MigrationImportProvenanceInvalid(ContentApplicationError):
+    """Migration import provenance failed the typed allow-listed V1 contract."""
+
+
+class MigrationForbidden(ContentApplicationError):
+    """Current principal lacks content.migrate.import."""
+
+
+class MigrationSourceConflict(ContentApplicationError):
+    """Observed source identity conflicts with established migration evidence."""
+
+
+class MigrationInvariantViolation(ContentApplicationError):
+    """Established migration evidence requires governed reconciliation."""
+
+
+class MigrationCandidateInvalid(ContentApplicationError):
+    """MigrationContentCandidate failed canonical validation."""
+
+
 class PublicationGovernanceRejected(ContentApplicationError):
     """Publication governance rejected the candidate."""
 

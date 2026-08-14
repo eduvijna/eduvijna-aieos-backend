@@ -148,7 +148,7 @@ class TestAlembicCycle:
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "gcii110001"
+                "gcii130001"
             )
             api_tables = {
                 row[0]
@@ -171,4 +171,5 @@ class TestAlembicCycle:
             "gcii090001_publications.py",
             "gcii100001_version_asset_refs.py",
     "gcii110001_ai_provenance.py",
+    "gcii130001_migration_import.py",
         ]

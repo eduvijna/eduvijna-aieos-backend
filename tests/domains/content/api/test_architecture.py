@@ -24,6 +24,7 @@ _EXPECTED_MIGRATIONS = [
     "gcii090001_publications.py",
     "gcii100001_version_asset_refs.py",
     "gcii110001_ai_provenance.py",
+    "gcii130001_migration_import.py",
 ]
 
 
@@ -75,7 +76,7 @@ def test_get_does_not_perform_privileged_second_lookup() -> None:
     assert text.count(".get(") == 1
 
 
-def test_no_gci_i13_or_later_structures() -> None:
+def test_no_gci_i14_or_unauthorized_structures() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
     for needle in (
         "PATCH",
@@ -84,6 +85,9 @@ def test_no_gci_i13_or_later_structures() -> None:
         "version_asset_refs",
         "/generate",
         "/ai",
+        "/migrate",
+        "/imports",
+        "/legacy",
     ):
         assert needle not in routes
     assert "/actions/publish" in routes
@@ -103,7 +107,6 @@ def test_no_gci_i13_or_later_structures() -> None:
             "ai_models",
             "ai_providers",
             "gcii120001",
-            "gcii130001",
             "gcii140001",
         ):
             if needle in text:
@@ -115,9 +118,28 @@ def test_no_gci_i13_or_later_structures() -> None:
     assert (
         REPO_ROOT / "migrations" / "versions" / "gcii110001_ai_provenance.py"
     ).is_file()
+    assert (
+        REPO_ROOT / "migrations" / "versions" / "gcii130001_migration_import.py"
+    ).is_file()
     assert not (
         REPO_ROOT / "migrations" / "versions" / "gcii120001_review_queue.py"
     ).exists()
+    assert not (
+        REPO_ROOT / "migrations" / "versions" / "gcii140001_adversarial.py"
+    ).exists()
+
+
+def test_no_legacy_sql_or_postgrest_in_application_domain() -> None:
+    hits: list[str] = []
+    for root in (APPLICATION_ROOT, DOMAIN_ROOT):
+        for path in root.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            lowered = text.lower()
+            if "edu.content" in text or "postgrest" in lowered:
+                hits.append(str(path.relative_to(REPO_ROOT)))
+            if "from eduvijna" in text or "import eduvijna" in text:
+                hits.append(str(path.relative_to(REPO_ROOT)))
+    assert hits == []
 
 
 def test_review_repository_is_insert_read_only() -> None:

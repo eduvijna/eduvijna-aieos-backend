@@ -5,11 +5,11 @@ status: draft
 version: 1.0.0
 ---
 
-# Database privilege contract (GCI-I02R2 / GCI-I05R1 / GCI-I06 / GCI-I07 / GCI-I08 / GCI-I09 / GCI-I10 / GCI-I11)
+# Database privilege contract (GCI-I02R2 / GCI-I05R1 / GCI-I06 / GCI-I07 / GCI-I08 / GCI-I09 / GCI-I10 / GCI-I11 / GCI-I13)
 
 This document describes the required production privilege separation. It does **not** provision cloud or production identities.
 
-ADR-AIEOS-024: runtime identity ≠ migration identity ≠ schema owner ≠ backup/restore authority ≠ workflow dispatcher ≠ event dispatcher.
+ADR-AIEOS-024: runtime identity ≠ migration identity ≠ schema owner ≠ backup/restore authority ≠ workflow dispatcher ≠ event dispatcher ≠ content migration workload.
 
 Production role creation remains infrastructure/deployment work, not application migration work. Alembic must not `CREATE ROLE` or store production credentials.
 
@@ -19,12 +19,13 @@ Production role creation remains infrastructure/deployment work, not application
 |----------|---------|-------|----------------|
 | Schema owner (`aieos_content_owner` conceptually) | Owns `content`, `api`, `workflow`, and `integration` schema objects | **NOLOGIN** | Application runtime login |
 | Migrator | Alembic upgrade/downgrade only; may `SET ROLE` to schema owner for DDL | LOGIN | Product runtime DML path; `BYPASSRLS` as a substitute for application tenancy; schema ownership of application schemas |
-| Runtime | Ordinary Generic Content DML, synchronous API idempotency DML, workflow-intent INSERT/SELECT, Publication INSERT/SELECT, VersionAssetRef INSERT/SELECT, and outbox INSERT | LOGIN | Superuser, `BYPASSRLS`, schema ownership, `DELETE` on Content tables, `UPDATE`/`DELETE` on publications, version_asset_refs, or outbox, dispatcher capabilities |
+| Runtime | Ordinary Generic Content DML, synchronous API idempotency DML, workflow-intent INSERT/SELECT, Publication INSERT/SELECT, VersionAssetRef INSERT/SELECT, and outbox INSERT | LOGIN | Superuser, `BYPASSRLS`, schema ownership, `DELETE` on Content tables, `UPDATE`/`DELETE` on publications, version_asset_refs, or outbox, dispatcher capabilities, write on `migration_import_records` |
+| Content migration runtime (`aieos_content_migration_runtime` conceptually) | Controlled ImportMigratedContentService DML only | LOGIN | Superuser, `BYPASSRLS`, schema ownership, ReviewDecision/Publication INSERT, DELETE on migration records, UPDATE/DELETE on versions |
 | Workflow dispatcher (`aieos_workflow_dispatcher` conceptually) | Claim/retry/deliver/quarantine workflow intents only | LOGIN | Superuser, `BYPASSRLS`, schema ownership, Content/ReviewDecision/Publication/VersionAssetRef mutation, workflow-intent INSERT/DELETE |
 | Event dispatcher (`aieos_event_dispatcher` conceptually) | Claim/retry/publish/quarantine outbox delivery metadata only | LOGIN | Superuser, `BYPASSRLS`, schema ownership, outbox INSERT/DELETE, Content/ReviewDecision/Publication/VersionAssetRef/workflow-intent mutation |
 | Backup/restore | Backup and restore | deployment-defined | Ordinary product DML |
 
-A runtime or dispatcher identity must **not** require `BYPASSRLS`, superuser, or schema ownership.
+A runtime, migration workload, or dispatcher identity must **not** require `BYPASSRLS`, superuser, or schema ownership.
 
 ## Alembic role assumption
 
@@ -85,6 +86,27 @@ Schema-owned immutable SQL function used only by `ck_content_versions_ai_provena
 Runtime DML does **not** require `EXECUTE` on these functions: CHECK evaluation runs with table-owner privileges. No additional runtime GRANT is required beyond existing `content.content_versions` INSERT/SELECT.
 
 No new Content table is introduced by GCI-I11.
+
+### `content.migration_import_records` + IMPORT provenance (GCI-I13)
+
+`content.migration_import_records` is migration infrastructure evidence, not Content aggregate state. Companion validator: `content.migration_import_provenance_v1_is_valid(jsonb)` for `origin = IMPORT`.
+
+Content migration runtime (`aieos_content_migration_runtime` conceptually):
+
+- `SELECT`, `INSERT`, `UPDATE` on `content.contents` (guarded head updates)
+- `SELECT`, `INSERT` on `content.content_versions` — **not** `UPDATE`, **not** `DELETE`
+- `SELECT`, `INSERT` on `content.version_asset_refs` — **not** `UPDATE`, **not** `DELETE`
+- `SELECT`, `INSERT`, `UPDATE` on `content.migration_import_records` — **not** `DELETE`
+- `INSERT` on `integration.outbox_messages`
+- `EXECUTE` on `content.current_tenant_id()` / `integration.current_tenant_id()`
+- **not** ReviewDecision INSERT, **not** Publication INSERT, **not** workflow/idempotency mutation
+
+Ordinary API runtime:
+
+- may `SELECT` migration records if needed for diagnostics
+- **must not** `INSERT` / `UPDATE` / `DELETE` `content.migration_import_records`
+
+`content.migration_import_records` has ENABLE RLS and FORCE RLS. Tenant isolation uses transaction-local `aieos.tenant_id` via `content.current_tenant_id()`. Missing tenant context must fail closed. Source-evidence fields are immutable after insert; `IMPORTED` is terminal.
 
 ### `integration` (GCI-I08 transactional outbox)
 

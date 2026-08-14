@@ -116,6 +116,7 @@ def test_migration_chain_and_forbidden_tables() -> None:
         "gcii090001_publications.py",
         "gcii100001_version_asset_refs.py",
         "gcii110001_ai_provenance.py",
+        "gcii130001_migration_import.py",
     ]
 
 
