@@ -16,6 +16,7 @@ from aieos.domains.content.domain.identities import (
 )
 from aieos.domains.content.domain.review import ReviewDecision
 from aieos.domains.content.domain.version import ContentVersion
+from aieos.platform.events.ports import OutboxRepository
 from aieos.platform.idempotency.ports import IdempotencyRepository
 from aieos.platform.workflows.ports import WorkflowIntentRepository
 
@@ -117,6 +118,7 @@ class ContentUnitOfWork(Protocol):
     reviews: ReviewRepository
     idempotency: IdempotencyRepository
     workflow_intents: WorkflowIntentRepository
+    outbox: OutboxRepository
 
     def __enter__(self) -> ContentUnitOfWork: ...
 

@@ -45,6 +45,11 @@ from aieos.domains.content.domain.review import (
     normalize_review_comment,
 )
 from aieos.domains.content.domain.states import StewardshipState
+from aieos.platform.events.content_events import (
+    review_decision_outbox,
+    submitted_for_review_outbox,
+)
+from aieos.platform.events.models import MutationEventContext
 from aieos.platform.idempotency.hashing import fingerprint_material, hash_idempotency_key
 from aieos.platform.idempotency.models import (
     CONTENT_REVIEW_APPROVE_V1,
@@ -162,7 +167,7 @@ class ReviewCommandService:
         version_id: ContentVersionId,
         expected_aggregate_revision: AggregateRevision,
         idempotency_key: str,
-        correlation_id: UUID,
+        event_context: MutationEventContext,
         now: datetime | None = None,
     ) -> ReviewSubmissionResult:
         self._authorization.authorize(
@@ -214,7 +219,7 @@ class ReviewCommandService:
                 content_id=content_id,
                 version_id=version_id,
                 expected_aggregate_revision=expected_aggregate_revision,
-                correlation_id=correlation_id,
+                event_context=event_context,
                 updated_at=decided_at,
             )
             uow.idempotency.insert(
@@ -251,7 +256,7 @@ class ReviewCommandService:
         reason_code: str | None,
         comment: str | None,
         idempotency_key: str,
-        correlation_id: UUID,
+        event_context: MutationEventContext,
         now: datetime | None = None,
     ) -> ReviewDecisionResult:
         return self._decide(
@@ -268,7 +273,7 @@ class ReviewCommandService:
             comment=comment,
             require_comment=False,
             idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
+            event_context=event_context,
             now=now,
         )
 
@@ -283,7 +288,7 @@ class ReviewCommandService:
         reason_code: str | None,
         comment: str | None,
         idempotency_key: str,
-        correlation_id: UUID,
+        event_context: MutationEventContext,
         now: datetime | None = None,
     ) -> ReviewDecisionResult:
         return self._decide(
@@ -300,7 +305,7 @@ class ReviewCommandService:
             comment=comment,
             require_comment=True,
             idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
+            event_context=event_context,
             now=now,
         )
 
@@ -315,7 +320,7 @@ class ReviewCommandService:
         reason_code: str | None,
         comment: str | None,
         idempotency_key: str,
-        correlation_id: UUID,
+        event_context: MutationEventContext,
         now: datetime | None = None,
     ) -> ReviewDecisionResult:
         return self._decide(
@@ -332,7 +337,7 @@ class ReviewCommandService:
             comment=comment,
             require_comment=False,
             idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
+            event_context=event_context,
             now=now,
         )
 
@@ -352,7 +357,7 @@ class ReviewCommandService:
         comment: str | None,
         require_comment: bool,
         idempotency_key: str,
-        correlation_id: UUID,
+        event_context: MutationEventContext,
         now: datetime | None,
     ) -> ReviewDecisionResult:
         self._authorization.authorize(
@@ -401,7 +406,7 @@ class ReviewCommandService:
                 reason_code=code,
                 comment=text,
                 target_state=target_state,
-                correlation_id=correlation_id,
+                event_context=event_context,
                 decided_at=decided_at,
             )
             uow.idempotency.insert(
@@ -440,7 +445,7 @@ class ReviewCommandService:
         content_id: ContentId,
         version_id: ContentVersionId,
         expected_aggregate_revision: AggregateRevision,
-        correlation_id: UUID,
+        event_context: MutationEventContext,
         updated_at: datetime,
     ) -> AggregateRevision:
         head = uow.contents.get_head_for_update(content_id)
@@ -496,7 +501,7 @@ class ReviewCommandService:
                     "tenant_id": str(execution_tenant_id),
                     "content_id": str(content_id),
                     "version_id": str(version_id),
-                    "correlation_id": str(correlation_id),
+                    "correlation_id": str(event_context.correlation_id),
                 },
                 status=INTENT_PENDING,
                 attempt_count=0,
@@ -505,6 +510,16 @@ class ReviewCommandService:
                 claimed_until=None,
                 delivered_at=None,
                 last_error_code=None,
+                created_at=updated_at,
+            )
+        )
+        uow.outbox.insert(
+            submitted_for_review_outbox(
+                tenant_id=execution_tenant_id,
+                content_id=content_id.value,
+                version_id=version_id.value,
+                aggregate_revision=int(resulting),
+                context=event_context,
                 created_at=updated_at,
             )
         )
@@ -523,7 +538,7 @@ class ReviewCommandService:
         reason_code: str | None,
         comment: str | None,
         target_state: str,
-        correlation_id: UUID,
+        event_context: MutationEventContext,
         decided_at: datetime,
     ) -> tuple[ReviewDecision, AggregateRevision]:
         head = uow.contents.get_head_for_update(content_id)
@@ -566,7 +581,7 @@ class ReviewCommandService:
             effective_actor_id=principal_id,
             delegation_id=None,
             decided_at=decided_at,
-            correlation_id=correlation_id,
+            correlation_id=event_context.correlation_id,
         )
         uow.reviews.insert(stored)
         resulting = uow.contents.transition_stewardship(
@@ -601,7 +616,7 @@ class ReviewCommandService:
                     "content_id": str(content_id),
                     "version_id": str(version_id),
                     "decision": decision.value,
-                    "correlation_id": str(correlation_id),
+                    "correlation_id": str(event_context.correlation_id),
                 },
                 status=INTENT_PENDING,
                 attempt_count=0,
@@ -610,6 +625,19 @@ class ReviewCommandService:
                 claimed_until=None,
                 delivered_at=None,
                 last_error_code=None,
+                created_at=decided_at,
+            )
+        )
+        uow.outbox.insert(
+            review_decision_outbox(
+                tenant_id=execution_tenant_id,
+                content_id=content_id.value,
+                version_id=version_id.value,
+                review_decision_id=stored.review_decision_id.value,
+                decision=decision.value,
+                stewardship_state=target_state,
+                aggregate_revision=int(resulting),
+                context=event_context,
                 created_at=decided_at,
             )
         )

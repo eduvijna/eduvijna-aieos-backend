@@ -21,6 +21,8 @@ from aieos.domains.content.domain.content import Content, ContentType
 from aieos.domains.content.domain.errors import ContentDomainError
 from aieos.domains.content.domain.identities import AggregateRevision, ContentId
 from aieos.domains.content.domain.states import StewardshipState
+from aieos.platform.events.content_events import content_created_outbox
+from aieos.platform.events.models import MutationEventContext
 from aieos.platform.idempotency.hashing import fingerprint_material, hash_idempotency_key
 from aieos.platform.idempotency.models import CONTENT_CREATE_V1, IdempotencyOutcome, IdempotencyScope
 
@@ -80,6 +82,7 @@ class CreateContentService:
         command: CreateContentCommand,
         *,
         idempotency_key: str,
+        event_context: MutationEventContext,
         now: datetime | None = None,
     ) -> ContentReadModel:
         fingerprint = _create_fingerprint(command)
@@ -126,6 +129,15 @@ class CreateContentService:
             except ContentDomainError as exc:
                 raise InvalidContentRequest("content create request is invalid") from exc
             uow.contents.insert(content)
+            uow.outbox.insert(
+                content_created_outbox(
+                    tenant_id=execution_tenant_id,
+                    content_id=content.content_id.value,
+                    content_type=command.content_type,
+                    context=event_context,
+                    created_at=created_at,
+                )
+            )
             uow.idempotency.insert(
                 IdempotencyOutcome(
                     tenant_id=scope.tenant_id,

@@ -32,6 +32,7 @@ from aieos.domains.content.domain.identities import (
 from aieos.domains.content.domain.origin import ContentOrigin
 from aieos.domains.content.domain.schema import ContentSchemaRegistry, SchemaId, SchemaVersion
 from aieos.domains.content.domain.version import ContentPayload, ContentVersion
+from aieos.platform.events.models import MutationEventContext
 from aieos.platform.idempotency.hashing import fingerprint_material, hash_idempotency_key
 from aieos.platform.idempotency.models import (
     CONTENT_VERSION_APPEND_V1,
@@ -65,6 +66,7 @@ class HttpAppendContentVersionService:
         schema_version: int,
         payload: Mapping[str, object],
         idempotency_key: str,
+        event_context: MutationEventContext,
         now: datetime | None = None,
     ) -> tuple[ContentVersionReadModel, AggregateRevision]:
         created_at = now if now is not None else datetime.now(UTC)
@@ -153,6 +155,7 @@ class HttpAppendContentVersionService:
                     provenance=None,
                 ),
                 now=created_at,
+                event_context=event_context,
                 head=head,
             )
             uow.idempotency.insert(

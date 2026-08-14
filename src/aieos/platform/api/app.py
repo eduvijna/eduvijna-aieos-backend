@@ -28,10 +28,10 @@ from aieos.platform.api.problems import install_exception_handlers
 from aieos.platform.security.context import SecurityContextResolver
 
 _APP_DESCRIPTION = (
-    "AIEOS HTTP foundation (GCI-I06). "
+    "AIEOS HTTP foundation (GCI-I08). "
     "Content create, version append, and review mutations are development/test "
-    "foundations only and MUST NOT be authorized for production until "
-    "transactional outbox and required audit-intent persistence are integrated."
+    "foundations only and MUST NOT be authorized for production until required "
+    "security-audit intent persistence is integrated alongside the transactional outbox."
 )
 
 

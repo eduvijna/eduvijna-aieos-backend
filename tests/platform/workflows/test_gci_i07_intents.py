@@ -19,6 +19,7 @@ from aieos.domains.content.domain.identities import AggregateRevision, ContentId
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
 )
+from aieos.platform.events.models import MutationEventContext
 from aieos.platform.workflows.constants import (
     CONTENT_REVIEW_TASK_QUEUE,
     CONTENT_REVIEW_WORKFLOW_TYPE,
@@ -263,7 +264,12 @@ class TestAtomicity:
                         int(etag.strip('"').lstrip("r"))
                     ),
                     idempotency_key=f"fail-start-{uuid.uuid7()}",
-                    correlation_id=uuid.uuid7(),
+                    event_context=MutationEventContext(
+                        correlation_id=uuid.uuid7(),
+                        causation_id=uuid.uuid7(),
+                        actor_principal_id=principal_id,
+                        effective_actor_id=principal_id,
+                    ),
                 )
         finally:
             SqlAlchemyWorkflowIntentRepository.insert_start_intent = original  # type: ignore[method-assign]
@@ -306,7 +312,12 @@ class TestAtomicity:
                     reason_code=None,
                     comment=None,
                     idempotency_key=f"fail-cmd-{uuid.uuid7()}",
-                    correlation_id=uuid.uuid7(),
+                    event_context=MutationEventContext(
+                        correlation_id=uuid.uuid7(),
+                        causation_id=uuid.uuid7(),
+                        actor_principal_id=principal_id,
+                        effective_actor_id=principal_id,
+                    ),
                 )
         finally:
             SqlAlchemyWorkflowIntentRepository.insert_command_intent = original  # type: ignore[method-assign]
@@ -467,5 +478,5 @@ class TestAlembicOwnership:
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "gcii070001"
+                "gcii080001"
             )

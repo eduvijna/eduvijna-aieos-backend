@@ -20,6 +20,7 @@ from aieos.domains.content.infrastructure.persistence.repositories import (
 from aieos.platform.api.infrastructure.persistence.repositories import (
     SqlAlchemyIdempotencyRepository,
 )
+from aieos.platform.events.persistence.repositories import SqlAlchemyOutboxRepository
 from aieos.platform.workflows.persistence.repositories import (
     SqlAlchemyWorkflowIntentRepository,
 )
@@ -36,6 +37,7 @@ class SqlAlchemyContentUnitOfWork:
         self.reviews: SqlAlchemyReviewDecisionRepository
         self.idempotency: SqlAlchemyIdempotencyRepository
         self.workflow_intents: SqlAlchemyWorkflowIntentRepository
+        self.outbox: SqlAlchemyOutboxRepository
 
     def __enter__(self) -> SqlAlchemyContentUnitOfWork:
         try:
@@ -54,6 +56,7 @@ class SqlAlchemyContentUnitOfWork:
                 self._connection, self._execution_tenant_id
             )
             self.workflow_intents = SqlAlchemyWorkflowIntentRepository(self._connection)
+            self.outbox = SqlAlchemyOutboxRepository(self._connection)
             return self
         except Exception as exc:
             self._cleanup(suppress=True)

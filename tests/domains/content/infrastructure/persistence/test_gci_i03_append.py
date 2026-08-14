@@ -34,11 +34,22 @@ from aieos.domains.content.domain.version import ContentPayload, ContentVersion
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
 )
+from aieos.platform.events.models import MutationEventContext
 from tests.dbutil import REPO_ROOT
 
 pytestmark = pytest.mark.gci_i03
 
 FIXED_NOW = datetime(2026, 8, 13, 18, 0, tzinfo=UTC)
+
+
+def _event_context() -> MutationEventContext:
+    actor = uuid.uuid7()
+    return MutationEventContext(
+        correlation_id=uuid.uuid7(),
+        causation_id=uuid.uuid7(),
+        actor_principal_id=actor,
+        effective_actor_id=actor,
+    )
 
 
 def _service(engine: Engine) -> AppendContentVersionService:
@@ -127,6 +138,7 @@ def _append(
             version=version,
             provenance=provenance,
         ),
+        event_context=_event_context(),
         now=FIXED_NOW,
     )
 
@@ -524,6 +536,7 @@ class TestConcurrency:
                         expected_aggregate_revision=AggregateRevision(1),
                         version=version,
                     ),
+                    event_context=_event_context(),
                     now=FIXED_NOW,
                 )
                 with lock:
@@ -582,6 +595,7 @@ class TestArchitectureAndNoSchemaChange:
             "gcii050001_api_idempotency.py",
             "gcii060001_review_decisions.py",
             "gcii070001_workflow_intents.py",
+            "gcii080001_outbox_messages.py",
         ]
         assert not Path(
             REPO_ROOT / "src" / "aieos" / "domains" / "content" / "infrastructure" / "outbox"

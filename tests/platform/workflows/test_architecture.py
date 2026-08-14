@@ -62,19 +62,15 @@ def test_content_http_path_does_not_call_temporal() -> None:
     assert "start_workflow" not in review
 
 
-def test_no_outbox_audit_nats_or_gci_i08_tables() -> None:
+def test_no_audit_or_publication_tables_and_migration_chain() -> None:
     hits: list[str] = []
     for path in (REPO_ROOT / "src").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        for needle in (
-            "outbox_messages",
-            "audit_events",
-            "integration.outbox",
-            "import nats",
-        ):
+        for needle in ("audit_events", "consumer_inbox", "content.publications"):
             if needle in text:
                 hits.append(f"{path.relative_to(REPO_ROOT)}:{needle}")
     assert hits == []
+    assert _import_roots(DOMAINS_ROOT, ("nats",)) == []
     versions = sorted(
         path.name
         for path in (REPO_ROOT / "migrations" / "versions").glob("*.py")
@@ -85,6 +81,7 @@ def test_no_outbox_audit_nats_or_gci_i08_tables() -> None:
         "gcii050001_api_idempotency.py",
         "gcii060001_review_decisions.py",
         "gcii070001_workflow_intents.py",
+        "gcii080001_outbox_messages.py",
     ]
 
 

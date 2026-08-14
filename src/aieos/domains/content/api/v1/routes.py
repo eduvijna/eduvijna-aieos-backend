@@ -54,7 +54,19 @@ from aieos.platform.api.idempotency_key import parse_idempotency_key
 from aieos.platform.api.if_match import parse_if_match
 from aieos.platform.api.pagination import CursorCodec, ListCursor
 from aieos.platform.api.problems import ProblemDetails
+from aieos.platform.events.models import MutationEventContext
 from aieos.platform.security.context import TrustedSecurityContext
+
+
+def _mutation_event_context(
+    request: Request, context: TrustedSecurityContext
+) -> MutationEventContext:
+    return MutationEventContext(
+        correlation_id=request.state.correlation_id,
+        causation_id=request.state.request_id,
+        actor_principal_id=context.principal_id,
+        effective_actor_id=context.principal_id,
+    )
 
 DEFAULT_LIST_LIMIT = 50
 MAX_LIST_LIMIT = 100
@@ -143,6 +155,7 @@ def _version_id(value: UUID) -> ContentVersionId:
 )
 def content_create(
     body: ContentCreateRequest,
+    request: Request,
     response: Response,
     context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
     service: Annotated[CreateContentService, Depends(create_content_service)],
@@ -159,6 +172,7 @@ def content_create(
             locale=body.locale,
         ),
         idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
     )
     response.headers["Location"] = f"/api/v1/contents/{model.content_id}"
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
@@ -236,6 +250,7 @@ def content_list(
 def content_version_append(
     content_id: UUID,
     body: ContentVersionAppendRequest,
+    request: Request,
     response: Response,
     context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
     service: Annotated[HttpAppendContentVersionService, Depends(http_append_service)],
@@ -253,6 +268,7 @@ def content_version_append(
         schema_version=body.schema_version,
         payload=body.payload,
         idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
     )
     response.headers["Location"] = (
         f"/api/v1/contents/{model.content_id}/versions/{model.version_id}"
@@ -326,7 +342,7 @@ def _decide_http(
         reason_code=body.reason_code,
         comment=body.comment,
         idempotency_key=key,
-        correlation_id=request.state.correlation_id,
+        event_context=_mutation_event_context(request, context),
     )
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
     return _to_decision_response(model)
@@ -358,7 +374,7 @@ def content_review_submit(
         version_id=_version_id(version_id),
         expected_aggregate_revision=expected,
         idempotency_key=key,
-        correlation_id=request.state.correlation_id,
+        event_context=_mutation_event_context(request, context),
     )
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
     return _to_submission_response(model)

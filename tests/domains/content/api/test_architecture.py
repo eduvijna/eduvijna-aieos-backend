@@ -64,7 +64,7 @@ def test_get_does_not_perform_privileged_second_lookup() -> None:
     assert text.count(".get(") == 1
 
 
-def test_no_gci_i08_or_later_http_or_intent_structures() -> None:
+def test_no_gci_i09_or_later_http_structures() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
     for needle in ("PATCH", "/publish", "/archive", "review-queue", "/reviews"):
         assert needle not in routes
@@ -72,10 +72,10 @@ def test_no_gci_i08_or_later_http_or_intent_structures() -> None:
     for path in (REPO_ROOT / "migrations").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         for needle in (
-            "outbox_messages",
             "audit_events",
             "publications",
             "review_queue",
+            "consumer_inbox",
         ):
             if needle in text:
                 hits.append(f"{path.name}:{needle}")
@@ -105,21 +105,23 @@ def test_review_repository_is_insert_read_only() -> None:
     assert ".rollback(" not in body
 
 
-def test_no_nats_outbox_or_publication_and_migration_chain() -> None:
+def test_no_nats_under_domains_routes_and_migration_chain() -> None:
     hits: list[str] = []
     domains = SRC_ROOT / "domains"
     for path in domains.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        for needle in ("temporalio", "nats.", "import nats", "outbox_messages", "audit_events"):
+        for needle in ("temporalio", "nats.", "import nats", "audit_events"):
+            if needle in text:
+                hits.append(f"{path.relative_to(SRC_ROOT)}:{needle}")
+    for path in (API_ROOT).rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for needle in ("nats.", "import nats"):
             if needle in text:
                 hits.append(f"{path.relative_to(SRC_ROOT)}:{needle}")
     for path in SRC_ROOT.rglob("*.py"):
-        if "domains" in path.parts:
-            continue
         text = path.read_text(encoding="utf-8")
-        for needle in ("nats.", "import nats", "outbox_messages", "audit_events"):
-            if needle in text:
-                hits.append(f"{path.relative_to(SRC_ROOT)}:{needle}")
+        if "audit_events" in text or "consumer_inbox" in text:
+            hits.append(f"{path.relative_to(SRC_ROOT)}:forbidden-audit-or-inbox")
     assert hits == []
     versions = sorted(
         path.name
@@ -131,4 +133,5 @@ def test_no_nats_outbox_or_publication_and_migration_chain() -> None:
         "gcii050001_api_idempotency.py",
         "gcii060001_review_decisions.py",
         "gcii070001_workflow_intents.py",
+        "gcii080001_outbox_messages.py",
     ]

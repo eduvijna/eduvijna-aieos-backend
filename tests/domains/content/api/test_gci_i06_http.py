@@ -23,6 +23,7 @@ from aieos.domains.content.infrastructure.persistence.repositories import (
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
 )
+from aieos.platform.events.models import MutationEventContext
 from aieos.platform.api.app import create_app
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.api.infrastructure.persistence.repositories import (
@@ -1003,7 +1004,12 @@ class TestAtomicity:
                 reason_code=None,
                 comment=None,
                 idempotency_key=f"boom-insert-{uuid.uuid7()}",
-                correlation_id=uuid.uuid7(),
+                event_context=MutationEventContext(
+                    correlation_id=uuid.uuid7(),
+                    causation_id=uuid.uuid7(),
+                    actor_principal_id=principal_id,
+                    effective_actor_id=principal_id,
+                ),
             )
         assert _decision_rows(bootstrap_engine, content_id) == []
         row = _content_row(bootstrap_engine, content_id)
@@ -1042,7 +1048,12 @@ class TestAtomicity:
                 reason_code=None,
                 comment=None,
                 idempotency_key=f"boom-idemp-{uuid.uuid7()}",
-                correlation_id=uuid.uuid7(),
+                event_context=MutationEventContext(
+                    correlation_id=uuid.uuid7(),
+                    causation_id=uuid.uuid7(),
+                    actor_principal_id=principal_id,
+                    effective_actor_id=principal_id,
+                ),
             )
         assert _decision_rows(bootstrap_engine, content_id) == []
         row = _content_row(bootstrap_engine, content_id)

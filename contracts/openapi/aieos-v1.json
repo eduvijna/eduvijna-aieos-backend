@@ -507,7 +507,7 @@
     }
   },
   "info": {
-    "description": "AIEOS HTTP foundation (GCI-I06). Content create, version append, and review mutations are development/test foundations only and MUST NOT be authorized for production until transactional outbox and required audit-intent persistence are integrated.",
+    "description": "AIEOS HTTP foundation (GCI-I08). Content create, version append, and review mutations are development/test foundations only and MUST NOT be authorized for production until required security-audit intent persistence is integrated alongside the transactional outbox.",
     "title": "AIEOS HTTP API",
     "version": "0.1.0"
   },

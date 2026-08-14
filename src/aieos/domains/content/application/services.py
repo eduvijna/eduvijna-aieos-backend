@@ -23,6 +23,8 @@ from aieos.domains.content.application.ports import ContentUnitOfWork, ContentUn
 from aieos.domains.content.domain.origin import ContentOrigin
 from aieos.domains.content.domain.states import StewardshipState
 from aieos.domains.content.domain.version import ContentVersion
+from aieos.platform.events.content_events import version_created_outbox
+from aieos.platform.events.models import MutationEventContext
 
 _APPEND_ALLOWED = frozenset(
     {
@@ -67,6 +69,7 @@ def append_version_in_uow(
     command: AppendContentVersionCommand,
     *,
     now: datetime,
+    event_context: MutationEventContext,
     head: LockedContentHead | None = None,
 ) -> AppendContentVersionResult:
     """Transaction-scoped append. Caller owns commit/rollback."""
@@ -111,6 +114,18 @@ def append_version_in_uow(
         raise AggregateRevisionConflict(
             "aggregate head changed before append could commit"
         )
+    uow.outbox.insert(
+        version_created_outbox(
+            tenant_id=execution_tenant_id,
+            content_id=version.content_id.value,
+            version_id=version.version_id.value,
+            version_number=int(version.version_number),
+            origin=version.origin.value,
+            aggregate_revision=int(resulting),
+            context=event_context,
+            created_at=now,
+        )
+    )
     return AppendContentVersionResult(
         content_id=version.content_id,
         version_id=version.version_id,
@@ -130,12 +145,17 @@ class AppendContentVersionService:
         execution_tenant_id: UUID,
         command: AppendContentVersionCommand,
         *,
+        event_context: MutationEventContext,
         now: datetime | None = None,
     ) -> AppendContentVersionResult:
         updated_at = now if now is not None else datetime.now(UTC)
         with self._uow_factory(execution_tenant_id) as uow:
             result = append_version_in_uow(
-                uow, execution_tenant_id, command, now=updated_at
+                uow,
+                execution_tenant_id,
+                command,
+                now=updated_at,
+                event_context=event_context,
             )
             uow.commit()
             return result

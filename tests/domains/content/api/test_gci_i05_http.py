@@ -17,6 +17,7 @@ from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.content.application.errors import PersistenceOperationFailed
 from aieos.domains.content.application.http_append import HttpAppendContentVersionService
 from aieos.domains.content.domain.identities import AggregateRevision, ContentId
+from aieos.platform.events.models import MutationEventContext
 from aieos.domains.content.domain.schema import ContentSchemaRegistry, SchemaId, SchemaVersion
 from aieos.domains.content.domain.version import ContentPayload
 from aieos.domains.content.infrastructure.persistence.uow import (
@@ -787,6 +788,12 @@ class TestRollbackAtomicity:
                 schema_version=1,
                 payload={"marker": "boom"},
                 idempotency_key=f"boom-{uuid.uuid7()}",
+                event_context=MutationEventContext(
+                    correlation_id=uuid.uuid7(),
+                    causation_id=uuid.uuid7(),
+                    actor_principal_id=principal_id,
+                    effective_actor_id=principal_id,
+                ),
             )
         assert _count_versions(bootstrap_engine, content_id) == 0
         with bootstrap_engine.connect() as conn:

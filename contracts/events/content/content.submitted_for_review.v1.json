@@ -1,0 +1,20 @@
+{
+  "specversion": "1.0",
+  "id": "018f0000-0000-7000-8000-000000000003",
+  "source": "urn:eduvijna:aieos:content",
+  "type": "io.eduvijna.aieos.content.content.submitted_for_review.v1",
+  "subject": "content/018f0000-0000-7000-8000-000000000010",
+  "time": "2026-08-14T12:00:02Z",
+  "datacontenttype": "application/json",
+  "data": {
+    "content_id": "018f0000-0000-7000-8000-000000000010",
+    "version_id": "018f0000-0000-7000-8000-000000000011",
+    "stewardship_state": "IN_REVIEW"
+  },
+  "tenantid": "018f0000-0000-7000-8000-000000000020",
+  "correlationid": "018f0000-0000-7000-8000-000000000030",
+  "causationid": "018f0000-0000-7000-8000-000000000033",
+  "actorid": "018f0000-0000-7000-8000-000000000040",
+  "effectiveactorid": "018f0000-0000-7000-8000-000000000040",
+  "aggregaterevision": 2
+}
