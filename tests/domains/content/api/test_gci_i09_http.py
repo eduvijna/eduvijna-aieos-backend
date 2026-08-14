@@ -175,6 +175,38 @@ def _outbox_count(bootstrap_engine: Engine, content_id: str) -> int:
         )
 
 
+def _published_event_count(bootstrap_engine: Engine, content_id: str) -> int:
+    with bootstrap_engine.connect() as conn:
+        return int(
+            conn.execute(
+                text(
+                    """
+                    SELECT count(*) FROM integration.outbox_messages
+                    WHERE aggregate_id = :cid
+                      AND event_type = 'io.eduvijna.aieos.content.content.published.v1'
+                    """
+                ),
+                {"cid": content_id},
+            ).scalar_one()
+        )
+
+
+def _publish_idempotency_row(bootstrap_engine: Engine, tenant_id: UUID):
+    with bootstrap_engine.connect() as conn:
+        return conn.execute(
+            text(
+                """
+                SELECT operation, result_content_id, result_version_id,
+                       result_review_decision_id, result_publication_id,
+                       result_aggregate_revision
+                FROM api.idempotency_records
+                WHERE tenant_id = :tid AND operation = 'content_publish.v1'
+                """
+            ),
+            {"tid": tenant_id},
+        ).one()
+
+
 class TestHappyPath:
     def test_publish_approved_current_version(
         self, runtime_engine, bootstrap_engine, postgres18
@@ -440,6 +472,25 @@ class TestAuthorization:
 
 
 class TestIdempotency:
+    def test_publish_idempotency_outcome_fields(
+        self, runtime_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        client = _client(runtime_engine, tenant_id, uuid.uuid7())
+        content_id, version_id, etag = _approved(client, tenant_id)
+        response = _publish(client, tenant_id, content_id, version_id, etag=etag)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        row = _publish_idempotency_row(bootstrap_engine, tenant_id)
+        assert row.operation == "content_publish.v1"
+        assert row.result_publication_id is not None
+        assert str(row.result_publication_id) == body["publication_id"]
+        assert row.result_review_decision_id is None
+        assert str(row.result_content_id) == content_id
+        assert str(row.result_version_id) == version_id
+        assert int(row.result_aggregate_revision) == 4
+        assert int(row.result_aggregate_revision) == body["aggregate_revision"]
+
     def test_same_key_replay_returns_same_publication(
         self, runtime_engine, bootstrap_engine
     ) -> None:
@@ -469,6 +520,126 @@ class TestIdempotency:
         assert replay.headers["ETag"] == first.headers["ETag"]
         assert len(_publication_rows(bootstrap_engine, content_id)) == 1
         assert _idempotency_count(bootstrap_engine, tenant_id) == 1
+
+    def test_replay_after_head_advance_returns_original_publication(
+        self, runtime_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        auth = AllowPublicationAuthorization()
+        asset = AllowPublicationAssetValidation()
+        gov = AllowPublicationGovernance()
+
+        class _CountingSchema:
+            content_type = "test.generic"
+            schema_id = SchemaId("test.generic")
+            schema_version = SchemaVersion(1)
+            get_calls = 0
+            validate_calls = 0
+
+            def validate(self, payload: dict) -> None:
+                type(self).validate_calls += 1
+                if "marker" not in payload:
+                    raise InvalidPayloadError("missing marker")
+
+        counting = _CountingSchema()
+        registry = ContentSchemaRegistry()
+        registry.register(counting)
+        original_get = registry.get
+
+        def counting_get(schema_id: str, schema_version: int):
+            _CountingSchema.get_calls += 1
+            return original_get(schema_id, schema_version)
+
+        registry.get = counting_get  # type: ignore[method-assign]
+        client = _client(
+            runtime_engine,
+            tenant_id,
+            principal_id,
+            publication_authorization=auth,
+            publication_asset_validation=asset,
+            publication_governance=gov,
+            schema_registry=registry,
+        )
+        content_id, version_id, publish_if_match = _approved(client, tenant_id)
+        _CountingSchema.get_calls = 0
+        _CountingSchema.validate_calls = 0
+        key = f"publish-after-advance-{uuid.uuid7()}"
+        published = _publish(
+            client,
+            tenant_id,
+            content_id,
+            version_id,
+            etag=publish_if_match,
+            **{"Idempotency-Key": key},
+        )
+        assert published.status_code == 200, published.text
+        assert published.headers["ETag"] == encode_revision_etag(4)
+        body = published.json()
+        publication_id = body["publication_id"]
+        approval_decision_id = body["approval_decision_id"]
+        publish_etag = published.headers["ETag"]
+        auth_after_publish = len(auth.calls)
+        asset_after_publish = len(asset.calls)
+        gov_after_publish = len(gov.calls)
+        schema_get_after_publish = _CountingSchema.get_calls
+        schema_validate_after_publish = _CountingSchema.validate_calls
+        assert auth_after_publish == 1
+        assert asset_after_publish == 1
+        assert gov_after_publish == 1
+        assert schema_get_after_publish == 1
+        assert schema_validate_after_publish == 1
+        assert _published_event_count(bootstrap_engine, content_id) == 1
+
+        appended = append_version(
+            client, tenant_id, content_id, etag=publish_etag
+        )
+        assert appended.status_code == 201, appended.text
+        assert appended.headers["ETag"] == encode_revision_etag(5)
+        after_append = _content_row(bootstrap_engine, content_id)
+        assert int(after_append.aggregate_revision) == 5
+        assert str(after_append.current_version_id) == appended.json()["version_id"]
+        assert str(after_append.published_version_id) == version_id
+        assert after_append.stewardship_state == "GENERATED"
+        schema_get_after_append = _CountingSchema.get_calls
+        schema_validate_after_append = _CountingSchema.validate_calls
+        assert len(auth.calls) == auth_after_publish
+        assert len(asset.calls) == asset_after_publish
+        assert len(gov.calls) == gov_after_publish
+
+        replay = _publish(
+            client,
+            tenant_id,
+            content_id,
+            version_id,
+            etag=publish_if_match,
+            **{"Idempotency-Key": key},
+        )
+        assert replay.status_code == 200, replay.text
+        replay_body = replay.json()
+        assert replay_body["publication_id"] == publication_id
+        assert replay_body["version_id"] == version_id
+        assert replay_body["published_version_id"] == version_id
+        assert replay_body["approval_decision_id"] == approval_decision_id
+        assert replay_body["aggregate_revision"] == 4
+        assert replay.headers["ETag"] == publish_etag == encode_revision_etag(4)
+
+        preserved = _content_row(bootstrap_engine, content_id)
+        assert int(preserved.aggregate_revision) == 5
+        assert str(preserved.current_version_id) == appended.json()["version_id"]
+        assert str(preserved.published_version_id) == version_id
+        assert preserved.stewardship_state == "GENERATED"
+        assert len(_publication_rows(bootstrap_engine, content_id)) == 1
+        assert _published_event_count(bootstrap_engine, content_id) == 1
+        assert len(auth.calls) == auth_after_publish + 1
+        assert len(asset.calls) == asset_after_publish
+        assert len(gov.calls) == gov_after_publish
+        assert _CountingSchema.get_calls == schema_get_after_append
+        assert _CountingSchema.validate_calls == schema_validate_after_append
+
+        idem = _publish_idempotency_row(bootstrap_engine, tenant_id)
+        assert idem.result_review_decision_id is None
+        assert str(idem.result_publication_id) == publication_id
 
     def test_same_key_changed_version_or_if_match_is_409(self, runtime_engine) -> None:
         tenant_id = uuid.uuid7()

@@ -142,7 +142,7 @@ class PublishContentService:
                     request_fingerprint_sha256=fingerprint,
                     result_content_id=content_id.value,
                     result_version_id=version_id.value,
-                    result_review_decision_id=result.approval_decision_id.value,
+                    result_review_decision_id=None,
                     result_publication_id=result.publication_id.value,
                     result_aggregate_revision=int(result.aggregate_revision),
                     created_at=published_at,
