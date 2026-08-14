@@ -115,7 +115,10 @@ UPGRADE_STATEMENTS: tuple[str, ...] = (
             RETURN false;
         END IF;
         IF jsonb_typeof(value->'schema_version') <> 'number'
-           OR (value->>'schema_version')::numeric <> 1 THEN
+           OR (value->>'schema_version')::numeric <> 1
+           OR (value->>'schema_version')::numeric
+              <> trunc((value->>'schema_version')::numeric)
+           OR (value->>'schema_version') IS DISTINCT FROM '1' THEN
             RETURN false;
         END IF;
         IF NOT content.resource_ref_json_is_valid(value->'generation_run_ref') THEN

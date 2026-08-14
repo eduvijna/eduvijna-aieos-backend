@@ -55,6 +55,9 @@ class TestAIGenerationProvenanceV1:
             lambda d: d.__setitem__("extra", "nope"),
             lambda d: d.__setitem__("kind", "other"),
             lambda d: d.__setitem__("schema_version", 2),
+            lambda d: d.__setitem__("schema_version", True),
+            lambda d: d.__setitem__("schema_version", 1.0),
+            lambda d: d.__setitem__("schema_version", "1"),
             lambda d: d.__setitem__("generation_run_ref", {"bad": True}),
             lambda d: d.__setitem__(
                 "prompt_execution_ref",

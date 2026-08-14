@@ -203,7 +203,12 @@ def ai_generation_provenance_from_json(
         )
     if value["kind"] != AI_GENERATION_PROVENANCE_KIND:
         raise InvalidAIGenerationProvenanceError("kind must be ai_generation")
-    if value["schema_version"] != AI_GENERATION_PROVENANCE_SCHEMA_VERSION:
+    schema_version = value["schema_version"]
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
+        raise InvalidAIGenerationProvenanceError(
+            "schema_version must be the integer 1"
+        )
+    if schema_version != AI_GENERATION_PROVENANCE_SCHEMA_VERSION:
         raise InvalidAIGenerationProvenanceError("schema_version must be 1")
     if value["generation_run_ref"] is None:
         raise InvalidAIGenerationProvenanceError("generation_run_ref is required")

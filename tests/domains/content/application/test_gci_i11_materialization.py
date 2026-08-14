@@ -197,6 +197,47 @@ class TestDirectAppendAIProvenance:
             )
         assert _counts(bootstrap_engine, content_id) == (0, 0, 0)
 
+    def test_boolean_schema_version_rejected_before_persist(
+        self, runtime_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        content_id = _seed_content(bootstrap_engine, tenant_id)
+        version = ContentVersion(
+            version_id=ContentVersionId.generate(),
+            tenant_id=tenant_id,
+            content_id=content_id,
+            version_number=VersionNumber(1),
+            parent_version_id=None,
+            schema_id=SchemaId("test.generic"),
+            schema_version=SchemaVersion(1),
+            payload=ContentPayload.from_mapping({"marker": "v1"}),
+            origin=ContentOrigin.AI,
+            created_at=FIXED_NOW,
+            created_by_principal_id=uuid.uuid7(),
+        )
+        correlation_id = uuid.uuid7()
+        payload = ai_generation_provenance_as_json(_provenance(correlation_id))
+        payload["schema_version"] = True
+        service = AppendContentVersionService(
+            SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            AllowAssetReferenceValidation(),
+        )
+        with pytest.raises(AIProvenanceInvalid):
+            service.append(
+                tenant_id,
+                AppendContentVersionCommand(
+                    expected_aggregate_revision=AggregateRevision(0),
+                    version=version,
+                    provenance=payload,
+                ),
+                event_context=_event_context(correlation_id),
+                now=FIXED_NOW,
+            )
+        assert _counts(bootstrap_engine, content_id) == (0, 0, 0)
+        head = _head(bootstrap_engine, content_id)
+        assert head.current_version_id is None
+        assert int(head.aggregate_revision) == 0
+
     def test_canonical_provenance_succeeds(self, runtime_engine, bootstrap_engine) -> None:
         tenant_id = uuid.uuid7()
         content_id = _seed_content(bootstrap_engine, tenant_id)

@@ -152,6 +152,32 @@ class TestAIProvenanceDbConstraint:
                 provenance=prov,
             )
 
+    def test_schema_version_boolean_rejected(self, bootstrap_engine) -> None:
+        tenant_id = uuid.uuid7()
+        content_id = _seed_content(bootstrap_engine, tenant_id)
+        prov = _canonical_provenance()
+        prov["schema_version"] = True
+        with pytest.raises(Exception):
+            _insert_ai_version(
+                bootstrap_engine,
+                tenant_id=tenant_id,
+                content_id=content_id,
+                provenance=prov,
+            )
+
+    def test_schema_version_float_rejected(self, bootstrap_engine) -> None:
+        tenant_id = uuid.uuid7()
+        content_id = _seed_content(bootstrap_engine, tenant_id)
+        prov = _canonical_provenance()
+        prov["schema_version"] = 1.0
+        with pytest.raises(Exception):
+            _insert_ai_version(
+                bootstrap_engine,
+                tenant_id=tenant_id,
+                content_id=content_id,
+                provenance=prov,
+            )
+
     def test_human_row_unaffected(self, bootstrap_engine) -> None:
         tenant_id = uuid.uuid7()
         content_id = _seed_content(bootstrap_engine, tenant_id)
