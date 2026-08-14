@@ -234,15 +234,20 @@ class SqlAlchemyWorkflowDispatcherRepository:
         *,
         tenant_id: UUID,
         workflow_start_intent_id: UUID,
+        claimed_by: str,
+        attempt_count: int,
         delivered_at: datetime,
-    ) -> None:
+    ) -> bool:
         with self._engine.begin() as conn:
             self._set_tenant(conn, tenant_id)
-            conn.execute(
+            result = conn.execute(
                 update(workflow_start_intents_table)
                 .where(
                     workflow_start_intents_table.c.workflow_start_intent_id
-                    == workflow_start_intent_id
+                    == workflow_start_intent_id,
+                    workflow_start_intents_table.c.status == INTENT_CLAIMED,
+                    workflow_start_intents_table.c.claimed_by == claimed_by,
+                    workflow_start_intents_table.c.attempt_count == attempt_count,
                 )
                 .values(
                     status=INTENT_DELIVERED,
@@ -252,23 +257,29 @@ class SqlAlchemyWorkflowDispatcherRepository:
                     last_error_code=None,
                 )
             )
+            return bool(result.rowcount)
 
     def release_start_for_retry(
         self,
         *,
         tenant_id: UUID,
         workflow_start_intent_id: UUID,
+        claimed_by: str,
+        attempt_count: int,
         available_at: datetime,
         error_code: str,
         quarantine: bool,
-    ) -> None:
+    ) -> bool:
         with self._engine.begin() as conn:
             self._set_tenant(conn, tenant_id)
-            conn.execute(
+            result = conn.execute(
                 update(workflow_start_intents_table)
                 .where(
                     workflow_start_intents_table.c.workflow_start_intent_id
-                    == workflow_start_intent_id
+                    == workflow_start_intent_id,
+                    workflow_start_intents_table.c.status == INTENT_CLAIMED,
+                    workflow_start_intents_table.c.claimed_by == claimed_by,
+                    workflow_start_intents_table.c.attempt_count == attempt_count,
                 )
                 .values(
                     status=INTENT_QUARANTINED if quarantine else INTENT_PENDING,
@@ -278,6 +289,7 @@ class SqlAlchemyWorkflowDispatcherRepository:
                     last_error_code=error_code,
                 )
             )
+            return bool(result.rowcount)
 
     def claim_command_intent(
         self,
@@ -331,15 +343,20 @@ class SqlAlchemyWorkflowDispatcherRepository:
         *,
         tenant_id: UUID,
         workflow_command_intent_id: UUID,
+        claimed_by: str,
+        attempt_count: int,
         delivered_at: datetime,
-    ) -> None:
+    ) -> bool:
         with self._engine.begin() as conn:
             self._set_tenant(conn, tenant_id)
-            conn.execute(
+            result = conn.execute(
                 update(workflow_command_intents_table)
                 .where(
                     workflow_command_intents_table.c.workflow_command_intent_id
-                    == workflow_command_intent_id
+                    == workflow_command_intent_id,
+                    workflow_command_intents_table.c.status == INTENT_CLAIMED,
+                    workflow_command_intents_table.c.claimed_by == claimed_by,
+                    workflow_command_intents_table.c.attempt_count == attempt_count,
                 )
                 .values(
                     status=INTENT_DELIVERED,
@@ -349,23 +366,29 @@ class SqlAlchemyWorkflowDispatcherRepository:
                     last_error_code=None,
                 )
             )
+            return bool(result.rowcount)
 
     def release_command_for_retry(
         self,
         *,
         tenant_id: UUID,
         workflow_command_intent_id: UUID,
+        claimed_by: str,
+        attempt_count: int,
         available_at: datetime,
         error_code: str,
         quarantine: bool,
-    ) -> None:
+    ) -> bool:
         with self._engine.begin() as conn:
             self._set_tenant(conn, tenant_id)
-            conn.execute(
+            result = conn.execute(
                 update(workflow_command_intents_table)
                 .where(
                     workflow_command_intents_table.c.workflow_command_intent_id
-                    == workflow_command_intent_id
+                    == workflow_command_intent_id,
+                    workflow_command_intents_table.c.status == INTENT_CLAIMED,
+                    workflow_command_intents_table.c.claimed_by == claimed_by,
+                    workflow_command_intents_table.c.attempt_count == attempt_count,
                 )
                 .values(
                     status=INTENT_QUARANTINED if quarantine else INTENT_PENDING,
@@ -375,6 +398,7 @@ class SqlAlchemyWorkflowDispatcherRepository:
                     last_error_code=error_code,
                 )
             )
+            return bool(result.rowcount)
 
     def get_start_intent(
         self,

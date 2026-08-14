@@ -312,39 +312,37 @@ class TestTemporalStartAndCommand:
         assert start_intent_rows(bootstrap_engine, content_id)[0]["status"] == INTENT_DELIVERED
         assert command_intent_rows(bootstrap_engine, content_id)[0]["status"] == INTENT_DELIVERED
 
-    def test_start_crash_window_reconciles(
+    def test_start_crash_window_reconciles_without_worker(
         self, runtime_engine, workflow_dispatcher_engine, bootstrap_engine
     ) -> None:
         async def scenario() -> None:
             async with await WorkflowEnvironment.start_time_skipping() as env:
+                # No ContentReviewWorkflowV1 worker.
+                tenant_id = uuid.uuid7()
+                client = client_for(runtime_engine, tenant_id, uuid.uuid7())
+                content_id, version_id, etag = generated_version(client, tenant_id)
+                submit_review(client, tenant_id, content_id, version_id, etag=etag)
+                gateway = TemporalClientReviewGateway(env.client)
+                start_row = start_intent_rows(bootstrap_engine, content_id)[0]
+                await env.client.start_workflow(
+                    ContentReviewWorkflowV1.run,
+                    dict(start_row["input"]),
+                    id=start_row["temporal_workflow_id"],
+                    task_queue=CONTENT_REVIEW_TASK_QUEUE,
+                )
+                assert await start_dispatcher(
+                    workflow_dispatcher_engine, gateway
+                ).dispatch_once(tenant_id)
+                after = start_intent_rows(bootstrap_engine, content_id)[0]
+                assert after["status"] == INTENT_DELIVERED
+                assert after["temporal_workflow_id"] == start_row["temporal_workflow_id"]
+                # Only after proof may a worker start.
                 async with create_content_review_worker(env.client):
-                    tenant_id = uuid.uuid7()
-                    client = client_for(runtime_engine, tenant_id, uuid.uuid7())
-                    content_id, version_id, etag = generated_version(client, tenant_id)
-                    submit_review(client, tenant_id, content_id, version_id, etag=etag)
-                    gateway = TemporalClientReviewGateway(env.client)
-                    start_row = start_intent_rows(bootstrap_engine, content_id)[0]
-                    # Simulate Temporal accepted start but DB still CLAIMED/PENDING.
-                    await env.client.start_workflow(
-                        ContentReviewWorkflowV1.run,
-                        dict(start_row["input"]),
-                        id=start_row["temporal_workflow_id"],
-                        task_queue=CONTENT_REVIEW_TASK_QUEUE,
+                    handle = env.client.get_workflow_handle(
+                        after["temporal_workflow_id"]
                     )
-                    assert await start_dispatcher(
-                        workflow_dispatcher_engine, gateway
-                    ).dispatch_once(tenant_id)
-                    assert (
-                        start_intent_rows(bootstrap_engine, content_id)[0]["status"]
-                        == INTENT_DELIVERED
-                    )
-                    # Second dispatch finds nothing new / no second workflow.
-                    assert (
-                        await start_dispatcher(
-                            workflow_dispatcher_engine, gateway, claimed_by="d2"
-                        ).dispatch_once(tenant_id)
-                        is False
-                    )
+                    state = await handle.query(ContentReviewWorkflowV1.state)
+                    assert state["process_status"] == PROCESS_WAITING
 
         run_async(scenario())
 

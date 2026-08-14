@@ -38,6 +38,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - GCI-I06R1: ContentVersion append stewardship eligibility is enforced only in `append_version_in_uow` (DRAFT/GENERATED/APPROVED; IN_REVIEW/ARCHIVED raise `ContentVersionAppendNotAllowed` before insert). HTTP no longer duplicates that rule. `advance_current_version` requires the locked head's stewardship state in the UPDATE predicate.
+- GCI-I07R1: workflow intent finalization is claim-fenced (`status=CLAIMED` + `claimed_by` + `attempt_count`); WorkflowAlreadyStarted reconciliation uses server-stored start history/input without requiring a worker.
 
 ### Security
 

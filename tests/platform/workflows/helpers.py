@@ -212,6 +212,7 @@ def default_dispatcher_config(*, claimed_by: str = "dispatcher-a") -> Dispatcher
         retry_delay=timedelta(milliseconds=1),
         claimed_by=claimed_by,
         result_timeout_seconds=10.0,
+        start_reconciliation_timeout_seconds=5.0,
     )
 
 

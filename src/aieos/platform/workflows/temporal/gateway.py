@@ -6,8 +6,10 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from temporalio.api.enums.v1 import EventType
 from temporalio.client import Client, WorkflowFailureError, WorkflowHandle
 from temporalio.common import WorkflowIDReusePolicy
+from temporalio.converter import DataConverter
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 
@@ -17,7 +19,6 @@ from aieos.platform.workflows.constants import (
     ERROR_WORKFLOW_IDENTITY_CONFLICT,
     ERROR_WORKFLOW_NOT_FOUND,
     ERROR_WORKFLOW_TERMINAL_MISMATCH,
-    QUERY_STATE,
     SIGNAL_REVIEW_DECISION_RECORDED,
 )
 from aieos.platform.workflows.temporal.content_review import ContentReviewWorkflowV1
@@ -48,6 +49,7 @@ class TemporalReviewGateway(Protocol):
         temporal_workflow_id: str,
         task_queue: str,
         start_input: dict[str, Any],
+        reconciliation_timeout_seconds: float,
     ) -> StartDeliveryResult: ...
 
     async def deliver_review_decision(
@@ -60,8 +62,14 @@ class TemporalReviewGateway(Protocol):
 
 
 class TemporalClientReviewGateway:
-    def __init__(self, client: Client) -> None:
+    def __init__(
+        self,
+        client: Client,
+        *,
+        data_converter: DataConverter | None = None,
+    ) -> None:
         self._client = client
+        self._data_converter = data_converter or DataConverter.default
 
     async def start_content_review(
         self,
@@ -69,21 +77,41 @@ class TemporalClientReviewGateway:
         temporal_workflow_id: str,
         task_queue: str,
         start_input: dict[str, Any],
+        reconciliation_timeout_seconds: float,
     ) -> StartDeliveryResult:
         try:
-            await self._client.start_workflow(
-                ContentReviewWorkflowV1.run,
-                start_input,
-                id=temporal_workflow_id,
-                task_queue=task_queue or CONTENT_REVIEW_TASK_QUEUE,
-                id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+            await asyncio.wait_for(
+                self._client.start_workflow(
+                    ContentReviewWorkflowV1.run,
+                    start_input,
+                    id=temporal_workflow_id,
+                    task_queue=task_queue or CONTENT_REVIEW_TASK_QUEUE,
+                    id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+                ),
+                timeout=reconciliation_timeout_seconds,
             )
             return StartDeliveryResult(delivered=True)
-        except WorkflowAlreadyStartedError:
-            return await self._reconcile_existing_start(
-                temporal_workflow_id=temporal_workflow_id,
-                start_input=start_input,
+        except TimeoutError:
+            return StartDeliveryResult(
+                delivered=False,
+                error_code=ERROR_TEMPORAL_UNAVAILABLE,
+                permanent=False,
             )
+        except WorkflowAlreadyStartedError:
+            try:
+                return await asyncio.wait_for(
+                    self._reconcile_existing_start(
+                        temporal_workflow_id=temporal_workflow_id,
+                        start_input=start_input,
+                    ),
+                    timeout=reconciliation_timeout_seconds,
+                )
+            except TimeoutError:
+                return StartDeliveryResult(
+                    delivered=False,
+                    error_code=ERROR_TEMPORAL_UNAVAILABLE,
+                    permanent=False,
+                )
         except RPCError:
             return StartDeliveryResult(
                 delivered=False,
@@ -152,9 +180,10 @@ class TemporalClientReviewGateway:
         temporal_workflow_id: str,
         start_input: dict[str, Any],
     ) -> StartDeliveryResult:
+        """Reconcile via server-stored WorkflowExecutionStarted input (no worker)."""
         handle = self._client.get_workflow_handle(temporal_workflow_id)
         try:
-            state = await handle.query(QUERY_STATE)
+            history = await handle.fetch_history()
         except RPCError as exc:
             if exc.status == RPCStatusCode.NOT_FOUND:
                 return StartDeliveryResult(
@@ -167,13 +196,36 @@ class TemporalClientReviewGateway:
                 error_code=ERROR_TEMPORAL_UNAVAILABLE,
                 permanent=False,
             )
-        if not _start_identity_matches(state, start_input):
+        stored_input = await self._decode_started_input(history)
+        if stored_input is None:
+            return StartDeliveryResult(
+                delivered=False,
+                error_code=ERROR_WORKFLOW_IDENTITY_CONFLICT,
+                permanent=True,
+            )
+        if not _start_identity_matches(stored_input, start_input):
             return StartDeliveryResult(
                 delivered=False,
                 error_code=ERROR_WORKFLOW_IDENTITY_CONFLICT,
                 permanent=True,
             )
         return StartDeliveryResult(delivered=True)
+
+    async def _decode_started_input(self, history: Any) -> dict[str, Any] | None:
+        for event in history.events:
+            if event.event_type != EventType.EVENT_TYPE_WORKFLOW_EXECUTION_STARTED:
+                continue
+            attrs = event.workflow_execution_started_event_attributes
+            if attrs is None or attrs.input is None or not attrs.input.payloads:
+                return None
+            decoded = await self._data_converter.decode(attrs.input.payloads)
+            if not decoded:
+                return None
+            first = decoded[0]
+            if not isinstance(first, dict):
+                return None
+            return dict(first)
+        return None
 
     async def _reconcile_terminal_command(
         self,
