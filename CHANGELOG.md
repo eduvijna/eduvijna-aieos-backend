@@ -26,6 +26,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GCI-I11 AI Provenance & Generation Integration: typed allow-listed `AIGenerationProvenanceV1`, inbound AI materialization port (no provider SDK), DB defense-in-depth on `origin=AI` provenance JSONB, reuses shared append + Asset binding. Still non-production: no generation HTTP, no audit intent, no Teacher OS queue.
 - GCI-I11R1: strict `schema_version` parser/DB checks reject bool/float/string coercions; only integral JSON `1` is valid.
 - GCI-I12 Teacher OS Review Queue: read-only exact-version projection of `IN_REVIEW` current Content; no queue SoR table, no assignment/notifications, mutations unchanged and still non-production.
+- GCI-I12R1: Review Queue integer limits outside 1..100 return 400 via queue-specific `ReviewQueueInvalidRequest`; malformed `limit` remains 422; Content list semantics unchanged.
 
 ### Changed
 

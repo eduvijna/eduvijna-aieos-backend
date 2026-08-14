@@ -142,6 +142,10 @@ class ReviewQueueItemNotFound(ContentApplicationError):
     """Teacher OS Review Queue item is not visible or no longer eligible."""
 
 
+class ReviewQueueInvalidRequest(ContentApplicationError):
+    """Teacher OS Review Queue request violates a queue-specific contract."""
+
+
 class PublicationGovernanceRejected(ContentApplicationError):
     """Publication governance rejected the candidate."""
 

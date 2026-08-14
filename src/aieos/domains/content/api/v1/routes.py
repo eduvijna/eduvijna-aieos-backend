@@ -603,11 +603,9 @@ def teacher_os_review_queue_list(
         ListTeacherReviewQueueService, Depends(list_teacher_review_queue_service)
     ],
     codec: Annotated[CursorCodec, Depends(cursor_codec)],
-    limit: Annotated[int | None, Query(ge=1)] = None,
+    limit: Annotated[int | None, Query()] = None,
     cursor: Annotated[str | None, Query()] = None,
 ) -> TeacherReviewQueueListResponse:
-    if limit is not None and limit > MAX_LIST_LIMIT:
-        raise InvalidContentRequest("list limit exceeds the maximum of 100")
     page_size = DEFAULT_LIST_LIMIT if limit is None else limit
     after_submitted_at = None
     after_content_id = None

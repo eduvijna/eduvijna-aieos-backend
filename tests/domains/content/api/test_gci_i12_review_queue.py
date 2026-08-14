@@ -332,7 +332,20 @@ class TestQueueTenancyAndPagination:
         tenant_id = uuid.uuid7()
         client = _client(runtime_engine, tenant_id, uuid.uuid7())
         over = _queue_list(client, tenant_id, limit=101)
-        _assert_problem(over, status=422, code="invalid_content_request")
+        _assert_problem(over, status=400, code="invalid_content_request")
+        zero = _queue_list(client, tenant_id, limit=0)
+        _assert_problem(zero, status=400, code="invalid_content_request")
+        negative = _queue_list(client, tenant_id, limit=-1)
+        _assert_problem(negative, status=400, code="invalid_content_request")
+        malformed = client.get(
+            "/api/v1/teacher-os/review-queue",
+            params={"limit": "abc"},
+            headers=headers(tenant_id),
+        )
+        _assert_problem(malformed, status=422, code="validation_error")
+        assert _queue_list(client, tenant_id).status_code == 200
+        assert _queue_list(client, tenant_id, limit=1).status_code == 200
+        assert _queue_list(client, tenant_id, limit=100).status_code == 200
         ids = []
         for i in range(3):
             cid, vid, _ = _in_review_item(client, tenant_id, marker=f"ord-{i}")
@@ -356,6 +369,28 @@ class TestQueueTenancyAndPagination:
         page2 = _queue_list(client, tenant_id, limit=2, cursor=body["next_cursor"])
         assert [i["content_id"] for i in page2.json()["items"]] == ids[2:]
         assert page2.json()["next_cursor"] is None
+
+    def test_list_service_enforces_limit_range(self) -> None:
+        from aieos.domains.content.application.errors import ReviewQueueInvalidRequest
+        from aieos.domains.content.application.review_queue import (
+            ListTeacherReviewQueueService,
+        )
+        from aieos.domains.content.application.review_queue_models import (
+            ListTeacherReviewQueueQuery,
+        )
+
+        class _UnusedFactory:
+            def __call__(self, execution_tenant_id):  # pragma: no cover
+                raise AssertionError("factory must not be called for invalid limits")
+
+        service = ListTeacherReviewQueueService(_UnusedFactory())  # type: ignore[arg-type]
+        tenant_id = uuid.uuid7()
+        for bad in (0, -1, 101):
+            with pytest.raises(ReviewQueueInvalidRequest):
+                service.list(
+                    tenant_id,
+                    ListTeacherReviewQueueQuery(limit=bad),
+                )
 
     def test_no_outbox_or_idempotency_side_effects(
         self, runtime_engine, bootstrap_engine

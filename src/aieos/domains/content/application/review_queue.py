@@ -5,17 +5,18 @@ from __future__ import annotations
 from uuid import UUID
 
 from aieos.domains.content.application.errors import (
-    InvalidContentRequest,
+    ReviewQueueInvalidRequest,
     ReviewQueueItemNotFound,
 )
 from aieos.domains.content.application.ports import ContentUnitOfWorkFactory
 from aieos.domains.content.application.review_queue_models import (
     ListTeacherReviewQueueQuery,
     TeacherReviewQueueDetail,
-    TeacherReviewQueueItem,
     TeacherReviewQueuePage,
 )
 from aieos.domains.content.domain.identities import ContentId, ContentVersionId
+
+_MAX_QUEUE_LIMIT = 100
 
 
 class ListTeacherReviewQueueService:
@@ -27,8 +28,10 @@ class ListTeacherReviewQueueService:
         execution_tenant_id: UUID,
         query: ListTeacherReviewQueueQuery,
     ) -> TeacherReviewQueuePage:
-        if query.limit < 1:
-            raise InvalidContentRequest("list limit must be a positive integer")
+        if query.limit < 1 or query.limit > _MAX_QUEUE_LIMIT:
+            raise ReviewQueueInvalidRequest(
+                "review queue limit must be an integer from 1 to 100"
+            )
         with self._uow_factory(execution_tenant_id) as uow:
             rows = uow.review_queue.list_page(
                 limit=query.limit + 1,

@@ -4287,7 +4287,6 @@
             "schema": {
               "anyOf": [
                 {
-                  "minimum": 1,
                   "type": "integer"
                 },
                 {
