@@ -127,6 +127,7 @@ class TestRepositoryTranslation:
                     tenant_id=tenant_id,
                     expected_revision=AggregateRevision(0),
                     expected_current_version_id=None,
+                    expected_state="DRAFT",
                     new_version_id=ContentVersionId.generate(),
                     updated_at=FIXED_NOW,
                 )

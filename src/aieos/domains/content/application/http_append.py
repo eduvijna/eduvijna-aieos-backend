@@ -11,7 +11,6 @@ from aieos.domains.content.application.errors import (
     ContentPayloadInvalid,
     ContentSchemaMismatch,
     ContentSchemaNotFound,
-    ContentVersionAppendNotAllowed,
     ContentVersionNotFound,
     IdempotencyKeyReused,
     PersistenceInvariantViolation,
@@ -32,21 +31,12 @@ from aieos.domains.content.domain.identities import (
 )
 from aieos.domains.content.domain.origin import ContentOrigin
 from aieos.domains.content.domain.schema import ContentSchemaRegistry, SchemaId, SchemaVersion
-from aieos.domains.content.domain.states import StewardshipState
 from aieos.domains.content.domain.version import ContentPayload, ContentVersion
 from aieos.platform.idempotency.hashing import fingerprint_material, hash_idempotency_key
 from aieos.platform.idempotency.models import (
     CONTENT_VERSION_APPEND_V1,
     IdempotencyOutcome,
     IdempotencyScope,
-)
-
-_APPEND_ALLOWED = frozenset(
-    {
-        StewardshipState.DRAFT.value,
-        StewardshipState.GENERATED.value,
-        StewardshipState.APPROVED.value,
-    }
 )
 
 
@@ -116,10 +106,6 @@ class HttpAppendContentVersionService:
             head = uow.contents.get_head_for_update(content_id)
             if head is None or head.tenant_id != execution_tenant_id:
                 raise ContentNotFound("Content is not visible in the execution tenant")
-            if head.stewardship_state not in _APPEND_ALLOWED:
-                raise ContentVersionAppendNotAllowed(
-                    "ContentVersion append is not allowed in the current stewardship state"
-                )
             try:
                 registered = self._schema_registry.get(schema_id, schema_version)
             except SchemaNotFoundError as exc:

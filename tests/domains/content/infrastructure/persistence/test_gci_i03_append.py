@@ -447,6 +447,7 @@ class TestRollbackAndUnitOfWork:
                 tenant_id=tenant_id,
                 expected_revision=AggregateRevision(99),
                 expected_current_version_id=None,
+                expected_state="DRAFT",
                 new_version_id=version.version_id,
                 updated_at=FIXED_NOW,
             )

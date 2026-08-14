@@ -92,6 +92,7 @@ class ContentRepository(Protocol):
         tenant_id: UUID,
         expected_revision: AggregateRevision,
         expected_current_version_id: ContentVersionId | None,
+        expected_state: str,
         new_version_id: ContentVersionId,
         updated_at: datetime,
     ) -> AggregateRevision | None: ...

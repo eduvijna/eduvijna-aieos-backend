@@ -248,6 +248,7 @@ class SqlAlchemyContentRepository:
         tenant_id: UUID,
         expected_revision: AggregateRevision,
         expected_current_version_id: ContentVersionId | None,
+        expected_state: str,
         new_version_id: ContentVersionId,
         updated_at: datetime,
     ) -> AggregateRevision | None:
@@ -265,6 +266,7 @@ class SqlAlchemyContentRepository:
                 contents_table.c.current_version_id.is_not_distinct_from(
                     expected_current
                 ),
+                contents_table.c.stewardship_state == expected_state,
             )
             .values(
                 current_version_id=new_version_id.value,

@@ -9,6 +9,7 @@ from uuid import UUID
 from aieos.domains.content.application.errors import (
     AggregateRevisionConflict,
     ContentNotFound,
+    ContentVersionAppendNotAllowed,
     PersistenceInvariantViolation,
     TenantContextMismatch,
     VersionLineageConflict,
@@ -20,7 +21,16 @@ from aieos.domains.content.application.models import (
 )
 from aieos.domains.content.application.ports import ContentUnitOfWork, ContentUnitOfWorkFactory
 from aieos.domains.content.domain.origin import ContentOrigin
+from aieos.domains.content.domain.states import StewardshipState
 from aieos.domains.content.domain.version import ContentVersion
+
+_APPEND_ALLOWED = frozenset(
+    {
+        StewardshipState.DRAFT.value,
+        StewardshipState.GENERATED.value,
+        StewardshipState.APPROVED.value,
+    }
+)
 
 
 def _require_object_mapping(value: Mapping[str, object] | None, *, label: str) -> None:
@@ -82,6 +92,10 @@ def append_version_in_uow(
         raise AggregateRevisionConflict(
             "expected aggregate_revision does not match stored head"
         )
+    if head.stewardship_state not in _APPEND_ALLOWED:
+        raise ContentVersionAppendNotAllowed(
+            "ContentVersion append is not allowed in the current stewardship state"
+        )
     _assert_linear_append(head, version)
     uow.versions.insert(version, command.provenance)
     resulting = uow.contents.advance_current_version(
@@ -89,6 +103,7 @@ def append_version_in_uow(
         tenant_id=execution_tenant_id,
         expected_revision=command.expected_aggregate_revision,
         expected_current_version_id=head.current_version_id,
+        expected_state=head.stewardship_state,
         new_version_id=version.version_id,
         updated_at=now,
     )
