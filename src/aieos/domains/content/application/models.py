@@ -12,6 +12,7 @@ from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
     ContentVersionId,
+    ReviewDecisionId,
     VersionNumber,
 )
 from aieos.domains.content.domain.version import ContentVersion
@@ -134,3 +135,24 @@ def content_read_model(content: Content) -> ContentReadModel:
         updated_at=content.updated_at,
         archived_at=content.archived_at,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewSubmissionResult:
+    content_id: ContentId
+    version_id: ContentVersionId
+    stewardship_state: str
+    aggregate_revision: AggregateRevision
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewDecisionResult:
+    review_decision_id: ReviewDecisionId
+    content_id: ContentId
+    version_id: ContentVersionId
+    decision: str
+    reason_code: str | None
+    comment: str | None
+    decided_at: datetime
+    stewardship_state: str
+    aggregate_revision: AggregateRevision

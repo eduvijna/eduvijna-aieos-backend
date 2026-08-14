@@ -48,3 +48,7 @@ def http_append_service(request: Request) -> HttpAppendContentVersionService:
 
 def get_content_version_service(request: Request) -> GetContentVersionService:
     return request.app.state.get_content_version_service
+
+
+def review_command_service(request: Request):
+    return request.app.state.review_command_service

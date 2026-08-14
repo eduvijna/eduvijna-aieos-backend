@@ -72,3 +72,31 @@ class ContentPayloadInvalid(ContentApplicationError):
 
 class IdempotencyKeyReused(ContentApplicationError):
     """The idempotency key was already bound to a different request fingerprint."""
+
+
+class ReviewForbidden(ContentApplicationError):
+    """Current principal lacks the required review capability."""
+
+
+class ReviewCommentRejected(ContentApplicationError):
+    """The review comment was rejected by the comment governance policy."""
+
+
+class ReviewSubmitNotAllowed(ContentApplicationError):
+    """Submit-for-review is not allowed in the current stewardship state."""
+
+
+class ReviewDecisionNotAllowed(ContentApplicationError):
+    """A review decision is not allowed in the current stewardship state."""
+
+
+class ReviewVersionNotCurrent(ContentApplicationError):
+    """The requested version is not the Content current_version_id."""
+
+
+class ReviewRequiresNewVersion(ContentApplicationError):
+    """That immutable version already has a terminal ReviewDecision."""
+
+
+class ReviewAlreadyDecided(ContentApplicationError):
+    """A terminal ReviewDecision already exists for the exact version."""

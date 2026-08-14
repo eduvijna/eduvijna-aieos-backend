@@ -12,6 +12,23 @@ from aieos.platform.api.problems import ProblemDetails, ProblemErrorItem
 
 _SUCCESS_STATUSES = {"200", "201"}
 
+_MUTATION_IDEMPOTENCY_IDS = {
+    "content_create",
+    "content_version_append",
+    "content_review_submit",
+    "content_review_approve",
+    "content_review_request_changes",
+    "content_review_reject",
+}
+_IF_MATCH_OPERATION_IDS = {
+    "content_version_append",
+    "content_review_submit",
+    "content_review_approve",
+    "content_review_request_changes",
+    "content_review_reject",
+}
+_GET_OPERATION_IDS = {"content_get", "content_list", "content_version_get"}
+
 _IDEMPOTENCY_PARAM = {
     "name": "Idempotency-Key",
     "in": "header",
@@ -90,11 +107,11 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                 params.append(_CORRELATION_PARAM)
             responses = operation.setdefault("responses", {})
             operation_id = operation.get("operationId")
-            if operation_id in {"content_create", "content_version_append"}:
+            if operation_id in _MUTATION_IDEMPOTENCY_IDS:
                 _ensure_header_param(params, _IDEMPOTENCY_PARAM)
-            if operation_id == "content_version_append":
+            if operation_id in _IF_MATCH_OPERATION_IDS:
                 _ensure_header_param(params, _IF_MATCH_PARAM)
-            if operation_id in {"content_get", "content_list", "content_version_get"}:
+            if operation_id in _GET_OPERATION_IDS:
                 params[:] = [
                     p
                     for p in params
@@ -113,6 +130,10 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                     "content_create",
                     "content_get",
                     "content_version_append",
+                    "content_review_submit",
+                    "content_review_approve",
+                    "content_review_request_changes",
+                    "content_review_reject",
                 }:
                     headers["ETag"] = {
                         "description": "Opaque aggregate revision validator",

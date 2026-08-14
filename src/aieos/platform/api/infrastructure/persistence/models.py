@@ -29,6 +29,7 @@ idempotency_records_table = Table(
     Column("request_fingerprint_sha256", CHAR(64), nullable=False),
     Column("result_content_id", UUID(as_uuid=True), nullable=False),
     Column("result_version_id", UUID(as_uuid=True), nullable=True),
+    Column("result_review_decision_id", UUID(as_uuid=True), nullable=True),
     Column("result_aggregate_revision", BigInteger, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("expires_at", DateTime(timezone=True), nullable=False),

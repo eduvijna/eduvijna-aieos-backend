@@ -12,6 +12,7 @@ from aieos.domains.content.application.errors import (
     ContentApplicationError,
     PersistenceInvariantViolation,
     PersistenceOperationFailed,
+    ReviewAlreadyDecided,
     VersionAlreadyExists,
 )
 
@@ -39,6 +40,10 @@ def translate_infrastructure_error(
                 unique_message or "unique constraint violated"
             )
         blob = _constraint_blob(exc)
+        if "review_decisions" in blob:
+            return ReviewAlreadyDecided(
+                "this ContentVersion already has a terminal ReviewDecision"
+            )
         if "content_versions" in blob:
             return VersionAlreadyExists(
                 "ContentVersion identity or version_number already exists"

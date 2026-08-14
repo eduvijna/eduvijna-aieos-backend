@@ -136,38 +136,49 @@ def provision_identities(bootstrap: Engine) -> None:
 
 def provision_runtime_grants(bootstrap: Engine) -> None:
     with bootstrap.connect() as conn:
-        conn.execute(text(f"GRANT USAGE ON SCHEMA content TO {RUNTIME_USER}"))
-        conn.execute(
-            text(f"GRANT SELECT, INSERT, UPDATE ON content.contents TO {RUNTIME_USER}")
-        )
-        conn.execute(
-            text(f"GRANT SELECT, INSERT ON content.content_versions TO {RUNTIME_USER}")
-        )
-        conn.execute(text(f"REVOKE DELETE ON content.contents FROM {RUNTIME_USER}"))
-        conn.execute(
-            text(f"REVOKE UPDATE, DELETE ON content.content_versions FROM {RUNTIME_USER}")
-        )
-        conn.execute(
-            text(
-                f"GRANT EXECUTE ON FUNCTION content.current_tenant_id() TO {RUNTIME_USER}"
+        with conn.begin():
+            conn.execute(text(f"GRANT USAGE ON SCHEMA content TO {RUNTIME_USER}"))
+            conn.execute(
+                text(f"GRANT SELECT, INSERT, UPDATE ON content.contents TO {RUNTIME_USER}")
             )
-        )
-        conn.execute(text(f"GRANT USAGE ON SCHEMA api TO {RUNTIME_USER}"))
-        conn.execute(
-            text(
-                f"GRANT SELECT, INSERT ON api.idempotency_records TO {RUNTIME_USER}"
+            conn.execute(
+                text(f"GRANT SELECT, INSERT ON content.content_versions TO {RUNTIME_USER}")
             )
-        )
-        conn.execute(
-            text(
-                f"REVOKE UPDATE, DELETE ON api.idempotency_records FROM {RUNTIME_USER}"
+            conn.execute(text(f"REVOKE DELETE ON content.contents FROM {RUNTIME_USER}"))
+            conn.execute(
+                text(f"REVOKE UPDATE, DELETE ON content.content_versions FROM {RUNTIME_USER}")
             )
-        )
-        conn.execute(
-            text(
-                f"GRANT EXECUTE ON FUNCTION api.current_tenant_id() TO {RUNTIME_USER}"
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION content.current_tenant_id() TO {RUNTIME_USER}"
+                )
             )
-        )
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT ON content.review_decisions TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE UPDATE, DELETE ON content.review_decisions FROM {RUNTIME_USER}"
+                )
+            )
+            conn.execute(text(f"GRANT USAGE ON SCHEMA api TO {RUNTIME_USER}"))
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT ON api.idempotency_records TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE UPDATE, DELETE ON api.idempotency_records FROM {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION api.current_tenant_id() TO {RUNTIME_USER}"
+                )
+            )
 
 
 @pytest.fixture(scope="session")

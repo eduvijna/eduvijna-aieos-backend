@@ -12,8 +12,14 @@ from aieos.domains.content.application.http_append import (
     GetContentVersionService,
     HttpAppendContentVersionService,
 )
-from aieos.domains.content.application.ports import ContentTypeCatalog, ContentUnitOfWorkFactory
+from aieos.domains.content.application.ports import (
+    ContentTypeCatalog,
+    ContentUnitOfWorkFactory,
+    ReviewAuthorizationPort,
+    ReviewCommentPolicy,
+)
 from aieos.domains.content.application.queries import GetContentService, ListContentsService
+from aieos.domains.content.application.review import ReviewCommandService
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.context import RequestContextMiddleware
 from aieos.platform.api.openapi import build_openapi
@@ -22,10 +28,10 @@ from aieos.platform.api.problems import install_exception_handlers
 from aieos.platform.security.context import SecurityContextResolver
 
 _APP_DESCRIPTION = (
-    "AIEOS HTTP foundation (GCI-I05). "
-    "POST /api/v1/contents and POST /api/v1/contents/{content_id}/versions are "
-    "development/test mutations only and MUST NOT be authorized for production "
-    "until transactional outbox and required audit-intent persistence are integrated."
+    "AIEOS HTTP foundation (GCI-I06). "
+    "Content create, version append, and review mutations are development/test "
+    "foundations only and MUST NOT be authorized for production until "
+    "transactional outbox and required audit-intent persistence are integrated."
 )
 
 
@@ -37,6 +43,8 @@ def create_app(
     cursor_signing_key: bytes,
     schema_registry: ContentSchemaRegistry,
     idempotency_retention: timedelta,
+    review_authorization: ReviewAuthorizationPort,
+    review_comment_policy: ReviewCommentPolicy,
 ) -> FastAPI:
     codec = CursorCodec(cursor_signing_key)
     app = FastAPI(
@@ -60,6 +68,12 @@ def create_app(
         uow_factory, schema_registry, idempotency_retention=idempotency_retention
     )
     app.state.get_content_version_service = GetContentVersionService(uow_factory)
+    app.state.review_command_service = ReviewCommandService(
+        uow_factory,
+        review_authorization,
+        review_comment_policy,
+        idempotency_retention=idempotency_retention,
+    )
 
     def _openapi() -> dict:
         if app.openapi_schema is None:

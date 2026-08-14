@@ -26,7 +26,13 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.platform.api.app import create_app
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.idempotency.hashing import hash_idempotency_key
-from tests.fakes import IDEMPOTENCY_RETENTION, StubSecurityContextResolver, make_test_schema_registry
+from tests.fakes import (
+    AllowReviewAuthorization,
+    AllowReviewCommentPolicy,
+    IDEMPOTENCY_RETENTION,
+    StubSecurityContextResolver,
+    make_test_schema_registry,
+)
 
 pytestmark = pytest.mark.gci_i05
 
@@ -48,6 +54,8 @@ def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID):
         cursor_signing_key=CURSOR_KEY,
         schema_registry=make_test_schema_registry(),
         idempotency_retention=IDEMPOTENCY_RETENTION,
+        review_authorization=AllowReviewAuthorization(),
+        review_comment_policy=AllowReviewCommentPolicy(),
     )
 
 
@@ -188,7 +196,7 @@ class TestAppendContract:
         assert int(row.aggregate_revision) == 2
         assert row.current_version_id == UUID(second.json()["version_id"])
         assert row.published_version_id is None
-        assert row.stewardship_state == "DRAFT"
+        assert row.stewardship_state == "GENERATED"
 
     def test_body_cannot_smuggle_server_fields(self, runtime_engine) -> None:
         tenant_id = uuid.uuid7()
@@ -261,6 +269,8 @@ class TestAppendContract:
             cursor_signing_key=CURSOR_KEY,
             schema_registry=_broken_schema_registry(),
             idempotency_retention=IDEMPOTENCY_RETENTION,
+            review_authorization=AllowReviewAuthorization(),
+            review_comment_policy=AllowReviewCommentPolicy(),
         )
         client = TestClient(app, raise_server_exceptions=False)
         content_id = _create(client, tenant_id)["content_id"]
@@ -510,6 +520,8 @@ class TestIdempotencyHttp:
                 cursor_signing_key=CURSOR_KEY,
                 schema_registry=make_test_schema_registry(),
                 idempotency_retention=IDEMPOTENCY_RETENTION,
+                review_authorization=AllowReviewAuthorization(),
+                review_comment_policy=AllowReviewCommentPolicy(),
             ),
             raise_server_exceptions=False,
         )
@@ -717,10 +729,9 @@ class TestGetVersionAndStewardship:
                 {"cid": content_id},
             ).one()
         assert row.published_version_id == version_id
-        assert row.stewardship_state == "DRAFT"
+        assert row.stewardship_state == "GENERATED"
         for state, archived_at in (
             ("IN_REVIEW", None),
-            ("APPROVED", None),
             ("ARCHIVED", datetime(2026, 8, 13, tzinfo=UTC)),
         ):
             with bootstrap_engine.begin() as conn:

@@ -12,9 +12,14 @@ from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
     ContentVersionId,
+    ReviewDecisionId,
 )
+from aieos.domains.content.domain.review import ReviewDecision
 from aieos.domains.content.domain.version import ContentVersion
 from aieos.platform.idempotency.ports import IdempotencyRepository
+
+CONTENT_REVIEW_SUBMIT = "content.review.submit"
+CONTENT_REVIEW_DECIDE = "content.review.decide"
 
 
 class ContentVersionRepository(Protocol):
@@ -31,6 +36,38 @@ class ContentVersionRepository(Protocol):
 
 class ContentTypeCatalog(Protocol):
     def contains(self, content_type: str) -> bool: ...
+
+
+class ReviewRepository(Protocol):
+    """INSERT/READ persistence for immutable ReviewDecision rows."""
+
+    def insert(self, decision: ReviewDecision) -> None: ...
+
+    def get(self, review_decision_id: ReviewDecisionId) -> ReviewDecision | None: ...
+
+    def get_for_version(
+        self, content_id: ContentId, version_id: ContentVersionId
+    ) -> ReviewDecision | None: ...
+
+
+class ReviewAuthorizationPort(Protocol):
+    """Current capability check. Does not own users, roles, JWT, or policy rules."""
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        content_id: ContentId,
+        version_id: ContentVersionId,
+        capability: str,
+    ) -> None: ...
+
+
+class ReviewCommentPolicy(Protocol):
+    """Approve or reject a proposed review comment before first persistence."""
+
+    def evaluate(self, comment: str | None) -> None: ...
 
 
 class ContentRepository(Protocol):
@@ -59,10 +96,23 @@ class ContentRepository(Protocol):
         updated_at: datetime,
     ) -> AggregateRevision | None: ...
 
+    def transition_stewardship(
+        self,
+        *,
+        content_id: ContentId,
+        tenant_id: UUID,
+        expected_revision: AggregateRevision,
+        expected_current_version_id: ContentVersionId,
+        expected_state: str,
+        target_state: str,
+        updated_at: datetime,
+    ) -> AggregateRevision | None: ...
+
 
 class ContentUnitOfWork(Protocol):
     contents: ContentRepository
     versions: ContentVersionRepository
+    reviews: ReviewRepository
     idempotency: IdempotencyRepository
 
     def __enter__(self) -> ContentUnitOfWork: ...

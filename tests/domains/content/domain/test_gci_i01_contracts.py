@@ -311,16 +311,20 @@ class ReviewDecisionContractTests(unittest.TestCase):
     def test_review_requires_exact_version_and_does_not_transfer(self) -> None:
         v1 = ContentVersionId.generate()
         v2 = ContentVersionId.generate()
+        principal = _foreign_uuid()
         decision = ReviewDecision(
             review_decision_id=ReviewDecisionId.generate(),
             tenant_id=_foreign_uuid(),
             content_id=ContentId.generate(),
             version_id=v1,
             decision=ReviewDecisionCode.APPROVE,
-            actor_principal_id=_foreign_uuid(),
+            reason_code=None,
+            comment="ok",
+            reviewer_principal_id=principal,
+            effective_actor_id=principal,
+            delegation_id=None,
             decided_at=_now(),
             correlation_id=_foreign_uuid(),
-            comment="ok",
         )
         self.assertTrue(decision.applies_to(v1))
         self.assertFalse(decision.applies_to(v2))

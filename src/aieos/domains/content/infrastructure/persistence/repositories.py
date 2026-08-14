@@ -11,6 +11,7 @@ from sqlalchemy.engine import Connection
 
 from aieos.domains.content.application.errors import (
     ContentAlreadyExists,
+    ReviewAlreadyDecided,
     VersionAlreadyExists,
 )
 from aieos.domains.content.application.models import LockedContentHead
@@ -19,8 +20,10 @@ from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
     ContentVersionId,
+    ReviewDecisionId,
     VersionNumber,
 )
+from aieos.domains.content.domain.review import ReviewDecision
 from aieos.domains.content.domain.version import ContentVersion
 from aieos.domains.content.infrastructure.persistence.errors import (
     reraise_as_application_error,
@@ -30,10 +33,12 @@ from aieos.domains.content.infrastructure.persistence.mapping import (
     content_version_from_row,
     payload_as_json,
     provenance_as_json,
+    review_decision_from_row,
 )
 from aieos.domains.content.infrastructure.persistence.models import (
     content_versions_table,
     contents_table,
+    review_decisions_table,
 )
 
 
@@ -265,6 +270,7 @@ class SqlAlchemyContentRepository:
                 current_version_id=new_version_id.value,
                 aggregate_revision=contents_table.c.aggregate_revision + 1,
                 updated_at=updated_at,
+                stewardship_state="GENERATED",
             )
             .returning(contents_table.c.aggregate_revision)
         )
@@ -275,3 +281,106 @@ class SqlAlchemyContentRepository:
         if row is None:
             return None
         return AggregateRevision(int(row.aggregate_revision))
+
+    def transition_stewardship(
+        self,
+        *,
+        content_id: ContentId,
+        tenant_id: UUID,
+        expected_revision: AggregateRevision,
+        expected_current_version_id: ContentVersionId,
+        expected_state: str,
+        target_state: str,
+        updated_at: datetime,
+    ) -> AggregateRevision | None:
+        stmt = (
+            update(contents_table)
+            .where(
+                contents_table.c.tenant_id == tenant_id,
+                contents_table.c.content_id == content_id.value,
+                contents_table.c.current_version_id == expected_current_version_id.value,
+                contents_table.c.stewardship_state == expected_state,
+                contents_table.c.aggregate_revision == expected_revision.value,
+            )
+            .values(
+                stewardship_state=target_state,
+                aggregate_revision=contents_table.c.aggregate_revision + 1,
+                updated_at=updated_at,
+            )
+            .returning(contents_table.c.aggregate_revision)
+        )
+        try:
+            row = self._connection.execute(stmt).one_or_none()
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if row is None:
+            return None
+        return AggregateRevision(int(row.aggregate_revision))
+
+
+class SqlAlchemyReviewDecisionRepository:
+    def __init__(self, connection: Connection) -> None:
+        self._connection = connection
+
+    def insert(self, decision: ReviewDecision) -> None:
+        try:
+            self._connection.execute(
+                review_decisions_table.insert().values(
+                    review_decision_id=decision.review_decision_id.value,
+                    tenant_id=decision.tenant_id,
+                    content_id=decision.content_id.value,
+                    version_id=decision.version_id.value,
+                    decision=decision.decision.value,
+                    reason_code=decision.reason_code,
+                    comment=decision.comment,
+                    reviewer_principal_id=decision.reviewer_principal_id,
+                    effective_actor_id=decision.effective_actor_id,
+                    delegation_id=decision.delegation_id,
+                    decided_at=decision.decided_at,
+                    correlation_id=decision.correlation_id,
+                )
+            )
+        except Exception as exc:
+            reraise_as_application_error(
+                exc,
+                unique_conflict=ReviewAlreadyDecided,
+                unique_message="this ContentVersion already has a terminal ReviewDecision",
+            )
+
+    def get(self, review_decision_id: ReviewDecisionId) -> ReviewDecision | None:
+        try:
+            row = (
+                self._connection.execute(
+                    select(review_decisions_table).where(
+                        review_decisions_table.c.review_decision_id
+                        == review_decision_id.value
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if row is None:
+            return None
+        return review_decision_from_row(row)
+
+    def get_for_version(
+        self, content_id: ContentId, version_id: ContentVersionId
+    ) -> ReviewDecision | None:
+        try:
+            row = (
+                self._connection.execute(
+                    select(review_decisions_table).where(
+                        review_decisions_table.c.content_id == content_id.value,
+                        review_decisions_table.c.version_id == version_id.value,
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if row is None:
+            return None
+        return review_decision_from_row(row)

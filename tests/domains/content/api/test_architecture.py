@@ -64,14 +64,63 @@ def test_get_does_not_perform_privileged_second_lookup() -> None:
     assert text.count(".get(") == 1
 
 
-def test_no_gci_i06_or_later_http_or_intent_structures() -> None:
+def test_no_gci_i07_or_later_http_or_intent_structures() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
-    for needle in ("PATCH", "submit-for-review", "/publish", "/archive"):
+    for needle in ("PATCH", "/publish", "/archive", "review-queue", "/reviews"):
         assert needle not in routes
     hits: list[str] = []
     for path in (REPO_ROOT / "migrations").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        for needle in ("outbox_messages", "audit_events", "review_decisions", "publications"):
+        for needle in (
+            "outbox_messages",
+            "audit_events",
+            "publications",
+            "workflow_start",
+            "review_queue",
+        ):
             if needle in text:
                 hits.append(f"{path.name}:{needle}")
     assert hits == []
+
+
+def test_review_repository_is_insert_read_only() -> None:
+    source = (
+        REPO_ROOT
+        / "src"
+        / "aieos"
+        / "domains"
+        / "content"
+        / "infrastructure"
+        / "persistence"
+        / "repositories.py"
+    ).read_text(encoding="utf-8")
+    marker = "class SqlAlchemyReviewDecisionRepository:"
+    start = source.index(marker)
+    body = source[start:]
+    assert "def insert(" in body
+    assert "def get(" in body
+    assert "def get_for_version(" in body
+    assert "def update(" not in body
+    assert "def delete(" not in body
+    assert ".commit(" not in body
+    assert ".rollback(" not in body
+
+
+def test_no_temporal_nats_outbox_or_publication_tables() -> None:
+    hits: list[str] = []
+    for path in SRC_ROOT.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for needle in ("temporalio", "nats.", "import nats", "outbox_messages", "audit_events"):
+            if needle in text:
+                hits.append(f"{path.relative_to(SRC_ROOT)}:{needle}")
+    assert hits == []
+    versions = sorted(
+        path.name
+        for path in (REPO_ROOT / "migrations" / "versions").glob("*.py")
+        if path.name != "__init__.py"
+    )
+    assert versions == [
+        "gcii020001_content_schema.py",
+        "gcii050001_api_idempotency.py",
+        "gcii060001_review_decisions.py",
+    ]

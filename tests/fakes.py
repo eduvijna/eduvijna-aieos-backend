@@ -6,7 +6,12 @@ from uuid import UUID
 
 from datetime import timedelta
 
-from aieos.domains.content.domain.schema import ContentSchemaRegistry
+from aieos.domains.content.application.errors import ReviewCommentRejected, ReviewForbidden
+from aieos.domains.content.application.ports import (
+    CONTENT_REVIEW_DECIDE,
+    CONTENT_REVIEW_SUBMIT,
+)
+from aieos.domains.content.domain.schema import ContentSchemaRegistry, SchemaId, SchemaVersion
 from aieos.platform.security.context import (
     TrustedSecurityContext,
     UnauthenticatedError,
@@ -43,6 +48,44 @@ class StubSecurityContextResolver:
             tenant_id=self.authorized_tenant_id,
             principal_id=self.principal_id,
         )
+
+
+SENSITIVE_TEST_COMMENT = "SENSITIVE_TEST_COMMENT"
+
+
+class AllowReviewAuthorization:
+    def __init__(self, *, allow_submit: bool = True, allow_decide: bool = True) -> None:
+        self.allow_submit = allow_submit
+        self.allow_decide = allow_decide
+        self.calls: list[tuple[UUID, str]] = []
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        content_id,
+        version_id,
+        capability: str,
+    ) -> None:
+        self.calls.append((principal_id, capability))
+        allowed = {
+            CONTENT_REVIEW_SUBMIT: self.allow_submit,
+            CONTENT_REVIEW_DECIDE: self.allow_decide,
+        }
+        if not allowed.get(capability, False):
+            raise ReviewForbidden("review capability denied")
+
+
+class AllowReviewCommentPolicy:
+    def evaluate(self, comment: str | None) -> None:
+        return None
+
+
+class MarkerReviewCommentPolicy:
+    def evaluate(self, comment: str | None) -> None:
+        if comment is not None and SENSITIVE_TEST_COMMENT in comment:
+            raise ReviewCommentRejected("review comment rejected")
 
 
 def make_test_schema_registry() -> ContentSchemaRegistry:

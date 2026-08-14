@@ -407,7 +407,7 @@ class TestProvenanceAndUnchangedFields:
         _append(runtime_engine, tenant_id, v2, 1)
         row = _content_row(bootstrap_engine, content_id)
         assert row.published_version_id == v1.version_id.value
-        assert row.stewardship_state == "APPROVED"
+        assert row.stewardship_state == "GENERATED"
         assert row.current_version_id == v2.version_id.value
         assert row.title == "Title"
 
@@ -579,6 +579,7 @@ class TestArchitectureAndNoSchemaChange:
         assert versions == [
             "gcii020001_content_schema.py",
             "gcii050001_api_idempotency.py",
+            "gcii060001_review_decisions.py",
         ]
         assert not Path(
             REPO_ROOT / "src" / "aieos" / "domains" / "content" / "infrastructure" / "outbox"

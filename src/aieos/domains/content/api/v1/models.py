@@ -62,3 +62,33 @@ class ContentVersionResponse(BaseModel):
     payload_sha256: str
     origin: str
     created_at: datetime
+
+
+class ReviewDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason_code: str | None = None
+    comment: str | None = None
+
+
+class ReviewSubmissionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content_id: UUID
+    version_id: UUID
+    stewardship_state: str
+    aggregate_revision: int
+
+
+class ReviewDecisionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    review_decision_id: UUID
+    content_id: UUID
+    version_id: UUID
+    decision: str
+    reason_code: str | None
+    comment: str | None
+    decided_at: datetime
+    stewardship_state: str
+    aggregate_revision: int

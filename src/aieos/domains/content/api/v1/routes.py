@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 
 from aieos.domains.content.api.v1.dependencies import (
     create_content_service,
@@ -15,6 +15,7 @@ from aieos.domains.content.api.v1.dependencies import (
     http_append_service,
     list_contents_service,
     resolve_trusted_context,
+    review_command_service,
 )
 from aieos.domains.content.api.v1.models import (
     ContentCreateRequest,
@@ -22,6 +23,9 @@ from aieos.domains.content.api.v1.models import (
     ContentResponse,
     ContentVersionAppendRequest,
     ContentVersionResponse,
+    ReviewDecisionRequest,
+    ReviewDecisionResponse,
+    ReviewSubmissionResponse,
 )
 from aieos.domains.content.application.create import CreateContentService
 from aieos.domains.content.application.errors import InvalidContentRequest
@@ -34,8 +38,11 @@ from aieos.domains.content.application.models import (
     ContentVersionReadModel,
     CreateContentCommand,
     ListContentsQuery,
+    ReviewDecisionResult,
+    ReviewSubmissionResult,
 )
 from aieos.domains.content.application.queries import GetContentService, ListContentsService
+from aieos.domains.content.application.review import ReviewCommandService
 from aieos.domains.content.domain.errors import InvalidContentIdentityError
 from aieos.domains.content.domain.identities import (
     AggregateRevision,
@@ -68,6 +75,9 @@ _APPEND_RESPONSES = _problem_responses(
     400, 401, 403, 404, 409, 412, 422, 428, 500, 503
 )
 _VERSION_GET_RESPONSES = _problem_responses(400, 401, 403, 404, 422, 500, 503)
+_REVIEW_RESPONSES = _problem_responses(
+    400, 401, 403, 404, 409, 412, 422, 428, 500, 503
+)
 
 
 def _to_response(model: ContentReadModel) -> ContentResponse:
@@ -269,3 +279,179 @@ def content_version_get(
         _version_id(version_id),
     )
     return _to_version_response(model)
+
+
+def _to_submission_response(model: ReviewSubmissionResult) -> ReviewSubmissionResponse:
+    return ReviewSubmissionResponse(
+        content_id=model.content_id.value,
+        version_id=model.version_id.value,
+        stewardship_state=model.stewardship_state,
+        aggregate_revision=int(model.aggregate_revision),
+    )
+
+
+def _to_decision_response(model: ReviewDecisionResult) -> ReviewDecisionResponse:
+    return ReviewDecisionResponse(
+        review_decision_id=model.review_decision_id.value,
+        content_id=model.content_id.value,
+        version_id=model.version_id.value,
+        decision=model.decision,
+        reason_code=model.reason_code,
+        comment=model.comment,
+        decided_at=model.decided_at,
+        stewardship_state=model.stewardship_state,
+        aggregate_revision=int(model.aggregate_revision),
+    )
+
+
+def _decide_http(
+    action,
+    content_id: UUID,
+    version_id: UUID,
+    request: Request,
+    response: Response,
+    body: ReviewDecisionRequest,
+    context: TrustedSecurityContext,
+    if_match: str | None,
+    idempotency_key: str | None,
+) -> ReviewDecisionResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    model = action(
+        context.tenant_id,
+        context.principal_id,
+        content_id=_content_id(content_id),
+        version_id=_version_id(version_id),
+        expected_aggregate_revision=expected,
+        reason_code=body.reason_code,
+        comment=body.comment,
+        idempotency_key=key,
+        correlation_id=request.state.correlation_id,
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_decision_response(model)
+
+
+@router.post(
+    "/contents/{content_id}/versions/{version_id}/actions/submit-for-review",
+    status_code=200,
+    response_model=ReviewSubmissionResponse,
+    operation_id="content_review_submit",
+    responses=_REVIEW_RESPONSES,
+)
+def content_review_submit(
+    content_id: UUID,
+    version_id: UUID,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[ReviewCommandService, Depends(review_command_service)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ReviewSubmissionResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    model = service.submit(
+        context.tenant_id,
+        context.principal_id,
+        content_id=_content_id(content_id),
+        version_id=_version_id(version_id),
+        expected_aggregate_revision=expected,
+        idempotency_key=key,
+        correlation_id=request.state.correlation_id,
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_submission_response(model)
+
+
+@router.post(
+    "/contents/{content_id}/versions/{version_id}/actions/approve",
+    status_code=200,
+    response_model=ReviewDecisionResponse,
+    operation_id="content_review_approve",
+    responses=_REVIEW_RESPONSES,
+)
+def content_review_approve(
+    content_id: UUID,
+    version_id: UUID,
+    request: Request,
+    response: Response,
+    body: ReviewDecisionRequest,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[ReviewCommandService, Depends(review_command_service)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ReviewDecisionResponse:
+    return _decide_http(
+        service.approve,
+        content_id,
+        version_id,
+        request,
+        response,
+        body,
+        context,
+        if_match,
+        idempotency_key,
+    )
+
+
+@router.post(
+    "/contents/{content_id}/versions/{version_id}/actions/request-changes",
+    status_code=200,
+    response_model=ReviewDecisionResponse,
+    operation_id="content_review_request_changes",
+    responses=_REVIEW_RESPONSES,
+)
+def content_review_request_changes(
+    content_id: UUID,
+    version_id: UUID,
+    request: Request,
+    response: Response,
+    body: ReviewDecisionRequest,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[ReviewCommandService, Depends(review_command_service)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ReviewDecisionResponse:
+    return _decide_http(
+        service.request_changes,
+        content_id,
+        version_id,
+        request,
+        response,
+        body,
+        context,
+        if_match,
+        idempotency_key,
+    )
+
+
+@router.post(
+    "/contents/{content_id}/versions/{version_id}/actions/reject",
+    status_code=200,
+    response_model=ReviewDecisionResponse,
+    operation_id="content_review_reject",
+    responses=_REVIEW_RESPONSES,
+)
+def content_review_reject(
+    content_id: UUID,
+    version_id: UUID,
+    request: Request,
+    response: Response,
+    body: ReviewDecisionRequest,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[ReviewCommandService, Depends(review_command_service)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ReviewDecisionResponse:
+    return _decide_http(
+        service.reject,
+        content_id,
+        version_id,
+        request,
+        response,
+        body,
+        context,
+        if_match,
+        idempotency_key,
+    )

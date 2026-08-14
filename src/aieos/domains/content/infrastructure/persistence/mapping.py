@@ -9,9 +9,11 @@ from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
     ContentVersionId,
+    ReviewDecisionId,
     VersionNumber,
 )
 from aieos.domains.content.domain.origin import parse_content_origin
+from aieos.domains.content.domain.review import ReviewDecision, parse_review_decision_code
 from aieos.domains.content.domain.schema import SchemaId, SchemaVersion
 from aieos.domains.content.domain.states import parse_stewardship_state
 from aieos.domains.content.domain.version import (
@@ -83,4 +85,21 @@ def content_version_from_row(row: Any) -> ContentVersion:
         origin=parse_content_origin(row.origin),
         created_at=row.created_at,
         created_by_principal_id=row.created_by_principal_id,
+    )
+
+
+def review_decision_from_row(row: Any) -> ReviewDecision:
+    return ReviewDecision(
+        review_decision_id=ReviewDecisionId(_row_value(row, "review_decision_id")),
+        tenant_id=_row_value(row, "tenant_id"),
+        content_id=ContentId(_row_value(row, "content_id")),
+        version_id=ContentVersionId(_row_value(row, "version_id")),
+        decision=parse_review_decision_code(_row_value(row, "decision")),
+        reason_code=_row_value(row, "reason_code"),
+        comment=_row_value(row, "comment"),
+        reviewer_principal_id=_row_value(row, "reviewer_principal_id"),
+        effective_actor_id=_row_value(row, "effective_actor_id"),
+        delegation_id=_row_value(row, "delegation_id"),
+        decided_at=_row_value(row, "decided_at"),
+        correlation_id=_row_value(row, "correlation_id"),
     )

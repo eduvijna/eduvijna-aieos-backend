@@ -26,6 +26,16 @@ class _ExportResolver:
         return TrustedSecurityContext(tenant_id=uuid4(), principal_id=uuid4())
 
 
+class _ExportReviewAuthorization:
+    def authorize(self, **kwargs) -> None:
+        return None
+
+
+class _ExportReviewCommentPolicy:
+    def evaluate(self, comment: str | None) -> None:
+        return None
+
+
 def main() -> None:
     app = create_app(
         uow_factory=_UnusedUowFactory(),
@@ -34,6 +44,8 @@ def main() -> None:
         cursor_signing_key=b"gci-i04-openapi-export-key",
         schema_registry=ContentSchemaRegistry(),
         idempotency_retention=timedelta(hours=24),
+        review_authorization=_ExportReviewAuthorization(),
+        review_comment_policy=_ExportReviewCommentPolicy(),
     )
     SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
     SNAPSHOT.write_text(canonical_openapi_json(build_openapi(app)), encoding="utf-8")

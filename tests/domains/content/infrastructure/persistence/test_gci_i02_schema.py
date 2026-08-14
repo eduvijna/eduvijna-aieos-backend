@@ -221,7 +221,7 @@ class TestAlembicAndCatalog:
                     )
                 )
             }
-            assert tables == {"contents", "content_versions"}
+            assert tables == {"contents", "content_versions", "review_decisions"}
             api_tables = {
                 row[0]
                 for row in conn.execute(
@@ -231,13 +231,14 @@ class TestAlembicAndCatalog:
             assert "api" in schemas
             assert api_tables == {"idempotency_records"}
             revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            assert revision == "gcii050001"
+            assert revision == "gcii060001"
             gcii02 = (
                 REPO_ROOT / "migrations" / "versions" / "gcii020001_content_schema.py"
             ).read_text(encoding="utf-8")
             assert "CREATE SCHEMA content" in gcii02
             assert "CREATE SCHEMA api" not in gcii02
             assert "idempotency_records" not in gcii02
+            assert "review_decisions" not in gcii02
             edu = conn.execute(
                 text(
                     "SELECT COUNT(*) FROM information_schema.tables "
@@ -261,12 +262,13 @@ class TestAlembicAndCatalog:
         assert set(insp.get_table_names(schema="content")) == {
             "contents",
             "content_versions",
+            "review_decisions",
         }
         assert "api" in insp.get_schema_names()
         assert set(insp.get_table_names(schema="api")) == {"idempotency_records"}
         with bootstrap_engine.connect() as conn:
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "gcii050001"
+                "gcii060001"
             )
 
     def test_required_columns_and_sqlalchemy_mappings(self, bootstrap_engine) -> None:
@@ -809,6 +811,7 @@ class TestPrivilegeAndOwnership:
         assert schema_owner == owner
         assert table_owners["contents"] == owner
         assert table_owners["content_versions"] == owner
+        assert table_owners["review_decisions"] == owner
         assert api_schema_owner == owner
         assert api_table_owners["idempotency_records"] == owner
         assert owner != migrator
@@ -1024,7 +1027,7 @@ class TestArchitectureBoundary:
         assert hits == []
         for path in (REPO_ROOT / "migrations").rglob("*.py"):
             text_src = path.read_text(encoding="utf-8")
-            for needle in ("review_decisions", "publications", "version_asset_refs"):
+            for needle in ("publications", "version_asset_refs", "outbox_messages"):
                 if needle in text_src:
                     hits.append(f"{path.name}:{needle}")
         assert hits == []

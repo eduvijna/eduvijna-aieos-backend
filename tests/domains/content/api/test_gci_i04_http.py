@@ -20,7 +20,13 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.platform.api.app import create_app
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.api.pagination import CursorCodec, ListCursor
-from tests.fakes import IDEMPOTENCY_RETENTION, StubSecurityContextResolver, make_test_schema_registry
+from tests.fakes import (
+    AllowReviewAuthorization,
+    AllowReviewCommentPolicy,
+    IDEMPOTENCY_RETENTION,
+    StubSecurityContextResolver,
+    make_test_schema_registry,
+)
 
 pytestmark = pytest.mark.gci_i04
 
@@ -53,6 +59,8 @@ def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID, **resolver
         cursor_signing_key=CURSOR_KEY,
         schema_registry=make_test_schema_registry(),
         idempotency_retention=IDEMPOTENCY_RETENTION,
+        review_authorization=AllowReviewAuthorization(),
+        review_comment_policy=AllowReviewCommentPolicy(),
     )
 
 

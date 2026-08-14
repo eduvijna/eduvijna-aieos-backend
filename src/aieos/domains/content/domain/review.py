@@ -7,6 +7,7 @@ REQUEST_CHANGES and REJECT are review history, not stewardship states.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -22,6 +23,10 @@ from aieos.domains.content.domain.identities import (
     ReviewDecisionId,
     require_foreign_uuid,
 )
+
+_REASON_CODE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+_MAX_REASON_CODE = 64
+_MAX_COMMENT = 4000
 
 
 class ReviewDecisionCode(StrEnum):
@@ -45,6 +50,32 @@ def parse_review_decision_code(value: str | ReviewDecisionCode) -> ReviewDecisio
         ) from exc
 
 
+def normalize_reason_code(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ReviewDecisionBindingError("reason_code must be a string when provided")
+    code = value.strip()
+    if not code:
+        return None
+    if len(code) > _MAX_REASON_CODE or _REASON_CODE.fullmatch(code) is None:
+        raise ReviewDecisionBindingError("reason_code is not a bounded stable code")
+    return code
+
+
+def normalize_review_comment(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ReviewDecisionBindingError("comment must be a string when provided")
+    comment = value.strip()
+    if not comment:
+        return None
+    if len(comment) > _MAX_COMMENT:
+        raise ReviewDecisionBindingError("comment exceeds the bounded length")
+    return comment
+
+
 @dataclass(frozen=True, slots=True)
 class ReviewDecision:
     """Immutable review decision bound to one ContentVersion."""
@@ -54,23 +85,32 @@ class ReviewDecision:
     content_id: ContentId
     version_id: ContentVersionId
     decision: ReviewDecisionCode
-    actor_principal_id: UUID
-    decided_at: datetime
-    correlation_id: UUID | None
+    reason_code: str | None
     comment: str | None
+    reviewer_principal_id: UUID
+    effective_actor_id: UUID
+    delegation_id: UUID | None
+    decided_at: datetime
+    correlation_id: UUID
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "decision", parse_review_decision_code(self.decision))
         require_foreign_uuid(self.tenant_id, label="tenant_id")
-        require_foreign_uuid(self.actor_principal_id, label="actor_principal_id")
-        if self.correlation_id is not None:
-            require_foreign_uuid(self.correlation_id, label="correlation_id")
+        require_foreign_uuid(self.reviewer_principal_id, label="reviewer_principal_id")
+        require_foreign_uuid(self.effective_actor_id, label="effective_actor_id")
+        require_foreign_uuid(self.correlation_id, label="correlation_id")
+        if self.delegation_id is not None:
+            require_foreign_uuid(self.delegation_id, label="delegation_id")
         if self.version_id is None:
             raise ReviewDecisionBindingError("review decision requires an exact version_id")
         if self.decided_at.tzinfo is None or self.decided_at.utcoffset() is None:
             raise ReviewDecisionBindingError("decided_at must be timezone-aware")
-        if self.comment is not None and not isinstance(self.comment, str):
-            raise ReviewDecisionBindingError("comment must be a string when provided")
+        object.__setattr__(self, "reason_code", normalize_reason_code(self.reason_code))
+        object.__setattr__(self, "comment", normalize_review_comment(self.comment))
+        if self.decision is ReviewDecisionCode.REQUEST_CHANGES and self.comment is None:
+            raise ReviewDecisionBindingError(
+                "REQUEST_CHANGES requires a non-empty comment"
+            )
 
     def applies_to(self, version_id: ContentVersionId) -> bool:
         """Approval/feedback never transfers between versions."""

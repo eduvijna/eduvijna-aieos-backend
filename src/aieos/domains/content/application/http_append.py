@@ -41,7 +41,13 @@ from aieos.platform.idempotency.models import (
     IdempotencyScope,
 )
 
-_APPEND_ALLOWED = frozenset({StewardshipState.DRAFT.value, StewardshipState.GENERATED.value})
+_APPEND_ALLOWED = frozenset(
+    {
+        StewardshipState.DRAFT.value,
+        StewardshipState.GENERATED.value,
+        StewardshipState.APPROVED.value,
+    }
+)
 
 
 class HttpAppendContentVersionService:
@@ -172,6 +178,7 @@ class HttpAppendContentVersionService:
                     request_fingerprint_sha256=fingerprint,
                     result_content_id=content_id.value,
                     result_version_id=result.version_id.value,
+                    result_review_decision_id=None,
                     result_aggregate_revision=int(result.aggregate_revision),
                     created_at=created_at,
                     expires_at=created_at + self._idempotency_retention,

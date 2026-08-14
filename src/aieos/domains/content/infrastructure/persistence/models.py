@@ -180,3 +180,54 @@ contents_table.append_constraint(
         initially="DEFERRED",
     )
 )
+
+review_decisions_table = Table(
+    "review_decisions",
+    content_metadata,
+    Column("review_decision_id", UUID(as_uuid=True), nullable=False),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("content_id", UUID(as_uuid=True), nullable=False),
+    Column("version_id", UUID(as_uuid=True), nullable=False),
+    Column("decision", Text, nullable=False),
+    Column("reason_code", Text, nullable=True),
+    Column("comment", Text, nullable=True),
+    Column("reviewer_principal_id", UUID(as_uuid=True), nullable=False),
+    Column("effective_actor_id", UUID(as_uuid=True), nullable=False),
+    Column("delegation_id", UUID(as_uuid=True), nullable=True),
+    Column("decided_at", DateTime(timezone=True), nullable=False),
+    Column("correlation_id", UUID(as_uuid=True), nullable=False),
+    PrimaryKeyConstraint("review_decision_id", name="pk_review_decisions"),
+    UniqueConstraint(
+        "tenant_id",
+        "content_id",
+        "version_id",
+        name="uq_review_decisions_tenant_content_version",
+    ),
+    CheckConstraint(
+        "decision IN ('APPROVE', 'REQUEST_CHANGES', 'REJECT')",
+        name="ck_review_decisions_decision",
+    ),
+    CheckConstraint(
+        "reason_code IS NULL OR ("
+        "char_length(reason_code) <= 64 AND "
+        "reason_code ~ '^[a-z0-9][a-z0-9._-]*$'"
+        ")",
+        name="ck_review_decisions_reason_code",
+    ),
+    CheckConstraint(
+        "comment IS NULL OR (btrim(comment) <> '' AND char_length(comment) <= 4000)",
+        name="ck_review_decisions_comment",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "content_id", "version_id"],
+        [
+            "content.content_versions.tenant_id",
+            "content.content_versions.content_id",
+            "content.content_versions.version_id",
+        ],
+        name="fk_review_decisions_version",
+        ondelete="RESTRICT",
+    ),
+    Index("ix_review_decisions_tenant_id", "tenant_id"),
+    schema="content",
+)

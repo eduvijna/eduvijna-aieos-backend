@@ -13,7 +13,7 @@ from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.app import create_app
 from aieos.platform.api.openapi import build_openapi, canonical_openapi_json
 from tests.dbutil import REPO_ROOT
-from tests.fakes import StubSecurityContextResolver
+from tests.fakes import StubSecurityContextResolver, AllowReviewAuthorization, AllowReviewCommentPolicy
 
 pytestmark = pytest.mark.gci_i04
 
@@ -33,6 +33,8 @@ def _schema() -> dict:
         cursor_signing_key=b"gci-i04-openapi-export-key",
         schema_registry=ContentSchemaRegistry(),
         idempotency_retention=timedelta(hours=24),
+        review_authorization=AllowReviewAuthorization(),
+        review_comment_policy=AllowReviewCommentPolicy(),
     )
     return build_openapi(app)
 
