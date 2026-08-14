@@ -1,11 +1,11 @@
 ---
-id: GCI-I13-NON-PRODUCTION-MUTATION-BOUNDARY
+id: GCI-I14-NON-PRODUCTION-MUTATION-BOUNDARY
 title: Generic Content HTTP mutations and controlled migration remain non-production
 status: draft
-version: 1.0.0
+version: 1.1.0
 ---
 
-# GCI-I13 non-production mutation boundary
+# GCI-I14 non-production mutation boundary
 
 Idempotency-Key is now required for:
 
@@ -31,22 +31,24 @@ GCI-I13 adds a controlled **migration adapter foundation**:
 - GCI-G12 replay / digest / mapping conflict detection
 - internal `ImportMigratedContentService` (no public migration HTTP)
 
+GCI-I14 completes an **adversarial validation suite** (tests only under `tests/domains/content/adversarial/`). It does **not** authorize production mutation.
+
 All of the HTTP mutation routes above remain a **development / test mutation foundation**.
 
 They MUST NOT be authorized for production mutation until later slices integrate the required transactional:
 
 - security-audit intent persistence
 
-GCI-I08–I13 provide transactional event-publication intent (including publish), ResourceRef dual validation, typed AI provenance materialization, Teacher OS Review Queue reads, and a controlled migration import foundation, but still lack required security-audit intent for mutations. Therefore Content mutations and controlled migration import remain **NON-PRODUCTION**.
+GCI-I08–I14 provide transactional event-publication intent (including publish), ResourceRef dual validation, typed AI provenance materialization, Teacher OS Review Queue reads, a controlled migration import foundation, and adversarial test coverage, but still lack required security-audit intent for mutations. Therefore Content mutations and controlled migration import remain **NON-PRODUCTION**.
 
-GCI-I13 does **not** create:
+GCI-I14 does **not** create:
 
 - public migration HTTP routes (`/migrate`, `/imports`, `/legacy`)
 - production legacy connectors (PostgREST, `edu.content`, legacy APIs)
 - review/publication trust import from legacy approval/publish state
-- archive HTTP or `content.archived` emission
-- audit tables / audit dispatchers
-- GCI-I14 adversarial suite structures
+- archive HTTP or `content.archived` emission (**GCI-G10 deferred**)
+- audit tables / audit dispatchers / security-audit intent
+- `gcii140001` or any adversarial DDL migration
 - a production NATS topology, credentials, or dispatcher daemon
 - authorization to read production legacy data or write production AIEOS Content
 

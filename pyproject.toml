@@ -45,4 +45,5 @@ markers = [
     "gci_i11: Generic Content AI provenance and generation materialization tests",
     "gci_i12: Teacher OS Review Queue read projection tests",
     "gci_i13: Controlled migration import foundation tests",
+    "gci_i14: Generic Content adversarial validation suite (tests only)",
 ]

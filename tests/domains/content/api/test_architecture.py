@@ -77,6 +77,7 @@ def test_get_does_not_perform_privileged_second_lookup() -> None:
 
 
 def test_no_gci_i14_or_unauthorized_structures() -> None:
+    """Adversarial coverage lives under tests/domains/content/adversarial/; no gcii140001 DDL."""
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
     for needle in (
         "PATCH",
@@ -127,6 +128,7 @@ def test_no_gci_i14_or_unauthorized_structures() -> None:
     assert not (
         REPO_ROOT / "migrations" / "versions" / "gcii140001_adversarial.py"
     ).exists()
+    assert (REPO_ROOT / "tests" / "domains" / "content" / "adversarial").is_dir()
 
 
 def test_no_legacy_sql_or_postgrest_in_application_domain() -> None:
