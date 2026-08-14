@@ -12,8 +12,10 @@ from aieos.domains.content.api.v1.dependencies import (
     cursor_codec,
     get_content_service,
     get_content_version_service,
+    get_teacher_review_queue_item_service,
     http_append_service,
     list_contents_service,
+    list_teacher_review_queue_service,
     publish_content_service,
     resolve_trusted_context,
     review_command_service,
@@ -29,6 +31,9 @@ from aieos.domains.content.api.v1.models import (
     ReviewDecisionRequest,
     ReviewDecisionResponse,
     ReviewSubmissionResponse,
+    TeacherReviewQueueDetailResponse,
+    TeacherReviewQueueItemResponse,
+    TeacherReviewQueueListResponse,
 )
 from aieos.domains.content.application.create import CreateContentService
 from aieos.domains.content.application.errors import InvalidContentRequest
@@ -48,6 +53,15 @@ from aieos.domains.content.application.models import (
 from aieos.domains.content.application.publish import PublishContentService
 from aieos.domains.content.application.queries import GetContentService, ListContentsService
 from aieos.domains.content.application.review import ReviewCommandService
+from aieos.domains.content.application.review_queue import (
+    GetTeacherReviewQueueItemService,
+    ListTeacherReviewQueueService,
+)
+from aieos.domains.content.application.review_queue_models import (
+    ListTeacherReviewQueueQuery,
+    TeacherReviewQueueDetail,
+    TeacherReviewQueueItem,
+)
 from aieos.domains.content.domain.errors import InvalidContentIdentityError
 from aieos.domains.content.domain.identities import (
     AggregateRevision,
@@ -57,7 +71,7 @@ from aieos.domains.content.domain.identities import (
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.api.idempotency_key import parse_idempotency_key
 from aieos.platform.api.if_match import parse_if_match
-from aieos.platform.api.pagination import CursorCodec, ListCursor
+from aieos.platform.api.pagination import CursorCodec, ListCursor, ReviewQueueCursor
 from aieos.platform.api.problems import ProblemDetails
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.security.context import TrustedSecurityContext
@@ -524,3 +538,127 @@ def content_publish(
     )
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
     return _to_publication_response(model)
+
+
+def _to_queue_item(model: TeacherReviewQueueItem) -> TeacherReviewQueueItemResponse:
+    return TeacherReviewQueueItemResponse(
+        content_id=model.content_id.value,
+        version_id=model.version_id.value,
+        version_number=int(model.version_number),
+        content_type=model.content_type,
+        title=model.title,
+        description=model.description,
+        locale=model.locale,
+        artifact_status=model.artifact_status,
+        origin=model.origin,
+        aggregate_revision=int(model.aggregate_revision),
+        submitted_at=model.submitted_at,
+        version_created_at=model.version_created_at,
+        published_version_id=(
+            None
+            if model.published_version_id is None
+            else model.published_version_id.value
+        ),
+    )
+
+
+def _to_queue_detail(
+    model: TeacherReviewQueueDetail,
+) -> TeacherReviewQueueDetailResponse:
+    return TeacherReviewQueueDetailResponse(
+        content_id=model.content_id.value,
+        version_id=model.version_id.value,
+        version_number=int(model.version_number),
+        content_type=model.content_type,
+        title=model.title,
+        description=model.description,
+        locale=model.locale,
+        artifact_status=model.artifact_status,
+        origin=model.origin,
+        aggregate_revision=int(model.aggregate_revision),
+        submitted_at=model.submitted_at,
+        version_created_at=model.version_created_at,
+        published_version_id=(
+            None
+            if model.published_version_id is None
+            else model.published_version_id.value
+        ),
+        schema_id=model.schema_id,
+        schema_version=model.schema_version,
+        payload=dict(model.payload),
+        payload_sha256=model.payload_sha256,
+    )
+
+
+@router.get(
+    "/teacher-os/review-queue",
+    response_model=TeacherReviewQueueListResponse,
+    operation_id="teacher_os_review_queue_list",
+    responses=_LIST_RESPONSES,
+    tags=["teacher-os"],
+)
+def teacher_os_review_queue_list(
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        ListTeacherReviewQueueService, Depends(list_teacher_review_queue_service)
+    ],
+    codec: Annotated[CursorCodec, Depends(cursor_codec)],
+    limit: Annotated[int | None, Query(ge=1)] = None,
+    cursor: Annotated[str | None, Query()] = None,
+) -> TeacherReviewQueueListResponse:
+    if limit is not None and limit > MAX_LIST_LIMIT:
+        raise InvalidContentRequest("list limit exceeds the maximum of 100")
+    page_size = DEFAULT_LIST_LIMIT if limit is None else limit
+    after_submitted_at = None
+    after_content_id = None
+    if cursor is not None:
+        decoded = codec.decode_review_queue(
+            cursor, expected_tenant_id=context.tenant_id
+        )
+        after_submitted_at = decoded.submitted_at
+        after_content_id = ContentId(decoded.content_id)
+    result = service.list(
+        context.tenant_id,
+        ListTeacherReviewQueueQuery(
+            limit=page_size,
+            after_submitted_at=after_submitted_at,
+            after_content_id=after_content_id,
+        ),
+    )
+    items = [_to_queue_item(item) for item in result.items]
+    next_cursor = None
+    if result.has_more and result.items:
+        last = result.items[-1]
+        next_cursor = codec.encode_review_queue(
+            ReviewQueueCursor(
+                tenant_id=context.tenant_id,
+                submitted_at=last.submitted_at,
+                content_id=last.content_id.value,
+            )
+        )
+    return TeacherReviewQueueListResponse(items=items, next_cursor=next_cursor)
+
+
+@router.get(
+    "/teacher-os/review-queue/{content_id}/versions/{version_id}",
+    response_model=TeacherReviewQueueDetailResponse,
+    operation_id="teacher_os_review_queue_get",
+    responses=_GET_RESPONSES,
+    tags=["teacher-os"],
+)
+def teacher_os_review_queue_get(
+    content_id: UUID,
+    version_id: UUID,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        GetTeacherReviewQueueItemService, Depends(get_teacher_review_queue_item_service)
+    ],
+) -> TeacherReviewQueueDetailResponse:
+    model = service.get(
+        context.tenant_id,
+        _content_id(content_id),
+        _version_id(version_id),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_queue_detail(model)

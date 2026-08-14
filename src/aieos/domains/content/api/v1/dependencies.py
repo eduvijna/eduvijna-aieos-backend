@@ -12,6 +12,10 @@ from aieos.domains.content.application.http_append import (
     HttpAppendContentVersionService,
 )
 from aieos.domains.content.application.queries import GetContentService, ListContentsService
+from aieos.domains.content.application.review_queue import (
+    GetTeacherReviewQueueItemService,
+    ListTeacherReviewQueueService,
+)
 from aieos.platform.api.context import TENANT_ID_HEADER, parse_requested_tenant_id
 from aieos.platform.api.pagination import CursorCodec
 from aieos.platform.security.context import SecurityContextResolver, TrustedSecurityContext
@@ -56,3 +60,13 @@ def review_command_service(request: Request):
 
 def publish_content_service(request: Request):
     return request.app.state.publish_content_service
+
+
+def list_teacher_review_queue_service(request: Request) -> ListTeacherReviewQueueService:
+    return request.app.state.list_teacher_review_queue_service
+
+
+def get_teacher_review_queue_item_service(
+    request: Request,
+) -> GetTeacherReviewQueueItemService:
+    return request.app.state.get_teacher_review_queue_item_service

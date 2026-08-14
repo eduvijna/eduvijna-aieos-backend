@@ -119,10 +119,11 @@ def test_migration_chain_and_forbidden_tables() -> None:
     ]
 
 
-def test_no_gci_i12_archive_routes() -> None:
+def test_no_gci_i13_archive_routes() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
     assert "/actions/publish" in routes
-    for needle in ("/archive", "review-queue", "/reviews", "version_asset_refs", "/generate"):
+    assert "/teacher-os/review-queue" in routes
+    for needle in ("/archive", "/reviews", "version_asset_refs", "/generate"):
         assert needle not in routes
 
 

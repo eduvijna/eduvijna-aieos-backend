@@ -75,12 +75,11 @@ def test_get_does_not_perform_privileged_second_lookup() -> None:
     assert text.count(".get(") == 1
 
 
-def test_no_gci_i12_or_later_structures() -> None:
+def test_no_gci_i13_or_later_structures() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
     for needle in (
         "PATCH",
         "/archive",
-        "review-queue",
         "/reviews",
         "version_asset_refs",
         "/generate",
@@ -88,6 +87,9 @@ def test_no_gci_i12_or_later_structures() -> None:
     ):
         assert needle not in routes
     assert "/actions/publish" in routes
+    assert "/teacher-os/review-queue" in routes
+    assert '"/teacher-os/review-queue/{content_id}/versions/{version_id}"' in routes
+    assert '"/teacher-os/review-queue/{content_id}"' not in routes
     hits: list[str] = []
     for path in (REPO_ROOT / "migrations").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
@@ -113,6 +115,9 @@ def test_no_gci_i12_or_later_structures() -> None:
     assert (
         REPO_ROOT / "migrations" / "versions" / "gcii110001_ai_provenance.py"
     ).is_file()
+    assert not (
+        REPO_ROOT / "migrations" / "versions" / "gcii120001_review_queue.py"
+    ).exists()
 
 
 def test_review_repository_is_insert_read_only() -> None:
@@ -184,13 +189,40 @@ def test_version_asset_ref_repository_is_insert_read_only() -> None:
     ).read_text(encoding="utf-8")
     marker = "class SqlAlchemyVersionAssetRefRepository:"
     start = source.index(marker)
-    body = source[start:]
+    end = source.index("def _queue_item_from_row")
+    body = source[start:end]
     assert "def insert_many(" in body
     assert "def list_for_version(" in body
     assert "def update(" not in body
     assert "def delete(" not in body
     assert ".commit(" not in body
     assert ".rollback(" not in body
+
+
+def test_review_queue_repository_is_read_only() -> None:
+    source = (
+        REPO_ROOT
+        / "src"
+        / "aieos"
+        / "domains"
+        / "content"
+        / "infrastructure"
+        / "persistence"
+        / "repositories.py"
+    ).read_text(encoding="utf-8")
+    marker = "class SqlAlchemyReviewQueueReadRepository:"
+    start = source.index(marker)
+    body = source[start:]
+    assert "def list_page(" in body
+    assert "def get_item(" in body
+    assert "def insert(" not in body
+    assert "def insert_many(" not in body
+    assert "def update(" not in body
+    assert "def delete(" not in body
+    assert ".commit(" not in body
+    assert ".rollback(" not in body
+    assert "enqueue" not in body
+    assert "dequeue" not in body
 
 
 def test_no_nats_under_domains_routes_and_migration_chain() -> None:

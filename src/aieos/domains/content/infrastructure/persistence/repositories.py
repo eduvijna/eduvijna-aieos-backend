@@ -17,6 +17,11 @@ from aieos.domains.content.application.errors import (
     VersionAlreadyExists,
 )
 from aieos.domains.content.application.models import LockedContentHead
+from aieos.domains.content.application.review_queue_models import (
+    ARTIFACT_STATUS_IN_REVIEW,
+    TeacherReviewQueueDetail,
+    TeacherReviewQueueItem,
+)
 from aieos.domains.content.domain.content import Content
 from aieos.domains.content.domain.identities import (
     AggregateRevision,
@@ -28,7 +33,7 @@ from aieos.domains.content.domain.identities import (
 )
 from aieos.domains.content.domain.publication import Publication
 from aieos.domains.content.domain.review import ReviewDecision
-from aieos.domains.content.domain.version import ContentVersion
+from aieos.domains.content.domain.version import ContentVersion, thaw_json_value
 from aieos.domains.content.domain.version_asset_ref import VersionAssetRef
 from aieos.domains.content.infrastructure.persistence.errors import (
     reraise_as_application_error,
@@ -562,3 +567,174 @@ class SqlAlchemyVersionAssetRefRepository:
         except Exception as exc:
             reraise_as_application_error(exc)
         return [version_asset_ref_from_row(row) for row in rows]
+
+
+def _queue_item_from_row(row: Mapping[str, object]) -> TeacherReviewQueueItem:
+    published = row["published_version_id"]
+    return TeacherReviewQueueItem(
+        content_id=ContentId(row["content_id"]),  # type: ignore[arg-type]
+        version_id=ContentVersionId(row["version_id"]),  # type: ignore[arg-type]
+        version_number=VersionNumber(int(row["version_number"])),  # type: ignore[arg-type]
+        content_type=str(row["content_type"]),
+        title=str(row["title"]),
+        description=str(row["description"]),
+        locale=str(row["locale"]),
+        artifact_status=ARTIFACT_STATUS_IN_REVIEW,
+        origin=str(row["origin"]),
+        aggregate_revision=AggregateRevision(int(row["aggregate_revision"])),  # type: ignore[arg-type]
+        submitted_at=row["submitted_at"],  # type: ignore[arg-type]
+        version_created_at=row["version_created_at"],  # type: ignore[arg-type]
+        published_version_id=(
+            None if published is None else ContentVersionId(published)  # type: ignore[arg-type]
+        ),
+    )
+
+
+class SqlAlchemyReviewQueueReadRepository:
+    """Read-only projection. No insert/update/delete/commit/rollback."""
+
+    def __init__(self, connection: Connection, execution_tenant_id: UUID) -> None:
+        self._connection = connection
+        self._execution_tenant_id = execution_tenant_id
+
+    def _eligible_join(self):
+        decision_exists = (
+            select(review_decisions_table.c.review_decision_id)
+            .where(
+                review_decisions_table.c.tenant_id == contents_table.c.tenant_id,
+                review_decisions_table.c.content_id == contents_table.c.content_id,
+                review_decisions_table.c.version_id
+                == contents_table.c.current_version_id,
+            )
+            .exists()
+        )
+        return (
+            contents_table.join(
+                content_versions_table,
+                and_(
+                    content_versions_table.c.tenant_id == contents_table.c.tenant_id,
+                    content_versions_table.c.content_id == contents_table.c.content_id,
+                    content_versions_table.c.version_id
+                    == contents_table.c.current_version_id,
+                ),
+            ),
+            decision_exists,
+        )
+
+    def list_page(
+        self,
+        *,
+        limit: int,
+        after_submitted_at: datetime | None,
+        after_content_id: ContentId | None,
+    ) -> list[TeacherReviewQueueItem]:
+        join_from, decision_exists = self._eligible_join()
+        stmt = (
+            select(
+                contents_table.c.content_id,
+                contents_table.c.content_type,
+                contents_table.c.title,
+                contents_table.c.description,
+                contents_table.c.locale,
+                contents_table.c.aggregate_revision,
+                contents_table.c.updated_at.label("submitted_at"),
+                contents_table.c.published_version_id,
+                content_versions_table.c.version_id,
+                content_versions_table.c.version_number,
+                content_versions_table.c.origin,
+                content_versions_table.c.created_at.label("version_created_at"),
+            )
+            .select_from(join_from)
+            .where(
+                contents_table.c.tenant_id == self._execution_tenant_id,
+                contents_table.c.stewardship_state == "IN_REVIEW",
+                contents_table.c.current_version_id.is_not(None),
+                ~decision_exists,
+            )
+            .order_by(
+                contents_table.c.updated_at.asc(),
+                contents_table.c.content_id.asc(),
+            )
+            .limit(limit)
+        )
+        if after_submitted_at is not None and after_content_id is not None:
+            stmt = stmt.where(
+                or_(
+                    contents_table.c.updated_at > after_submitted_at,
+                    and_(
+                        contents_table.c.updated_at == after_submitted_at,
+                        contents_table.c.content_id > after_content_id.value,
+                    ),
+                )
+            )
+        try:
+            rows = self._connection.execute(stmt).mappings().all()
+            return [_queue_item_from_row(row) for row in rows]
+        except Exception as exc:
+            reraise_as_application_error(exc)
+
+    def get_item(
+        self, content_id: ContentId, version_id: ContentVersionId
+    ) -> TeacherReviewQueueDetail | None:
+        join_from, decision_exists = self._eligible_join()
+        stmt = (
+            select(
+                contents_table.c.content_id,
+                contents_table.c.content_type,
+                contents_table.c.title,
+                contents_table.c.description,
+                contents_table.c.locale,
+                contents_table.c.aggregate_revision,
+                contents_table.c.updated_at.label("submitted_at"),
+                contents_table.c.published_version_id,
+                content_versions_table.c.version_id,
+                content_versions_table.c.version_number,
+                content_versions_table.c.origin,
+                content_versions_table.c.created_at.label("version_created_at"),
+                content_versions_table.c.schema_id,
+                content_versions_table.c.schema_version,
+                content_versions_table.c.payload,
+                content_versions_table.c.payload_sha256,
+            )
+            .select_from(join_from)
+            .where(
+                contents_table.c.tenant_id == self._execution_tenant_id,
+                contents_table.c.content_id == content_id.value,
+                contents_table.c.stewardship_state == "IN_REVIEW",
+                contents_table.c.current_version_id == version_id.value,
+                content_versions_table.c.version_id == version_id.value,
+                ~decision_exists,
+            )
+            .limit(1)
+        )
+        try:
+            row = self._connection.execute(stmt).mappings().one_or_none()
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if row is None:
+            return None
+        item = _queue_item_from_row(row)
+        thawed = thaw_json_value(row["payload"])
+        if not isinstance(thawed, Mapping):
+            raise PersistenceInvariantViolation(
+                "ContentVersion payload must be a JSON object"
+            )
+        return TeacherReviewQueueDetail(
+            content_id=item.content_id,
+            version_id=item.version_id,
+            version_number=item.version_number,
+            content_type=item.content_type,
+            title=item.title,
+            description=item.description,
+            locale=item.locale,
+            artifact_status=item.artifact_status,
+            origin=item.origin,
+            aggregate_revision=item.aggregate_revision,
+            submitted_at=item.submitted_at,
+            version_created_at=item.version_created_at,
+            published_version_id=item.published_version_id,
+            schema_id=str(row["schema_id"]),
+            schema_version=int(row["schema_version"]),  # type: ignore[arg-type]
+            payload=thawed,
+            payload_sha256=str(row["payload_sha256"]),
+        )

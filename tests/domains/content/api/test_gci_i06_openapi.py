@@ -117,7 +117,12 @@ def test_four_review_operation_ids_and_required_headers() -> None:
     assert "ProblemDetails" in dumped
     assert "ReviewSubmissionResponse" in dumped
     assert "ReviewDecisionResponse" in dumped
-    assert "review-queue" not in dumped
+    assert "/api/v1/teacher-os/review-queue" in dumped
+    assert "teacher_os_review_queue_list" in dumped
+    assert "teacher_os_review_queue_get" in dumped
+    assert "/api/v1/teacher-os/review-queue/{content_id}" not in dumped.replace(
+        "/api/v1/teacher-os/review-queue/{content_id}/versions/{version_id}", ""
+    )
 
 
 def test_openapi_snapshot_regenerated_twice_identically() -> None:

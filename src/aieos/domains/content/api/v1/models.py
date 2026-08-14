@@ -129,3 +129,50 @@ class PublicationResponse(BaseModel):
     published_at: datetime
     published_version_id: UUID
     aggregate_revision: int
+
+
+class TeacherReviewQueueItemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content_id: UUID
+    version_id: UUID
+    version_number: int
+    content_type: str
+    title: str
+    description: str
+    locale: str
+    artifact_status: str
+    origin: str
+    aggregate_revision: int
+    submitted_at: datetime
+    version_created_at: datetime
+    published_version_id: UUID | None
+
+
+class TeacherReviewQueueDetailResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content_id: UUID
+    version_id: UUID
+    version_number: int
+    content_type: str
+    title: str
+    description: str
+    locale: str
+    artifact_status: str
+    origin: str
+    aggregate_revision: int
+    submitted_at: datetime
+    version_created_at: datetime
+    published_version_id: UUID | None
+    schema_id: str
+    schema_version: int
+    payload: dict[str, object]
+    payload_sha256: str
+
+
+class TeacherReviewQueueListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[TeacherReviewQueueItemResponse]
+    next_cursor: str | None

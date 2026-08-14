@@ -138,6 +138,10 @@ class AIGenerationForbidden(ContentApplicationError):
     """Current principal lacks content.version.create for AI materialization."""
 
 
+class ReviewQueueItemNotFound(ContentApplicationError):
+    """Teacher OS Review Queue item is not visible or no longer eligible."""
+
+
 class PublicationGovernanceRejected(ContentApplicationError):
     """Publication governance rejected the candidate."""
 

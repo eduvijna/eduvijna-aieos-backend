@@ -29,7 +29,13 @@ _IF_MATCH_OPERATION_IDS = {
     "content_review_reject",
     "content_publish",
 }
-_GET_OPERATION_IDS = {"content_get", "content_list", "content_version_get"}
+_GET_OPERATION_IDS = {
+    "content_get",
+    "content_list",
+    "content_version_get",
+    "teacher_os_review_queue_list",
+    "teacher_os_review_queue_get",
+}
 
 _IDEMPOTENCY_PARAM = {
     "name": "Idempotency-Key",

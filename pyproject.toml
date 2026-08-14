@@ -43,4 +43,5 @@ markers = [
     "gci_i09: Generic Content publish and Publication history tests",
     "gci_i10: Generic Content version asset ResourceRef association tests",
     "gci_i11: Generic Content AI provenance and generation materialization tests",
+    "gci_i12: Teacher OS Review Queue read projection tests",
 ]

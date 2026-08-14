@@ -28,6 +28,10 @@ from aieos.domains.content.application.ports import (
 from aieos.domains.content.application.publish import PublishContentService
 from aieos.domains.content.application.queries import GetContentService, ListContentsService
 from aieos.domains.content.application.review import ReviewCommandService
+from aieos.domains.content.application.review_queue import (
+    GetTeacherReviewQueueItemService,
+    ListTeacherReviewQueueService,
+)
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.context import RequestContextMiddleware
 from aieos.platform.api.openapi import build_openapi
@@ -36,11 +40,11 @@ from aieos.platform.api.problems import install_exception_handlers
 from aieos.platform.security.context import SecurityContextResolver
 
 _APP_DESCRIPTION = (
-    "AIEOS HTTP foundation (GCI-I10). "
-    "Content create, version append, review, and publish mutations are "
-    "development/test foundations only and MUST NOT be authorized for production "
-    "until required security-audit intent persistence is integrated alongside the "
-    "transactional outbox."
+    "AIEOS HTTP foundation (GCI-I12). "
+    "Content create, version append, review, publish, and Teacher OS Review Queue "
+    "reads are development/test foundations only and MUST NOT be authorized for "
+    "production until required security-audit intent persistence is integrated "
+    "alongside the transactional outbox."
 )
 
 
@@ -100,6 +104,12 @@ def create_app(
     )
     app.state.validate_version_asset_governance_service = (
         ValidateVersionAssetGovernanceService(uow_factory, asset_current_governance)
+    )
+    app.state.list_teacher_review_queue_service = ListTeacherReviewQueueService(
+        uow_factory
+    )
+    app.state.get_teacher_review_queue_item_service = GetTeacherReviewQueueItemService(
+        uow_factory
     )
 
     def _openapi() -> dict:

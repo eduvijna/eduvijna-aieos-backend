@@ -8,6 +8,10 @@ from typing import Mapping, Protocol
 from uuid import UUID
 
 from aieos.domains.content.application.models import LockedContentHead
+from aieos.domains.content.application.review_queue_models import (
+    TeacherReviewQueueDetail,
+    TeacherReviewQueueItem,
+)
 from aieos.domains.content.domain.content import Content
 from aieos.domains.content.domain.identities import (
     AggregateRevision,
@@ -152,6 +156,22 @@ class VersionAssetRefRepository(Protocol):
     ) -> list[VersionAssetRef]: ...
 
 
+class ReviewQueueReadRepository(Protocol):
+    """Read-only Teacher OS Review Queue projection. No enqueue/dequeue."""
+
+    def list_page(
+        self,
+        *,
+        limit: int,
+        after_submitted_at: datetime | None,
+        after_content_id: ContentId | None,
+    ) -> list[TeacherReviewQueueItem]: ...
+
+    def get_item(
+        self, content_id: ContentId, version_id: ContentVersionId
+    ) -> TeacherReviewQueueDetail | None: ...
+
+
 class PublicationRepository(Protocol):
     """INSERT/READ persistence for immutable Publication rows."""
 
@@ -220,6 +240,7 @@ class ContentUnitOfWork(Protocol):
     reviews: ReviewRepository
     publications: PublicationRepository
     version_asset_refs: VersionAssetRefRepository
+    review_queue: ReviewQueueReadRepository
     idempotency: IdempotencyRepository
     workflow_intents: WorkflowIntentRepository
     outbox: OutboxRepository
