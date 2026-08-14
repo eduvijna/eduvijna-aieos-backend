@@ -548,3 +548,178 @@ class TestGCIG11PostPublicationQuarantine:
             (r["role"], r["ordinal"], str(r["asset_resource_id"]), r["required"])
             for r in refs_before
         ]
+
+
+def _version_count(bootstrap_engine: Engine, content_id: str) -> int:
+    with bootstrap_engine.connect() as conn:
+        return int(
+            conn.execute(
+                text(
+                    "SELECT count(*) FROM content.content_versions WHERE content_id = :cid"
+                ),
+                {"cid": content_id},
+            ).scalar_one()
+        )
+
+
+def _version_created_count(bootstrap_engine: Engine, content_id: str) -> int:
+    with bootstrap_engine.connect() as conn:
+        return int(
+            conn.execute(
+                text(
+                    """
+                    SELECT count(*) FROM integration.outbox_messages
+                    WHERE aggregate_id = :cid
+                      AND event_type = 'io.eduvijna.aieos.content.content.version_created.v1'
+                    """
+                ),
+                {"cid": content_id},
+            ).scalar_one()
+        )
+
+
+def _append_idempotency_success_count(
+    bootstrap_engine: Engine, tenant_id: UUID
+) -> int:
+    with bootstrap_engine.connect() as conn:
+        return int(
+            conn.execute(
+                text(
+                    """
+                    SELECT count(*) FROM api.idempotency_records
+                    WHERE tenant_id = :tid
+                      AND operation = 'content_version_append.v1'
+                    """
+                ),
+                {"tid": tenant_id},
+            ).scalar_one()
+        )
+
+
+class TestStrictAssetRefScalarsHttp:
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            pytest.param(
+                lambda body: body["resource_ref"].__setitem__(
+                    "resource_revision", True
+                ),
+                id="resource_revision_true",
+            ),
+            pytest.param(
+                lambda body: body["resource_ref"].__setitem__(
+                    "resource_revision", "7"
+                ),
+                id="resource_revision_string",
+            ),
+            pytest.param(
+                lambda body: body.__setitem__("ordinal", True),
+                id="ordinal_true",
+            ),
+            pytest.param(
+                lambda body: body.__setitem__("ordinal", "0"),
+                id="ordinal_string",
+            ),
+            pytest.param(
+                lambda body: body.__setitem__("required", 1),
+                id="required_int_one",
+            ),
+            pytest.param(
+                lambda body: body.__setitem__("required", "true"),
+                id="required_string_true",
+            ),
+        ],
+    )
+    def test_malformed_scalars_are_422_validation_error_without_side_effects(
+        self, runtime_engine, bootstrap_engine, mutate
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        binding = AllowAssetReferenceValidation()
+        client = _client(
+            runtime_engine,
+            tenant_id,
+            principal_id,
+            asset_reference_validation=binding,
+        )
+        content_id = create_content(client, tenant_id)["content_id"]
+        before = _content_snapshot(bootstrap_engine, content_id)
+        assert _version_count(bootstrap_engine, content_id) == 0
+        assert _version_created_count(bootstrap_engine, content_id) == 0
+        assert _append_idempotency_success_count(bootstrap_engine, tenant_id) == 0
+
+        ref = _asset_ref_body()
+        mutate(ref)
+        key = f"strict-{uuid.uuid7()}"
+        response = _append_with_refs(
+            client,
+            tenant_id,
+            content_id,
+            etag='"r0"',
+            refs=[ref],
+            idempotency_key=key,
+        )
+        _assert_problem(response, status=422, code="validation_error")
+        assert binding.calls == []
+        assert _ref_rows(bootstrap_engine, content_id) == []
+        assert _version_count(bootstrap_engine, content_id) == 0
+        after = _content_snapshot(bootstrap_engine, content_id)
+        assert after.current_version_id == before.current_version_id
+        assert int(after.aggregate_revision) == int(before.aggregate_revision)
+        assert after.stewardship_state == before.stewardship_state
+        assert _version_created_count(bootstrap_engine, content_id) == 0
+        assert _append_idempotency_success_count(bootstrap_engine, tenant_id) == 0
+
+
+class TestVersionAssetRefInsertAtomicity:
+    def test_insert_many_failure_rolls_back_version_and_head(
+        self, runtime_engine, bootstrap_engine, monkeypatch
+    ) -> None:
+        from aieos.domains.content.application.errors import PersistenceOperationFailed
+        from aieos.domains.content.infrastructure.persistence.repositories import (
+            SqlAlchemyVersionAssetRefRepository,
+        )
+
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        binding = AllowAssetReferenceValidation()
+        client = _client(
+            runtime_engine,
+            tenant_id,
+            principal_id,
+            asset_reference_validation=binding,
+        )
+        content_id = create_content(client, tenant_id)["content_id"]
+        before = _content_snapshot(bootstrap_engine, content_id)
+        version_insert_seen = {"called": False}
+
+        def boom(self, refs):
+            version_insert_seen["called"] = True
+            assert len(refs) >= 1
+            raise PersistenceOperationFailed(
+                "injected VersionAssetRef insert failure"
+            )
+
+        monkeypatch.setattr(
+            SqlAlchemyVersionAssetRefRepository, "insert_many", boom
+        )
+        key = f"partial-{uuid.uuid7()}"
+        response = _append_with_refs(
+            client,
+            tenant_id,
+            content_id,
+            etag='"r0"',
+            refs=[_asset_ref_body()],
+            idempotency_key=key,
+        )
+        _assert_problem(response, status=503, code="persistence_unavailable")
+        assert version_insert_seen["called"] is True
+        assert len(binding.calls) == 1
+        assert _ref_rows(bootstrap_engine, content_id) == []
+        assert _version_count(bootstrap_engine, content_id) == 0
+        after = _content_snapshot(bootstrap_engine, content_id)
+        assert after.current_version_id == before.current_version_id
+        assert int(after.aggregate_revision) == int(before.aggregate_revision)
+        assert after.stewardship_state == before.stewardship_state
+        assert _version_created_count(bootstrap_engine, content_id) == 0
+        assert _append_idempotency_success_count(bootstrap_engine, tenant_id) == 0

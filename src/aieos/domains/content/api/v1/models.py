@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 
 class ContentCreateRequest(BaseModel):
@@ -46,7 +47,7 @@ class ResourceRefRequest(BaseModel):
 
     resource_type: str
     resource_id: UUID
-    resource_revision: int | None = None
+    resource_revision: Annotated[StrictInt | None, Field(default=None, ge=0)] = None
 
 
 class VersionAssetRefRequest(BaseModel):
@@ -54,8 +55,8 @@ class VersionAssetRefRequest(BaseModel):
 
     resource_ref: ResourceRefRequest
     role: str
-    ordinal: int = Field(ge=0)
-    required: bool
+    ordinal: Annotated[StrictInt, Field(ge=0)]
+    required: StrictBool
 
 
 class ContentVersionAppendRequest(BaseModel):

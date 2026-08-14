@@ -175,3 +175,84 @@ class TestDirectAppendAssetRefs:
             ).one()
         assert row.asset_resource_id == rid
         assert int(row.asset_resource_revision) == 1
+
+    def test_duplicate_role_ordinal_rejected_before_persistence(
+        self, runtime_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id = _seed_content(bootstrap_engine, tenant_id)
+        version = _version(tenant_id, content_id, principal_id)
+        ref_a = VersionAssetRef(
+            tenant_id=tenant_id,
+            content_id=content_id,
+            version_id=version.version_id,
+            resource_ref=ResourceRef("asset.image", uuid.uuid7(), None),
+            role="primary",
+            ordinal=0,
+            required=True,
+            created_at=FIXED_NOW,
+        )
+        ref_b = VersionAssetRef(
+            tenant_id=tenant_id,
+            content_id=content_id,
+            version_id=version.version_id,
+            resource_ref=ResourceRef("asset.image", uuid.uuid7(), 2),
+            role="primary",
+            ordinal=0,
+            required=False,
+            created_at=FIXED_NOW,
+        )
+        service = AppendContentVersionService(
+            SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            AllowAssetReferenceValidation(),
+        )
+        with pytest.raises(AssetReferenceValidationFailed, match="duplicate"):
+            service.append(
+                tenant_id,
+                AppendContentVersionCommand(
+                    expected_aggregate_revision=AggregateRevision(0),
+                    version=version,
+                    asset_refs=(ref_a, ref_b),
+                ),
+                event_context=_event_context(principal_id),
+                principal_id=principal_id,
+                now=FIXED_NOW,
+            )
+        with bootstrap_engine.connect() as conn:
+            versions = conn.execute(
+                text(
+                    "SELECT count(*) FROM content.content_versions WHERE content_id = :cid"
+                ),
+                {"cid": content_id.value},
+            ).scalar_one()
+            refs = conn.execute(
+                text(
+                    "SELECT count(*) FROM content.version_asset_refs WHERE content_id = :cid"
+                ),
+                {"cid": content_id.value},
+            ).scalar_one()
+            head = conn.execute(
+                text(
+                    """
+                    SELECT current_version_id, aggregate_revision
+                    FROM content.contents WHERE content_id = :cid
+                    """
+                ),
+                {"cid": content_id.value},
+            ).one()
+            events = conn.execute(
+                text(
+                    """
+                    SELECT count(*) FROM integration.outbox_messages
+                    WHERE aggregate_id = :cid
+                      AND event_type = 'io.eduvijna.aieos.content.content.version_created.v1'
+                    """
+                ),
+                {"cid": content_id.value},
+            ).scalar_one()
+        assert int(versions) == 0
+        assert int(refs) == 0
+        assert head.current_version_id is None
+        assert int(head.aggregate_revision) == 0
+        assert int(events) == 0

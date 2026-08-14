@@ -6,7 +6,10 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
-from aieos.domains.content.application.asset_refs import validate_asset_bindings
+from aieos.domains.content.application.asset_refs import (
+    ensure_unique_asset_slots,
+    validate_asset_bindings,
+)
 from aieos.domains.content.application.errors import (
     AggregateRevisionConflict,
     ContentNotFound,
@@ -176,6 +179,7 @@ class AppendContentVersionService:
             if principal_id is not None
             else command.version.created_by_principal_id
         )
+        ensure_unique_asset_slots(command.asset_refs)
         if command.asset_refs:
             validate_asset_bindings(
                 self._asset_reference_validation,

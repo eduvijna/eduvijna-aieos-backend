@@ -455,6 +455,7 @@
           "resource_revision": {
             "anyOf": [
               {
+                "minimum": 0.0,
                 "type": "integer"
               },
               {

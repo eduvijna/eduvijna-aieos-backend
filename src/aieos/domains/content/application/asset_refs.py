@@ -74,6 +74,16 @@ def canonical_asset_ref_fingerprint_items(
     )
 
 
+def ensure_unique_asset_slots(refs: Sequence[VersionAssetRef]) -> None:
+    """Reject duplicate (role, ordinal) before persistence."""
+    seen: set[tuple[str, int]] = set()
+    for ref in refs:
+        slot = (ref.role, ref.ordinal)
+        if slot in seen:
+            raise AssetReferenceValidationFailed("duplicate asset reference slot")
+        seen.add(slot)
+
+
 def build_version_asset_refs(
     *,
     tenant_id: UUID,
@@ -83,7 +93,6 @@ def build_version_asset_refs(
     items: Sequence[Mapping[str, Any] | VersionAssetRef],
 ) -> tuple[VersionAssetRef, ...]:
     built: list[VersionAssetRef] = []
-    seen_slots: set[tuple[str, int]] = set()
     for item in items:
         if isinstance(item, VersionAssetRef):
             ref = item
@@ -108,11 +117,8 @@ def build_version_asset_refs(
                 )
             except (KeyError, TypeError, InvalidVersionAssetRefError) as exc:
                 raise AssetReferenceValidationFailed("asset reference invalid") from exc
-        slot = (ref.role, ref.ordinal)
-        if slot in seen_slots:
-            raise AssetReferenceValidationFailed("duplicate asset reference slot")
-        seen_slots.add(slot)
         built.append(ref)
+    ensure_unique_asset_slots(built)
     return tuple(built)
 
 
