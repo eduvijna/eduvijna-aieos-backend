@@ -23,6 +23,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GCI-I09R1: publish IdempotencyOutcome stores `result_publication_id` and leaves `result_review_decision_id` NULL; replay-after-head-advance returns the original Publication/ETag.
 - GCI-I10 Version Asset Refs: immutable `content.version_asset_refs`, append-time `asset_refs` with ResourceRef binding validation + canonical idempotency fingerprint, publish-time current-use asset governance over stored refs. Still non-production: no Asset storage/S3, no archive, no audit intent, no GET asset-ref routes, no event payload changes.
 - GCI-I10R1: strict HTTP scalars for asset-ref revision/ordinal/required; shared pre-persistence duplicate `(role, ordinal)` validation; VersionAssetRef insert-failure UoW rollback proof.
+- GCI-I11 AI Provenance & Generation Integration: typed allow-listed `AIGenerationProvenanceV1`, inbound AI materialization port (no provider SDK), DB defense-in-depth on `origin=AI` provenance JSONB, reuses shared append + Asset binding. Still non-production: no generation HTTP, no audit intent, no Teacher OS queue.
 
 ### Changed
 

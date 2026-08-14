@@ -130,6 +130,14 @@ class AssetReferenceValidationFailed(ContentApplicationError):
     """A VersionAssetRef ResourceRef failed binding-time validation."""
 
 
+class AIProvenanceInvalid(ContentApplicationError):
+    """AI generation provenance failed the typed allow-listed V1 contract."""
+
+
+class AIGenerationForbidden(ContentApplicationError):
+    """Current principal lacks content.version.create for AI materialization."""
+
+
 class PublicationGovernanceRejected(ContentApplicationError):
     """Publication governance rejected the candidate."""
 

@@ -84,6 +84,7 @@ def test_no_audit_or_inbox_tables_and_migration_chain() -> None:
         "gcii080001_outbox_messages.py",
         "gcii090001_publications.py",
         "gcii100001_version_asset_refs.py",
+        "gcii110001_ai_provenance.py",
     ]
 
 

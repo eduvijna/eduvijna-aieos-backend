@@ -18,14 +18,39 @@ from aieos.domains.content.domain.identities import (
 )
 from aieos.domains.content.domain.version import ContentVersion
 from aieos.domains.content.domain.version_asset_ref import VersionAssetRef
+from aieos.domains.content.domain.provenance import AIGenerationProvenanceV1
+from aieos.platform.resources import ResourceRef
 
 
 @dataclass(frozen=True, slots=True)
 class AppendContentVersionCommand:
     expected_aggregate_revision: AggregateRevision
     version: ContentVersion
-    provenance: Mapping[str, object] | None = None
+    provenance: AIGenerationProvenanceV1 | Mapping[str, object] | None = None
     asset_refs: tuple[VersionAssetRef, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class VersionAssetAssociationSpec:
+    """Framework-neutral generated Asset association before version identity allocation."""
+
+    resource_ref: ResourceRef
+    role: str
+    ordinal: int
+    required: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AIGeneratedVersionMaterializationCommand:
+    """Completed AI generation result ready for Content materialization."""
+
+    content_id: ContentId
+    expected_aggregate_revision: AggregateRevision
+    schema_id: str
+    schema_version: int
+    payload: Mapping[str, object]
+    provenance: AIGenerationProvenanceV1
+    asset_refs: tuple[VersionAssetAssociationSpec, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

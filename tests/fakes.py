@@ -174,6 +174,26 @@ class AllowAssetCurrentGovernance:
             )
 
 
+class AllowAIGenerationAuthorization:
+    def __init__(self, *, allow: bool = True) -> None:
+        self.allow = allow
+        self.calls: list[tuple[UUID, str]] = []
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        content_id,
+        capability: str,
+    ) -> None:
+        self.calls.append((principal_id, capability))
+        if not self.allow:
+            from aieos.domains.content.application.errors import AIGenerationForbidden
+
+            raise AIGenerationForbidden("AI generation materialization forbidden")
+
+
 def make_test_schema_registry() -> ContentSchemaRegistry:
     registry = ContentSchemaRegistry()
     registry.register(TEST_GENERIC_V1)

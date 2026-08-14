@@ -128,6 +128,10 @@ content_versions_table = Table(
         "provenance IS NULL OR jsonb_typeof(provenance) = 'object'",
         name="ck_content_versions_provenance_object",
     ),
+    CheckConstraint(
+        "origin <> 'AI' OR content.ai_generation_provenance_v1_is_valid(provenance)",
+        name="ck_content_versions_ai_provenance_v1",
+    ),
     ForeignKeyConstraint(
         ["tenant_id", "content_id"],
         ["content.contents.tenant_id", "content.contents.content_id"],

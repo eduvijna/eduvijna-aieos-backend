@@ -14,12 +14,18 @@ from sqlalchemy.engine import Engine
 
 from aieos.domains.content.application.errors import (
     AggregateRevisionConflict,
+    AIProvenanceInvalid,
     ContentNotFound,
     PersistenceInvariantViolation,
     TenantContextMismatch,
     VersionAlreadyExists,
     VersionLineageConflict,
 )
+from aieos.domains.content.domain.provenance import (
+    AIGenerationProvenanceV1,
+    ai_generation_provenance_as_json,
+)
+from aieos.platform.resources import ResourceRef
 from aieos.domains.content.application.models import AppendContentVersionCommand
 from aieos.domains.content.application.services import AppendContentVersionService
 from tests.fakes import AllowAssetReferenceValidation
@@ -364,7 +370,7 @@ class TestProvenanceAndUnchangedFields:
             parent_version_id=None,
             origin=ContentOrigin.AI,
         )
-        with pytest.raises(PersistenceInvariantViolation):
+        with pytest.raises(AIProvenanceInvalid):
             _append(runtime_engine, tenant_id, version, 0)
         assert _version_count(bootstrap_engine, content_id) == 0
         row = _content_row(bootstrap_engine, content_id)
@@ -381,7 +387,17 @@ class TestProvenanceAndUnchangedFields:
             parent_version_id=None,
             origin=ContentOrigin.AI,
         )
-        provenance = {"generator": "gci-i03-test"}
+        provenance = AIGenerationProvenanceV1(
+            generation_run_ref=ResourceRef("generation.run", uuid.uuid7(), None),
+            prompt_execution_ref=None,
+            provider_id="test.provider",
+            model_id="test-model-1",
+            capability_id="content.generate.lesson",
+            source_refs=(),
+            policy_refs=(),
+            evaluation_refs=(),
+            correlation_id=uuid.uuid7(),
+        )
         _append(runtime_engine, tenant_id, version, 0, provenance=provenance)
         with bootstrap_engine.connect() as conn:
             stored = conn.execute(
@@ -390,7 +406,7 @@ class TestProvenanceAndUnchangedFields:
                 ),
                 {"vid": version.version_id.value},
             ).scalar_one()
-        assert stored == provenance
+        assert stored == ai_generation_provenance_as_json(provenance)
 
     def test_published_pointer_and_stewardship_unchanged(
         self, runtime_engine, bootstrap_engine
@@ -599,6 +615,7 @@ class TestArchitectureAndNoSchemaChange:
             "gcii080001_outbox_messages.py",
             "gcii090001_publications.py",
             "gcii100001_version_asset_refs.py",
+    "gcii110001_ai_provenance.py",
         ]
         assert not Path(
             REPO_ROOT / "src" / "aieos" / "domains" / "content" / "infrastructure" / "outbox"

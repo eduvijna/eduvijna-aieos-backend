@@ -23,6 +23,7 @@ _EXPECTED_MIGRATIONS = [
     "gcii080001_outbox_messages.py",
     "gcii090001_publications.py",
     "gcii100001_version_asset_refs.py",
+    "gcii110001_ai_provenance.py",
 ]
 
 
@@ -74,9 +75,17 @@ def test_get_does_not_perform_privileged_second_lookup() -> None:
     assert text.count(".get(") == 1
 
 
-def test_no_gci_i11_or_later_structures() -> None:
+def test_no_gci_i12_or_later_structures() -> None:
     routes = (API_ROOT / "v1" / "routes.py").read_text(encoding="utf-8")
-    for needle in ("PATCH", "/archive", "review-queue", "/reviews", "version_asset_refs"):
+    for needle in (
+        "PATCH",
+        "/archive",
+        "review-queue",
+        "/reviews",
+        "version_asset_refs",
+        "/generate",
+        "/ai",
+    ):
         assert needle not in routes
     assert "/actions/publish" in routes
     hits: list[str] = []
@@ -87,13 +96,22 @@ def test_no_gci_i11_or_later_structures() -> None:
             "review_queue",
             "consumer_inbox",
             "asset_archive",
-            "gcii110001",
+            "generation_runs",
+            "prompt_executions",
+            "ai_models",
+            "ai_providers",
+            "gcii120001",
+            "gcii130001",
+            "gcii140001",
         ):
             if needle in text:
                 hits.append(f"{path.name}:{needle}")
     assert hits == []
     assert (
         REPO_ROOT / "migrations" / "versions" / "gcii100001_version_asset_refs.py"
+    ).is_file()
+    assert (
+        REPO_ROOT / "migrations" / "versions" / "gcii110001_ai_provenance.py"
     ).is_file()
 
 

@@ -71,5 +71,9 @@ class InvalidVersionAssetRefError(ContentDomainError):
     """Raised when a VersionAssetRef association violates domain invariants."""
 
 
+class InvalidAIGenerationProvenanceError(ContentDomainError):
+    """Raised when AI generation provenance fails the allow-listed V1 contract."""
+
+
 class InvalidContentAggregateError(ContentDomainError):
     """Raised when a Content aggregate violates domain invariants."""

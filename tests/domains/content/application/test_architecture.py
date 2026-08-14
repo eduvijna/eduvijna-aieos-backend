@@ -24,6 +24,11 @@ FORBIDDEN = (
     "nats",
     "openai",
     "anthropic",
+    "langchain",
+    "llama_index",
+    "litellm",
+    "google",
+    "boto3",
 )
 
 
@@ -49,3 +54,19 @@ def test_application_layer_has_no_persistence_or_platform_imports() -> None:
 
 def test_domain_layer_remains_persistence_free() -> None:
     assert _import_violations(DOMAIN_ROOT) == []
+
+
+def test_no_ai_provider_dependencies_in_lockfile() -> None:
+    text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    lock = (REPO_ROOT / "uv.lock").read_text(encoding="utf-8")
+    for needle in (
+        "openai",
+        "anthropic",
+        "langchain",
+        "llama-index",
+        "litellm",
+        "google-generativeai",
+        "boto3",
+    ):
+        assert needle not in text.lower()
+        assert f'name = "{needle}"' not in lock

@@ -2,10 +2,10 @@
 id: GCI-I02-DATABASE-PRIVILEGE-CONTRACT
 title: Generic Content and API infrastructure database privilege contract
 status: draft
-version: 0.9.0
+version: 1.0.0
 ---
 
-# Database privilege contract (GCI-I02R2 / GCI-I05R1 / GCI-I06 / GCI-I07 / GCI-I08 / GCI-I09 / GCI-I10)
+# Database privilege contract (GCI-I02R2 / GCI-I05R1 / GCI-I06 / GCI-I07 / GCI-I08 / GCI-I09 / GCI-I10 / GCI-I11)
 
 This document describes the required production privilege separation. It does **not** provision cloud or production identities.
 
@@ -77,6 +77,14 @@ Runtime:
 `content.version_asset_refs` has ENABLE RLS and FORCE RLS. Tenant isolation uses transaction-local `aieos.tenant_id` via `content.current_tenant_id()`. Missing tenant context must fail closed.
 
 Privileged UPDATE/DELETE are blocked by an immutability trigger even for the schema owner path used in privileged tests.
+
+### `content.ai_generation_provenance_v1_is_valid` (GCI-I11)
+
+Schema-owned immutable SQL function used only by `ck_content_versions_ai_provenance_v1` for `origin = AI` defense-in-depth. Companion helper: `content.resource_ref_json_is_valid(jsonb)`.
+
+Runtime DML does **not** require `EXECUTE` on these functions: CHECK evaluation runs with table-owner privileges. No additional runtime GRANT is required beyond existing `content.content_versions` INSERT/SELECT.
+
+No new Content table is introduced by GCI-I11.
 
 ### `integration` (GCI-I08 transactional outbox)
 

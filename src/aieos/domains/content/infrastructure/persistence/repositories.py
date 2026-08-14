@@ -12,6 +12,7 @@ from sqlalchemy.engine import Connection
 from aieos.domains.content.application.errors import (
     ContentAlreadyExists,
     ContentVersionAlreadyPublished,
+    PersistenceInvariantViolation,
     ReviewAlreadyDecided,
     VersionAlreadyExists,
 )
@@ -97,6 +98,23 @@ class SqlAlchemyContentVersionRepository:
             return content_version_from_row(row)
         except Exception as exc:
             reraise_as_application_error(exc)
+
+    def get_provenance(
+        self, version_id: ContentVersionId
+    ) -> Mapping[str, object] | None:
+        try:
+            value = self._connection.execute(
+                select(content_versions_table.c.provenance).where(
+                    content_versions_table.c.version_id == version_id.value
+                )
+            ).scalar_one_or_none()
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if value is None:
+            return None
+        if not isinstance(value, Mapping):
+            raise PersistenceInvariantViolation("stored provenance must be a JSON object")
+        return dict(value)
 
 
 class SqlAlchemyContentRepository:

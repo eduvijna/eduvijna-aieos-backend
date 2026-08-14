@@ -28,6 +28,7 @@ from aieos.platform.workflows.ports import WorkflowIntentRepository
 CONTENT_REVIEW_SUBMIT = "content.review.submit"
 CONTENT_REVIEW_DECIDE = "content.review.decide"
 CONTENT_PUBLISH = "content.publish"
+CONTENT_VERSION_CREATE = "content.version.create"
 
 
 class ContentVersionRepository(Protocol):
@@ -40,6 +41,10 @@ class ContentVersionRepository(Protocol):
     ) -> None: ...
 
     def get(self, version_id: ContentVersionId) -> ContentVersion | None: ...
+
+    def get_provenance(
+        self, version_id: ContentVersionId
+    ) -> Mapping[str, object] | None: ...
 
 
 class ContentTypeCatalog(Protocol):
@@ -123,6 +128,19 @@ class AssetCurrentGovernancePort(Protocol):
         content_id: ContentId,
         version_id: ContentVersionId,
         asset_refs: Sequence[VersionAssetRef],
+    ) -> None: ...
+
+
+class AIGenerationAuthorizationPort(Protocol):
+    """Current capability check for content.version.create on AI materialization."""
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        content_id: ContentId,
+        capability: str,
     ) -> None: ...
 
 

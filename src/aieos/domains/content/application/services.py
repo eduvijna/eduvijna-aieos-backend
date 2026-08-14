@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from aieos.domains.content.application.asset_refs import (
@@ -12,6 +13,7 @@ from aieos.domains.content.application.asset_refs import (
 )
 from aieos.domains.content.application.errors import (
     AggregateRevisionConflict,
+    AIProvenanceInvalid,
     ContentNotFound,
     ContentVersionAppendNotAllowed,
     PersistenceInvariantViolation,
@@ -28,7 +30,13 @@ from aieos.domains.content.application.ports import (
     ContentUnitOfWork,
     ContentUnitOfWorkFactory,
 )
+from aieos.domains.content.domain.errors import InvalidAIGenerationProvenanceError
 from aieos.domains.content.domain.origin import ContentOrigin
+from aieos.domains.content.domain.provenance import (
+    AIGenerationProvenanceV1,
+    ai_generation_provenance_as_json,
+    ai_generation_provenance_from_json,
+)
 from aieos.domains.content.domain.states import StewardshipState
 from aieos.domains.content.domain.version import ContentVersion
 from aieos.platform.events.content_events import version_created_outbox
@@ -50,6 +58,25 @@ def _require_object_mapping(value: Mapping[str, object] | None, *, label: str) -
         raise PersistenceInvariantViolation(f"{label} must be a JSON object")
     if any(not isinstance(key, str) for key in value):
         raise PersistenceInvariantViolation(f"{label} object keys must be strings")
+
+
+def _normalize_ai_provenance(
+    value: AIGenerationProvenanceV1 | Mapping[str, object] | None,
+) -> tuple[AIGenerationProvenanceV1, dict[str, object]]:
+    if value is None:
+        raise AIProvenanceInvalid("origin AI requires typed AIGenerationProvenanceV1")
+    try:
+        if isinstance(value, AIGenerationProvenanceV1):
+            typed = value
+        elif isinstance(value, Mapping):
+            typed = ai_generation_provenance_from_json(value)
+        else:
+            raise AIProvenanceInvalid(
+                "origin AI requires typed AIGenerationProvenanceV1"
+            )
+    except InvalidAIGenerationProvenanceError as exc:
+        raise AIProvenanceInvalid(str(exc)) from exc
+    return typed, ai_generation_provenance_as_json(typed)
 
 
 def _assert_linear_append(head: LockedContentHead, version: ContentVersion) -> None:
@@ -86,10 +113,17 @@ def append_version_in_uow(
         raise TenantContextMismatch(
             "execution tenant does not match ContentVersion.tenant_id"
         )
-    _require_object_mapping(command.provenance, label="provenance")
-    if version.origin is ContentOrigin.AI and command.provenance is None:
-        raise PersistenceInvariantViolation(
-            "origin AI requires a provenance JSON object"
+    provenance_payload: Mapping[str, Any] | None
+    if version.origin is ContentOrigin.AI:
+        _typed, provenance_payload = _normalize_ai_provenance(command.provenance)
+    else:
+        if isinstance(command.provenance, AIGenerationProvenanceV1):
+            raise PersistenceInvariantViolation(
+                "AIGenerationProvenanceV1 is only valid for origin AI"
+            )
+        _require_object_mapping(command.provenance, label="provenance")
+        provenance_payload = (
+            None if command.provenance is None else dict(command.provenance)
         )
     if now.tzinfo is None or now.utcoffset() is None:
         raise PersistenceInvariantViolation("updated_at must be timezone-aware")
@@ -117,7 +151,7 @@ def append_version_in_uow(
             raise PersistenceInvariantViolation(
                 "VersionAssetRef must match ContentVersion identity"
             )
-    uow.versions.insert(version, command.provenance)
+    uow.versions.insert(version, provenance_payload)
     if command.asset_refs:
         uow.version_asset_refs.insert_many(command.asset_refs)
     resulting = uow.contents.advance_current_version(

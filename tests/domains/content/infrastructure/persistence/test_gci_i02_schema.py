@@ -237,7 +237,7 @@ class TestAlembicAndCatalog:
             assert "api" in schemas
             assert api_tables == {"idempotency_records"}
             revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            assert revision == "gcii100001"
+            assert revision == "gcii110001"
             gcii02 = (
                 REPO_ROOT / "migrations" / "versions" / "gcii020001_content_schema.py"
             ).read_text(encoding="utf-8")
@@ -276,7 +276,7 @@ class TestAlembicAndCatalog:
         assert set(insp.get_table_names(schema="api")) == {"idempotency_records"}
         with bootstrap_engine.connect() as conn:
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "gcii100001"
+                "gcii110001"
             )
         assert "workflow" in insp.get_schema_names()
         assert set(insp.get_table_names(schema="workflow")) == {
@@ -627,6 +627,45 @@ class TestConstraints:
         with bootstrap_engine.begin() as conn:
             tenant_id, content_id, version_id = _ids()
             _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
+            _expect_integrity(
+                conn,
+                lambda: _insert_version_json(
+                    conn,
+                    tenant_id=tenant_id,
+                    content_id=content_id,
+                    version_id=version_id,
+                    version_number=1,
+                    parent_version_id=None,
+                    origin="AI",
+                    provenance_sql="'{\"generator\":\"test\"}'::jsonb",
+                ),
+            )
+        with bootstrap_engine.begin() as conn:
+            import json
+
+            tenant_id, content_id, version_id = _ids()
+            _insert_content(conn, tenant_id=tenant_id, content_id=content_id)
+            run_id = str(uuid.uuid7())
+            correlation_id = str(uuid.uuid7())
+            prov = json.dumps(
+                {
+                    "kind": "ai_generation",
+                    "schema_version": 1,
+                    "generation_run_ref": {
+                        "resource_type": "generation.run",
+                        "resource_id": run_id,
+                        "resource_revision": None,
+                    },
+                    "prompt_execution_ref": None,
+                    "provider_id": "test.provider",
+                    "model_id": "neutral-model",
+                    "capability_id": "content.generate.lesson",
+                    "source_refs": [],
+                    "policy_refs": [],
+                    "evaluation_refs": [],
+                    "correlation_id": correlation_id,
+                }
+            )
             _insert_version_json(
                 conn,
                 tenant_id=tenant_id,
@@ -635,7 +674,7 @@ class TestConstraints:
                 version_number=1,
                 parent_version_id=None,
                 origin="AI",
-                provenance_sql="'{\"generator\":\"test\"}'::jsonb",
+                provenance_sql=f"'{prov}'::jsonb",
             )
 
 
@@ -1049,9 +1088,12 @@ class TestArchitectureBoundary:
                 if needle in text_src:
                     hits.append(f"{path.name}:{needle}")
         assert hits == []
-        # GCI-I10 version_asset_refs are authorized; later slices remain forbidden.
+        # GCI-I11 AI provenance check is authorized; later slices remain forbidden.
         assert (
             REPO_ROOT / "migrations" / "versions" / "gcii100001_version_asset_refs.py"
+        ).is_file()
+        assert (
+            REPO_ROOT / "migrations" / "versions" / "gcii110001_ai_provenance.py"
         ).is_file()
         assert (
             REPO_ROOT / "migrations" / "versions" / "gcii090001_publications.py"
