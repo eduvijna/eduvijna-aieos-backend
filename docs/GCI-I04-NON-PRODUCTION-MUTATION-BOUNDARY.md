@@ -1,11 +1,11 @@
 ---
-id: GCI-I14-NON-PRODUCTION-MUTATION-BOUNDARY
-title: Generic Content HTTP mutations and controlled migration remain non-production
+id: SAI-I01-NON-PRODUCTION-MUTATION-BOUNDARY
+title: Generic Content mutations remain non-production; security audit contracts exist without persistence
 status: draft
-version: 1.1.0
+version: 1.2.0
 ---
 
-# GCI-I14 non-production mutation boundary
+# SAI-I01 non-production mutation boundary
 
 Idempotency-Key is now required for:
 
@@ -17,41 +17,38 @@ Idempotency-Key is now required for:
 - `POST /api/v1/contents/{content_id}/versions/{version_id}/actions/reject`
 - `POST /api/v1/contents/{content_id}/actions/publish`
 
-GCI-I12 adds a durable **read-only** Teacher OS Review Queue projection:
+GCI-I12–I14 remain as previously documented (Review Queue reads, migration foundation, adversarial validation).
 
-- `GET /api/v1/teacher-os/review-queue`
-- `GET /api/v1/teacher-os/review-queue/{content_id}/versions/{version_id}`
+## ADR-AIEOS-028 / SAI-I01
 
-derived from authoritative Content `IN_REVIEW` current versions. There is no separate Review Queue table or mutation surface.
+ADR-AIEOS-028 (Security Audit & Mutation Accountability) is frozen.
 
-GCI-I13 adds a controlled **migration adapter foundation**:
+SAI-I01 adds **framework-neutral** security mutation-audit contracts under
+`src/aieos/platform/security/audit/`:
 
-- typed `MigrationImportProvenanceV1` for `origin=IMPORT`
-- durable `content.migration_import_records` source→target evidence
-- GCI-G12 replay / digest / mapping conflict detection
-- internal `ImportMigratedContentService` (no public migration HTTP)
+- `AuditRecordId` (UUIDv7)
+- typed `SecurityAuditAction` / `SecurityAuditExecutionChannel`
+- `SecurityMutationAuditContext` derived from `MutationEventContext`
+- immutable `SecurityMutationAuditRecord`
+- canonical `build_security_mutation_audit_record(...)`
+- insert-only `SecurityMutationAuditRepository` port
 
-GCI-I14 completes an **adversarial validation suite** (tests only under `tests/domains/content/adversarial/`). It does **not** authorize production mutation.
+SAI-I01 does **not** create:
 
-All of the HTTP mutation routes above remain a **development / test mutation foundation**.
+- `security.audit_records` or any audit ledger table
+- Alembic revision (`saii010001` / `gcii150001` / etc.)
+- Content mutation integration (create/append/review/publish/AI/migration)
+- public audit HTTP / OpenAPI surface
+- failed/denied-attempt audit, SIEM export, or crypto sealing
 
-They MUST NOT be authorized for production mutation until later slices integrate the required transactional:
+Therefore:
 
-- security-audit intent persistence
+- required transactional security-audit **intent persistence** remains absent
+- Content mutations and controlled migration import remain **NON-PRODUCTION**
+- production mutation and production migration remain **NOT AUTHORIZED**
 
-GCI-I08–I14 provide transactional event-publication intent (including publish), ResourceRef dual validation, typed AI provenance materialization, Teacher OS Review Queue reads, a controlled migration import foundation, and adversarial test coverage, but still lack required security-audit intent for mutations. Therefore Content mutations and controlled migration import remain **NON-PRODUCTION**.
+Migration head remains:
 
-GCI-I14 does **not** create:
+`gcii020001 → … → gcii110001 → gcii130001`
 
-- public migration HTTP routes (`/migrate`, `/imports`, `/legacy`)
-- production legacy connectors (PostgREST, `edu.content`, legacy APIs)
-- review/publication trust import from legacy approval/publish state
-- archive HTTP or `content.archived` emission (**GCI-G10 deferred**)
-- audit tables / audit dispatchers / security-audit intent
-- `gcii140001` or any adversarial DDL migration
-- a production NATS topology, credentials, or dispatcher daemon
-- authorization to read production legacy data or write production AIEOS Content
-
-Durable outbox event-publication intent exists (including publish and import). Required security-audit intent still does not. Idempotency remains synchronous API retry state, not Content business authority and not a substitute for audit intent. Migration replay identity is source evidence, not `Idempotency-Key`.
-
-No production deployment, production database mutation entrypoint, or real production migration batch is authorized by this slice.
+No production deployment or production database mutation entrypoint is authorized by this slice.

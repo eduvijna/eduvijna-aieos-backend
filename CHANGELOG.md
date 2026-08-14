@@ -30,6 +30,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GCI-I13 Migration Adapter Foundation: typed `MigrationImportProvenanceV1`, durable `content.migration_import_records`, shared append IMPORT hardening, internal `ImportMigratedContentService` with GCI-G12 replay/conflict detection. Still non-production: no migration HTTP, no legacy connector, no audit intent, no production migration.
 - GCI-I13R1: no-gap source serialization via session advisory lock spanning target rollback and FAILED evidence finalization.
 - GCI-I14 adversarial TEST-ONLY suite under `tests/domains/content/adversarial/` (`pytest -m gci_i14`): identity/immutability, tenancy, review, AI, publication, workflow/events, migration, review queue, architecture abuse, and outbox atomicity cross-cuts. No production `src/` or `gcii140001` migration.
+- SAI-I01 Security Audit contracts under `src/aieos/platform/security/audit/`: `AuditRecordId`, typed actions/channels, `SecurityMutationAuditContext`/`Record`, canonical builder, insert-only repository port. No DB table, no Content mutation wiring, still non-production.
 
 ### Changed
 
