@@ -141,14 +141,21 @@ UPGRADE_STATEMENTS: tuple[str, ...] = (
                 IF jsonb_typeof(resource_revision) <> 'number' THEN
                     RETURN false;
                 END IF;
-                IF (resource_revision::text)::numeric
-                      <> trunc((resource_revision::text)::numeric)
-                   OR (resource_revision::text)::numeric < 0
-                   OR (resource_revision::text)::numeric
-                      <> ((resource_revision::text)::numeric)::bigint THEN
+                -- Strict canonical integer text only (reject 1.0, 1e2, etc.).
+                IF (resource_revision::text) !~ '^[0-9]+$' THEN
                     RETURN false;
                 END IF;
-                revision_value := ((resource_revision::text)::numeric)::bigint;
+                BEGIN
+                    revision_value := (resource_revision::text)::bigint;
+                EXCEPTION
+                    WHEN numeric_value_out_of_range
+                        OR data_exception
+                        OR invalid_text_representation THEN
+                        RETURN false;
+                END;
+                IF revision_value < 0 THEN
+                    RETURN false;
+                END IF;
             END IF;
             IF resource_type = primary_resource_type
                AND resource_id_uuid = primary_resource_id
@@ -157,7 +164,7 @@ UPGRADE_STATEMENTS: tuple[str, ...] = (
             END IF;
             fingerprint := resource_type
                 || '|'
-                || resource_id
+                || resource_id_uuid::text
                 || '|'
                 || COALESCE(revision_value::text, 'null');
             IF fingerprint = ANY (seen) THEN

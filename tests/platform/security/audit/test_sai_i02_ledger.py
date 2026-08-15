@@ -722,12 +722,108 @@ class TestSaiI02DbDefenses:
                         }
                     ],
                 )
+                _expect_raw_failure(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(uuid.uuid7()),
+                            "resource_revision": 1.0,
+                        }
+                    ],
+                )
+                _expect_raw_failure(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(uuid.uuid7()),
+                            "resource_revision": "1",
+                        }
+                    ],
+                )
+                _expect_raw_failure(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(uuid.uuid7()),
+                            "resource_revision": True,
+                        }
+                    ],
+                )
+                _expect_raw_failure(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(uuid.uuid7()),
+                            "resource_revision": False,
+                        }
+                    ],
+                )
+                _expect_raw_failure(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(uuid.uuid7()),
+                            "resource_revision": 10**30,
+                        }
+                    ],
+                )
                 dup = {
                     "resource_type": "content.content_version",
                     "resource_id": str(uuid.uuid7()),
                     "resource_revision": 1,
                 }
                 _expect_raw_failure(conn, related_resource_refs=[dup, dup])
+                same_id = uuid.uuid7()
+                _expect_raw_failure(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(same_id),
+                            "resource_revision": 1,
+                        },
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(same_id).upper(),
+                            "resource_revision": 1,
+                        },
+                    ],
+                )
+                _expect_raw_failure(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(same_id),
+                            "resource_revision": 2,
+                        },
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": "{" + str(same_id) + "}",
+                            "resource_revision": 2,
+                        },
+                    ],
+                )
+                _expect_raw_failure(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(same_id),
+                            "resource_revision": 3,
+                        },
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(same_id).replace("-", ""),
+                            "resource_revision": 3,
+                        },
+                    ],
+                )
                 _expect_raw_failure(
                     conn,
                     primary_resource_id=primary_id,
@@ -736,6 +832,58 @@ class TestSaiI02DbDefenses:
                             "resource_type": "content.content",
                             "resource_id": str(primary_id),
                             "resource_revision": 0,
+                        }
+                    ],
+                )
+                _expect_raw_failure(
+                    conn,
+                    primary_resource_id=primary_id,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content",
+                            "resource_id": str(primary_id).upper(),
+                            "resource_revision": 0,
+                        }
+                    ],
+                )
+                _expect_raw_failure(
+                    conn,
+                    primary_resource_id=primary_id,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content",
+                            "resource_id": "{" + str(primary_id) + "}",
+                            "resource_revision": 0,
+                        }
+                    ],
+                )
+                _insert_raw(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(uuid.uuid7()),
+                            "resource_revision": None,
+                        }
+                    ],
+                )
+                _insert_raw(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(uuid.uuid7()),
+                            "resource_revision": 0,
+                        }
+                    ],
+                )
+                _insert_raw(
+                    conn,
+                    related_resource_refs=[
+                        {
+                            "resource_type": "content.content_version",
+                            "resource_id": str(uuid.uuid7()),
+                            "resource_revision": 1,
                         }
                     ],
                 )
