@@ -11,6 +11,7 @@ dependencies = [
     "pydantic>=2,<3",
     "temporalio>=1.31,<1.32",
     "nats-py>=2.15,<2.16",
+    "uvicorn>=0.51,<0.52",
 ]
 
 [build-system]
@@ -55,4 +56,5 @@ markers = [
     "ped_i02: API runtime database engine and readiness foundation",
     "ped_i03: Fail-closed API mutation activation safety interlock",
     "ped_i04: CI quality gates and immutable verified build bundle foundation",
+    "ped_i06: ASGI server and NON_PRODUCTION OCI runtime viability foundation",
 ]

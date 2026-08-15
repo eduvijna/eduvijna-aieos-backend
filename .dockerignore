@@ -1,0 +1,50 @@
+# Build context exclusions for PED-I06 NON_PRODUCTION OCI runtime probe.
+# Do not exclude src/, pyproject.toml, uv.lock, VERSION, or required package metadata.
+
+.git
+.github
+.venv
+.env
+.env.*
+**/.env
+**/.env.*
+
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+build/
+dist/
+*.egg-info/
+.eggs/
+
+*.log
+logs/
+tmp/
+temp/
+
+# Local IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test and credential artefacts
+.secrets/
+*.pem
+*.key
+github_token*
+GH_TOKEN*
+.credentials/
+
+# Local Docker / compose leftovers
+docker-compose*.override.yml

@@ -90,18 +90,35 @@ def test_quality_and_verified_build_jobs() -> None:
     assert "name: stable" not in text
 
 
-def test_no_deploy_oci_asgi_mutation_or_latest() -> None:
+def test_no_deploy_registry_mutation_or_latest() -> None:
+    """PED-I04 prohibitions retained; ASGI/OCI probe portions superseded by PED-I06.
+
+    Advancement (PED-I06):
+    - uvicorn may appear as a direct runtime dependency
+    - a governed NON_PRODUCTION Dockerfile may exist under deploy/oci/
+    - CI may build/smoke that local probe image
+
+    Still forbidden (PED-I04 retained):
+    - docker push / registry publication
+    - cloud deploy tooling
+    - production artifact naming (latest/production/stable)
+    - mutation activation enablement
+    - GitHub Release publication
+    - root-level production Dockerfile
+    """
     text = WORKFLOW.read_text(encoding="utf-8").lower()
     for needle in _FORBIDDEN_DEPLOY:
         assert needle not in text
-    assert "dockerfile" not in text
-    assert "ghcr.io" not in text
+    assert "ghcr.io" not in text  # no registry login/publish in workflow
     assert "pypi" not in text
     assert "softprops/action-gh-release" not in text
     assert "aieos_api_mutation_activation=enabled" not in text
     assert not (REPO_ROOT / "Dockerfile").exists()
+    probe = REPO_ROOT / "deploy" / "oci" / "Dockerfile.api-runtime-probe"
+    assert probe.is_file()
     pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    for server in ("uvicorn", "gunicorn", "hypercorn"):
+    assert "uvicorn>=" in pyproject
+    for server in ("gunicorn", "hypercorn"):
         assert server not in pyproject
 
 
