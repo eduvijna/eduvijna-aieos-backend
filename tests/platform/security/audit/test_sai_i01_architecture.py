@@ -1,8 +1,9 @@
-"""SAI-I01 architecture boundary tests. No persistence or Content wiring."""
+"""SAI-I01 contract architecture + advanced SAI-I02 ledger boundary assertions."""
 
 from __future__ import annotations
 
 import ast
+from dataclasses import fields
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,15 @@ from tests.dbutil import REPO_ROOT
 pytestmark = pytest.mark.sai_i01
 
 AUDIT_ROOT = REPO_ROOT / "src" / "aieos" / "platform" / "security" / "audit"
+AUDIT_CONTRACT_FILES = (
+    AUDIT_ROOT / "__init__.py",
+    AUDIT_ROOT / "actions.py",
+    AUDIT_ROOT / "builders.py",
+    AUDIT_ROOT / "errors.py",
+    AUDIT_ROOT / "identities.py",
+    AUDIT_ROOT / "models.py",
+    AUDIT_ROOT / "ports.py",
+)
 CONTENT_ROOT = REPO_ROOT / "src" / "aieos" / "domains" / "content"
 MIGRATIONS = REPO_ROOT / "migrations" / "versions"
 
@@ -45,12 +55,13 @@ _EXPECTED_MIGRATIONS = [
     "gcii100001_version_asset_refs.py",
     "gcii110001_ai_provenance.py",
     "gcii130001_migration_import.py",
+    "saii020001_security_audit_ledger.py",
 ]
 
 
-def _import_violations(root: Path, forbidden: tuple[str, ...]) -> list[str]:
+def _import_violations(paths: tuple[Path, ...], forbidden: tuple[str, ...]) -> list[str]:
     hits: list[str] = []
-    for path in root.rglob("*.py"):
+    for path in paths:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -73,14 +84,14 @@ def _source_mentions(root: Path, needles: tuple[str, ...]) -> list[str]:
     return hits
 
 
-def test_audit_package_framework_neutral() -> None:
-    assert AUDIT_ROOT.is_dir()
-    assert _import_violations(AUDIT_ROOT, FORBIDDEN) == []
+def test_audit_contract_package_framework_neutral() -> None:
+    assert all(path.is_file() for path in AUDIT_CONTRACT_FILES)
+    assert _import_violations(AUDIT_CONTRACT_FILES, FORBIDDEN) == []
 
 
-def test_audit_package_has_no_sql() -> None:
+def test_audit_contract_package_has_no_sql() -> None:
     hits: list[str] = []
-    for path in AUDIT_ROOT.rglob("*.py"):
+    for path in AUDIT_CONTRACT_FILES:
         text = path.read_text(encoding="utf-8").lower()
         for needle in ("select ", "insert into", "create table", "sqlalchemy", "alembic"):
             if needle in text:
@@ -94,6 +105,7 @@ def test_content_domain_does_not_import_audit_yet() -> None:
         (
             "platform.security.audit",
             "SecurityMutationAuditRepository",
+            "SqlAlchemySecurityMutationAuditRepository",
             "build_security_mutation_audit_record",
             "SecurityMutationAuditRecord",
         ),
@@ -101,25 +113,24 @@ def test_content_domain_does_not_import_audit_yet() -> None:
     assert hits == []
 
 
-def test_no_audit_db_migration_or_saii_revision() -> None:
+def test_sai_i02_ledger_exists_without_saii010001_or_content_wiring() -> None:
     versions = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
     assert versions == _EXPECTED_MIGRATIONS
+    ledger = MIGRATIONS / "saii020001_security_audit_ledger.py"
+    text = ledger.read_text(encoding="utf-8")
+    assert "security.audit_records" in text
+    assert "CREATE SCHEMA security" in text
+    assert "saii010001" not in text
     for path in MIGRATIONS.rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        for needle in (
-            "security.audit_records",
-            "saii010001",
-            "gcii150001",
-            "gcii140001",
-            "CREATE SCHEMA security",
-        ):
-            assert needle not in text, f"{path.name}:{needle}"
+        body = path.read_text(encoding="utf-8")
+        assert "saii010001" not in body
+        assert "gcii140001" not in body
+        assert "gcii150001" not in body
 
 
 def test_mutation_event_context_and_trusted_security_context_unchanged() -> None:
     from aieos.platform.events.models import MutationEventContext
     from aieos.platform.security.context import TrustedSecurityContext
-    from dataclasses import fields
 
     assert {f.name for f in fields(MutationEventContext)} == {
         "correlation_id",

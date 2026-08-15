@@ -47,4 +47,5 @@ markers = [
     "gci_i13: Controlled migration import foundation tests",
     "gci_i14: Generic Content adversarial validation suite (tests only)",
     "sai_i01: Security Audit domain and application contracts",
+    "sai_i02: PostgreSQL security audit ledger / RLS",
 ]

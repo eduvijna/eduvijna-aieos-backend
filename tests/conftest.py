@@ -21,6 +21,7 @@ CONTAINER_NAME = "aieos-gci-i02-pg"
 POSTGRES_IMAGE = "postgres:18"
 BOOTSTRAP_USER = "aieos_bootstrap"
 SCHEMA_OWNER_ROLE = "aieos_content_owner"
+SECURITY_SCHEMA_OWNER_ROLE = "aieos_security_owner"
 MIGRATOR_USER = "aieos_migrator"
 RUNTIME_USER = "aieos_runtime"
 MIGRATION_RUNTIME_USER = "aieos_content_migration_runtime"
@@ -77,6 +78,7 @@ def alembic_config(url: str) -> Config:
     cfg = Config(str(REPO_ROOT / "alembic.ini"))
     os.environ["AIEOS_DATABASE_URL"] = url
     os.environ["AIEOS_SCHEMA_OWNER_ROLE"] = SCHEMA_OWNER_ROLE
+    os.environ["AIEOS_SECURITY_SCHEMA_OWNER_ROLE"] = SECURITY_SCHEMA_OWNER_ROLE
     cfg.set_main_option("sqlalchemy.url", url)
     return cfg
 
@@ -137,6 +139,12 @@ def provision_identities(bootstrap: Engine) -> None:
                         CREATE ROLE {SCHEMA_OWNER_ROLE}
                             NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
                     END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_roles WHERE rolname = '{SECURITY_SCHEMA_OWNER_ROLE}'
+                    ) THEN
+                        CREATE ROLE {SECURITY_SCHEMA_OWNER_ROLE}
+                            NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+                    END IF;
                     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{MIGRATOR_USER}') THEN
                         CREATE ROLE {MIGRATOR_USER} LOGIN PASSWORD '{DB_PASSWORD}'
                             NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT;
@@ -169,7 +177,14 @@ def provision_identities(bootstrap: Engine) -> None:
             )
         )
         conn.execute(text(f"GRANT {SCHEMA_OWNER_ROLE} TO {MIGRATOR_USER}"))
+        conn.execute(text(f"GRANT {SECURITY_SCHEMA_OWNER_ROLE} TO {MIGRATOR_USER}"))
         conn.execute(text(f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} TO {SCHEMA_OWNER_ROLE}"))
+        conn.execute(
+            text(
+                f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} "
+                f"TO {SECURITY_SCHEMA_OWNER_ROLE}"
+            )
+        )
         conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {MIGRATOR_USER}"))
         conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {RUNTIME_USER}"))
         conn.execute(
@@ -462,6 +477,55 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                     f"TO {EVENT_DISPATCHER_USER}"
                 )
             )
+            # SAI-I02: INSERT-only security audit ledger (no SELECT/UPDATE/DELETE).
+            conn.execute(text(f"GRANT USAGE ON SCHEMA security TO {RUNTIME_USER}"))
+            conn.execute(
+                text(f"GRANT INSERT ON security.audit_records TO {RUNTIME_USER}")
+            )
+            conn.execute(
+                text(
+                    f"REVOKE SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER "
+                    f"ON security.audit_records FROM {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION security.current_tenant_id() "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION security.related_resource_refs_are_valid("
+                    f"jsonb, text, uuid, bigint) TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(f"GRANT USAGE ON SCHEMA security TO {MIGRATION_RUNTIME_USER}")
+            )
+            conn.execute(
+                text(
+                    f"GRANT INSERT ON security.audit_records TO {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER "
+                    f"ON security.audit_records FROM {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION security.current_tenant_id() "
+                    f"TO {MIGRATION_RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION security.related_resource_refs_are_valid("
+                    f"jsonb, text, uuid, bigint) TO {MIGRATION_RUNTIME_USER}"
+                )
+            )
 
 
 @pytest.fixture(scope="session")
@@ -494,6 +558,7 @@ def postgres18() -> Iterator[dict[str, str]]:
     provision_identities(bootstrap)
     os.environ["AIEOS_DATABASE_URL"] = m_url
     os.environ["AIEOS_SCHEMA_OWNER_ROLE"] = SCHEMA_OWNER_ROLE
+    os.environ["AIEOS_SECURITY_SCHEMA_OWNER_ROLE"] = SECURITY_SCHEMA_OWNER_ROLE
     cfg = alembic_config(m_url)
     command.upgrade(cfg, "head")
     command.downgrade(cfg, "base")
@@ -510,6 +575,7 @@ def postgres18() -> Iterator[dict[str, str]]:
             "server_version": str(version),
             "port": port,
             "schema_owner_role": SCHEMA_OWNER_ROLE,
+            "security_schema_owner_role": SECURITY_SCHEMA_OWNER_ROLE,
             "migrator_user": MIGRATOR_USER,
             "runtime_user": RUNTIME_USER,
             "migration_runtime_user": MIGRATION_RUNTIME_USER,

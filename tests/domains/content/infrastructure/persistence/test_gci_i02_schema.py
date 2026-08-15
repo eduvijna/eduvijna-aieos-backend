@@ -19,7 +19,12 @@ from aieos.domains.content.infrastructure.persistence.models import (
     content_versions_table,
     contents_table,
 )
-from tests.conftest import SCHEMA_OWNER_ROLE, alembic_config, provision_identities
+from tests.conftest import (
+    SCHEMA_OWNER_ROLE,
+    SECURITY_SCHEMA_OWNER_ROLE,
+    alembic_config,
+    provision_identities,
+)
 from tests.dbutil import REPO_ROOT, set_tenant
 
 pytestmark = pytest.mark.gci_i02
@@ -237,8 +242,16 @@ class TestAlembicAndCatalog:
             }
             assert "api" in schemas
             assert api_tables == {"idempotency_records"}
+            assert "security" in schemas
+            security_tables = {
+                row[0]
+                for row in conn.execute(
+                    text("SELECT tablename FROM pg_tables WHERE schemaname = 'security'")
+                )
+            }
+            assert security_tables == {"audit_records"}
             revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            assert revision == "gcii130001"
+            assert revision == "saii020001"
             gcii02 = (
                 REPO_ROOT / "migrations" / "versions" / "gcii020001_content_schema.py"
             ).read_text(encoding="utf-8")
@@ -277,9 +290,7 @@ class TestAlembicAndCatalog:
         assert "api" in insp.get_schema_names()
         assert set(insp.get_table_names(schema="api")) == {"idempotency_records"}
         with bootstrap_engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "gcii130001"
-            )
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("saii020001")
         assert "workflow" in insp.get_schema_names()
         assert set(insp.get_table_names(schema="workflow")) == {
             "workflow_start_intents",
@@ -287,6 +298,8 @@ class TestAlembicAndCatalog:
         }
         assert "integration" in insp.get_schema_names()
         assert set(insp.get_table_names(schema="integration")) == {"outbox_messages"}
+        assert "security" in insp.get_schema_names()
+        assert set(insp.get_table_names(schema="security")) == {"audit_records"}
 
     def test_required_columns_and_sqlalchemy_mappings(self, bootstrap_engine) -> None:
         with bootstrap_engine.connect() as conn:
@@ -1006,6 +1019,12 @@ class TestOfflineMigrationOwnership:
             )
             conn.execute(
                 text(
+                    f"GRANT CONNECT, CREATE ON DATABASE {OFFLINE_DB} "
+                    f"TO {SECURITY_SCHEMA_OWNER_ROLE}"
+                )
+            )
+            conn.execute(
+                text(
                     f"GRANT CONNECT ON DATABASE {OFFLINE_DB} TO {postgres18['migrator_user']}"
                 )
             )
@@ -1071,6 +1090,33 @@ class TestOfflineMigrationOwnership:
             assert api_owner == SCHEMA_OWNER_ROLE
             assert api_table_owners["idempotency_records"] == SCHEMA_OWNER_ROLE
             assert current_user != SCHEMA_OWNER_ROLE
+            with bootstrap_offline.connect() as conn:
+                security_owner = conn.execute(
+                    text(
+                        "SELECT pg_catalog.pg_get_userbyid(nspowner) "
+                        "FROM pg_catalog.pg_namespace WHERE nspname = 'security'"
+                    )
+                ).scalar_one()
+                security_table_owners = dict(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT c.relname, pg_catalog.pg_get_userbyid(c.relowner)
+                            FROM pg_catalog.pg_class c
+                            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                            WHERE n.nspname = 'security' AND c.relkind = 'r'
+                            """
+                        )
+                    ).all()
+                )
+            assert security_owner == SECURITY_SCHEMA_OWNER_ROLE
+            assert security_table_owners["audit_records"] == SECURITY_SCHEMA_OWNER_ROLE
+            assert security_owner != SCHEMA_OWNER_ROLE
+            assert f"SET LOCAL ROLE {SECURITY_SCHEMA_OWNER_ROLE}" in sql_text
+            assert sql_text.index(f"SET LOCAL ROLE {SECURITY_SCHEMA_OWNER_ROLE}") < sql_text.index(
+                "CREATE SCHEMA security"
+            )
+            assert sql_text.rindex(role_stmt) > sql_text.index("CREATE SCHEMA security")
         finally:
             bootstrap_offline.dispose()
             with autocommit.connect() as conn:

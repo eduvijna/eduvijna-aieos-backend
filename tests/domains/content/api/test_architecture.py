@@ -25,6 +25,7 @@ _EXPECTED_MIGRATIONS = [
     "gcii100001_version_asset_refs.py",
     "gcii110001_ai_provenance.py",
     "gcii130001_migration_import.py",
+    "saii020001_security_audit_ledger.py",
 ]
 
 

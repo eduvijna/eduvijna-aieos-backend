@@ -61,6 +61,7 @@ _EXPECTED_MIGRATIONS = [
     "gcii100001_version_asset_refs.py",
     "gcii110001_ai_provenance.py",
     "gcii130001_migration_import.py",
+    "saii020001_security_audit_ledger.py",
 ]
 
 
@@ -106,7 +107,7 @@ class TestArchitectureAbuse:
         for needle in ("/archive", "/purge", "/migrate", "/imports", "/legacy"):
             assert needle not in routes
 
-    def test_no_gcii140001_or_gcii120001_migration_chain_ends_i13(self) -> None:
+    def test_no_gcii140001_or_gcii120001_migration_chain_includes_sai_i02(self) -> None:
         versions = sorted(
             path.name
             for path in MIGRATIONS.glob("*.py")
@@ -142,7 +143,7 @@ class TestArchitectureAbuse:
         for path in (REPO_ROOT / "migrations").rglob("*.py"):
             assert "content.archived" not in path.read_text(encoding="utf-8")
 
-    def test_security_audit_intent_absent_no_audit_events_table(self) -> None:
+    def test_security_audit_ledger_exists_without_content_mutation_wiring(self) -> None:
         hits: list[str] = []
         for path in (REPO_ROOT / "migrations").rglob("*.py"):
             if "audit_events" in path.read_text(encoding="utf-8"):
@@ -151,6 +152,17 @@ class TestArchitectureAbuse:
             if "audit_events" in path.read_text(encoding="utf-8"):
                 hits.append(str(path.relative_to(REPO_ROOT)))
         assert hits == []
+        assert (MIGRATIONS / "saii020001_security_audit_ledger.py").is_file()
+        content_hits: list[str] = []
+        for path in (REPO_ROOT / "src" / "aieos" / "domains" / "content").rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for needle in (
+                "SqlAlchemySecurityMutationAuditRepository",
+                "build_security_mutation_audit_record",
+            ):
+                if needle in text:
+                    content_hits.append(f"{path.name}:{needle}")
+        assert content_hits == []
 
     def test_openapi_has_no_migrate_import_adversarial_ops(self, runtime_engine) -> None:
         tenant_id = uuid.uuid7()
