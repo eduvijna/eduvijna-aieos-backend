@@ -50,6 +50,28 @@ Out of scope:
 
 HTTP Content create, version append, and review mutations are a **non-production foundation**. See `docs/GCI-I04-NON-PRODUCTION-MUTATION-BOUNDARY.md`.
 
+## CI quality gate (PED-I04)
+
+GitHub Actions workflow: `.github/workflows/ci.yml`
+
+- Pull requests and pushes to `main` run the stable job **`quality-gate`**
+  (`uv lock --check`, locked sync, compileall, full `pytest -v`).
+- Pushes to `main` that pass `quality-gate` also run **`verified-build`**, which
+  uploads one SHA-identified **NON_PRODUCTION** verified Python build bundle.
+- Local equivalents:
+
+```text
+uv lock --check
+uv sync --locked --group dev
+uv run python -m compileall -q src tests migrations tools
+uv run pytest -v
+uv build
+uv run python tools/release/build_verified_bundle.py --git-sha <40-hex-sha>
+uv run python tools/release/verify_verified_bundle.py build/aieos-0.1.0-<40-hex-sha>.tar --expected-git-sha <40-hex-sha>
+```
+
+See `docs/PED-I04-CI-VERIFIED-BUILD-CONTRACT.md`. Bundles are not production-approved.
+
 ## Engineering Lifecycle
 
 1. **Discover** — Confirm the change is authorised by an ADR, EBP, or Product Architecture Review.

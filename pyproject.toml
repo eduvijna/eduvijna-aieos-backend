@@ -54,4 +54,5 @@ markers = [
     "ped_i01: Production/staging API runtime configuration and composition foundation",
     "ped_i02: API runtime database engine and readiness foundation",
     "ped_i03: Fail-closed API mutation activation safety interlock",
+    "ped_i04: CI quality gates and immutable verified build bundle foundation",
 ]

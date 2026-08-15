@@ -73,6 +73,10 @@ Link related artefacts by stable ID and path. Prefer repository-relative links. 
 6. Request review from owners in `CODEOWNERS`.
 7. Merge only after required approvals and automated validation appropriate to the slice.
 
+CI note (PED-I04): pull requests run the stable GitHub Actions job `quality-gate`.
+Future production governance must require that check on protected `main`. Verified
+build bundles are **NON_PRODUCTION** and are not deployment authorization.
+
 ## Contribution types
 
 | Type | Process |

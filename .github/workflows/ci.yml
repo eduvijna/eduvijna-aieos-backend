@@ -1,0 +1,125 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  quality-gate:
+    name: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.4"
+          python-version: "3.14.7"
+          enable-cache: true
+
+      - name: Prove lockfile is current
+        run: uv lock --check
+
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
+
+      - name: Compile sources
+        run: uv run python -m compileall -q src tests migrations tools
+
+      - name: Full pytest suite
+        run: uv run pytest -v
+
+  verified-build:
+    name: verified-build
+    needs:
+      - quality-gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.4"
+          python-version: "3.14.7"
+          enable-cache: true
+
+      - name: Prove lockfile is current
+        run: uv lock --check
+
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
+
+      - name: Prove source identity equals GITHUB_SHA
+        run: |
+          set -euo pipefail
+          HEAD_SHA="$(git rev-parse HEAD)"
+          echo "HEAD_SHA=${HEAD_SHA}"
+          echo "GITHUB_SHA=${GITHUB_SHA}"
+          test "${HEAD_SHA}" = "${GITHUB_SHA}"
+
+      - name: Prove VERSION equals pyproject version
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          PYPROJECT_VERSION="$(uv run python -c 'import tomllib; from pathlib import Path; print(tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"])')"
+          echo "VERSION=${VERSION}"
+          echo "PYPROJECT_VERSION=${PYPROJECT_VERSION}"
+          test "${VERSION}" = "${PYPROJECT_VERSION}"
+          test "${VERSION}" = "0.1.0"
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Create verified build bundle
+        id: bundle
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(uv --version | awk '{print $2}')"
+          PYTHON_VERSION="$(uv run python -c 'import platform; print(".".join(platform.python_version_tuple()[:3]))')"
+          OUTPUT="$(uv run python tools/release/build_verified_bundle.py \
+            --git-sha "${GITHUB_SHA}" \
+            --python-version "${PYTHON_VERSION}" \
+            --uv-version "${UV_VERSION}")"
+          echo "${OUTPUT}"
+          BUNDLE_PATH="$(echo "${OUTPUT}" | awk -F= '/^bundle_path=/{print $2}')"
+          BUNDLE_SHA="$(echo "${OUTPUT}" | awk -F= '/^bundle_sha256=/{print $2}')"
+          echo "bundle_path=${BUNDLE_PATH}" >> "${GITHUB_OUTPUT}"
+          echo "bundle_sha256=${BUNDLE_SHA}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "## PED-I04 verified build bundle"
+            echo ""
+            echo "- classification: NON_PRODUCTION"
+            echo "- git_sha: \`${GITHUB_SHA}\`"
+            echo "- bundle: \`${BUNDLE_PATH}\`"
+            echo "- bundle_sha256: \`${BUNDLE_SHA}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Verify verified build bundle
+        run: |
+          set -euo pipefail
+          uv run python tools/release/verify_verified_bundle.py \
+            "${{ steps.bundle.outputs.bundle_path }}" \
+            --expected-git-sha "${GITHUB_SHA}"
+
+      - name: Upload verified build bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: aieos-verified-build-${{ github.sha }}
+          path: ${{ steps.bundle.outputs.bundle_path }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

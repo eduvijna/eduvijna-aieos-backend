@@ -62,12 +62,16 @@ venv/
 .pytest_cache/
 .mypy_cache/
 *.egg-info/
+dist/
+build/
 
 # .NET / build artefacts (if tooling is added later)
 bin/
 obj/
 [Dd]ebug/
 [Rr]elease/
+!tools/release/
+!tools/release/**
 *.user
 *.suo
 
