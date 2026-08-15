@@ -1,0 +1,74 @@
+"""Explicit API application composition. No engine, server, or singleton."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from fastapi import FastAPI
+
+from aieos.domains.content.application.ports import (
+    AssetCurrentGovernancePort,
+    AssetReferenceValidationPort,
+    ContentTypeCatalog,
+    ContentUnitOfWorkFactory,
+    PublicationAuthorizationPort,
+    PublicationGovernancePort,
+    ReviewAuthorizationPort,
+    ReviewCommentPolicy,
+)
+from aieos.domains.content.domain.schema import ContentSchemaRegistry
+from aieos.platform.api.app import create_app
+from aieos.platform.runtime.models import ApiRuntimeConfig, ReleaseIdentity
+from aieos.platform.security.context import SecurityContextResolver
+
+
+@dataclass(frozen=True, slots=True)
+class ApiRuntimeDependencies:
+    """All production-facing contracts required by ``create_app``.
+
+    No dependency is optional. PED-I01 does not supply permissive defaults.
+    """
+
+    uow_factory: ContentUnitOfWorkFactory
+    security_resolver: SecurityContextResolver
+    content_types: ContentTypeCatalog
+    schema_registry: ContentSchemaRegistry
+    review_authorization: ReviewAuthorizationPort
+    review_comment_policy: ReviewCommentPolicy
+    publication_authorization: PublicationAuthorizationPort
+    publication_governance: PublicationGovernancePort
+    asset_reference_validation: AssetReferenceValidationPort
+    asset_current_governance: AssetCurrentGovernancePort
+
+
+def compose_api_application(
+    config: ApiRuntimeConfig,
+    dependencies: ApiRuntimeDependencies,
+) -> FastAPI:
+    """Compose the FastAPI application from config + explicit dependencies.
+
+    Does not create a SQLAlchemy Engine. Does not start an ASGI server.
+    Does not register health endpoints or mutation activation switches.
+    """
+    app = create_app(
+        uow_factory=dependencies.uow_factory,
+        security_resolver=dependencies.security_resolver,
+        content_types=dependencies.content_types,
+        cursor_signing_key=config.cursor_signing_key,
+        schema_registry=dependencies.schema_registry,
+        idempotency_retention=config.idempotency_retention,
+        review_authorization=dependencies.review_authorization,
+        review_comment_policy=dependencies.review_comment_policy,
+        publication_authorization=dependencies.publication_authorization,
+        publication_governance=dependencies.publication_governance,
+        asset_reference_validation=dependencies.asset_reference_validation,
+        asset_current_governance=dependencies.asset_current_governance,
+    )
+    app.state.release_identity = ReleaseIdentity(
+        application_version=config.release_identity.application_version,
+        git_sha=config.release_identity.git_sha,
+        build_id=config.release_identity.build_id,
+        artifact_digest=config.release_identity.artifact_digest,
+    )
+    app.state.deployment_environment = config.environment
+    return app

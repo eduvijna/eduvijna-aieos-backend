@@ -409,13 +409,31 @@ class TestDataMinimizationAndAuthoritySeparation:
             assert "aieos_security_owner" not in text
 
     def test_migrator_not_composed_as_product_runtime(self) -> None:
+        """Migrator credentials must not be product runtime login.
+
+        PED-I01 may validate the migrator *role name* env
+        (``AIEOS_MIGRATOR_ROLE``) for separation checks, and must reject
+        ``AIEOS_DATABASE_URL`` in the API runtime environment loader.
+        """
         for path in _py_files(SRC_ROOT / "aieos"):
             text = path.read_text(encoding="utf-8")
             if "alembic" in path.parts or "migrations" in str(path):
                 continue
+            if "platform" in path.parts and "runtime" in path.parts:
+                assert "aieos_migrator" not in text
+                assert "MIGRATOR_USER" not in text
+                assert "create_engine" not in text
+                continue
             assert "aieos_migrator" not in text
             assert "MIGRATOR_USER" not in text
             assert "AIEOS_MIGRATOR" not in text
+        # Loader must explicitly reject migrator DSN injection into API env
+        config_src = (
+            SRC_ROOT / "aieos" / "platform" / "runtime" / "config.py"
+        ).read_text(encoding="utf-8")
+        assert "AIEOS_DATABASE_URL" in config_src
+        assert "AIEOS_MIGRATOR_ROLE" in config_src
+        assert "must not be present in the API runtime environment" in config_src
 
 
 class TestMigrationChainAndOpenApi:
