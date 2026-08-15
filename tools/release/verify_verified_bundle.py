@@ -16,8 +16,10 @@ if str(_TOOLS_RELEASE) not in sys.path:
 from common import (
     ARTIFACT_KIND,
     CLASSIFICATION,
+    EXPECTED_APPLICATION_VERSION,
     EXPECTED_MIGRATION_HEAD,
     EXPECTED_OPENAPI_SHA256,
+    REPOSITORY,
     REQUIRED_MANIFEST_FIELDS,
     SCHEMA_VERSION,
     is_unsafe_tar_member,
@@ -106,6 +108,11 @@ def verify_verified_bundle(
             raise BundleVerificationError("deployable must be false")
         if manifest.get("mutation_authorized") is not False:
             raise BundleVerificationError("mutation_authorized must be false")
+
+        if manifest["application_version"] != EXPECTED_APPLICATION_VERSION:
+            raise BundleVerificationError("wrong application_version")
+        if manifest["repository"] != REPOSITORY:
+            raise BundleVerificationError("wrong repository")
 
         git_sha = require_full_git_sha(str(manifest["git_sha"]))
         if expected_git_sha is not None:

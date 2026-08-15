@@ -19,8 +19,10 @@ sys.path.insert(0, str(TOOLS_RELEASE))
 
 from build_verified_bundle import build_bundle  # noqa: E402
 from common import (  # noqa: E402
+    EXPECTED_APPLICATION_VERSION,
     EXPECTED_MIGRATION_HEAD,
     EXPECTED_OPENAPI_SHA256,
+    REPOSITORY,
     assert_version_coherence,
     canonical_manifest_json,
     sha256_bytes,
@@ -105,6 +107,8 @@ class TestValidBundle:
         path, manifest = valid_bundle
         loaded = verify_verified_bundle(path, expected_git_sha=VALID_SHA)
         assert loaded["git_sha"] == VALID_SHA
+        assert loaded["application_version"] == EXPECTED_APPLICATION_VERSION
+        assert loaded["repository"] == REPOSITORY
         assert loaded["migration_head"] == EXPECTED_MIGRATION_HEAD
         assert loaded["openapi_sha256"] == EXPECTED_OPENAPI_SHA256
         assert loaded["classification"] == "NON_PRODUCTION"
@@ -174,6 +178,34 @@ class TestTampering:
             path, "verified-build-manifest.json", raw, tmp_path / "bad-head.tar"
         )
         with pytest.raises(BundleVerificationError, match="migration head"):
+            verify_verified_bundle(bad, expected_git_sha=VALID_SHA)
+
+    def test_tampered_application_version_rejected(self, valid_bundle, tmp_path) -> None:
+        path, manifest = valid_bundle
+        bad_manifest = dict(manifest)
+        bad_manifest["application_version"] = "999.0.0"
+        raw = canonical_manifest_json(bad_manifest).encode("utf-8")
+        bad = _replace_member(
+            path,
+            "verified-build-manifest.json",
+            raw,
+            tmp_path / "bad-version.tar",
+        )
+        with pytest.raises(BundleVerificationError, match="application_version"):
+            verify_verified_bundle(bad, expected_git_sha=VALID_SHA)
+
+    def test_tampered_repository_rejected(self, valid_bundle, tmp_path) -> None:
+        path, manifest = valid_bundle
+        bad_manifest = dict(manifest)
+        bad_manifest["repository"] = "attacker/example"
+        raw = canonical_manifest_json(bad_manifest).encode("utf-8")
+        bad = _replace_member(
+            path,
+            "verified-build-manifest.json",
+            raw,
+            tmp_path / "bad-repo.tar",
+        )
+        with pytest.raises(BundleVerificationError, match="repository"):
             verify_verified_bundle(bad, expected_git_sha=VALID_SHA)
 
     def test_malformed_manifest_rejected(self, valid_bundle, tmp_path) -> None:

@@ -42,6 +42,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- PED-I04R1: verified-bundle verifier enforces immutable manifest `application_version` (`0.1.0`) and `repository` (`eduvijna/eduvijna-aieos-backend`); tampered identity fields fail verification. No workflow, OpenAPI, or runtime change.
 - PED-I04: normalize `contracts/openapi/aieos-v1.json` to LF via `.gitattributes` and update the frozen OpenAPI SHA256 to the LF-byte digest so Linux CI and Windows agree. Product OpenAPI semantics are unchanged.
 - PED-I01R1: STAGING/PRODUCTION `AIEOS_RUNTIME_DATABASE_URL` accepts only the exact SQLAlchemy driver `postgresql+psycopg` (Psycopg 3). Bare `postgresql://` and alternate dialects are rejected fail-closed. No dependency change.
 - SAI-I02R1: `security.related_resource_refs_are_valid` duplicate identity uses normalized UUID text; `resource_revision` accepts only canonical non-negative integer JSON (`^[0-9]+$`), rejecting `1.0` and out-of-range values. Head remains `saii020001`.
