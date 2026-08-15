@@ -39,6 +39,7 @@ STAGING and PRODUCTION API workload.
 | `AIEOS_MIGRATOR_ROLE` | Migrator role name (not runtime login) |
 | `AIEOS_CURSOR_SIGNING_KEY_B64` | Base64 cursor signing key (no default) |
 | `AIEOS_IDEMPOTENCY_RETENTION_SECONDS` | Positive integer seconds |
+| `AIEOS_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS` | Positive integer seconds for Psycopg connect timeout (PED-I02; required for STAGING/PRODUCTION; no silent default) |
 
 `AIEOS_DATABASE_URL` remains the Alembic migrator DSN and **must not** be present
 in STAGING/PRODUCTION API runtime environments.
@@ -70,4 +71,6 @@ PED-I01 does **not** provide:
 
 PED-I01 is a production-readiness **foundation** only.
 
-Later PED slices (PED-I02+) remain **NOT AUTHORIZED** until separately gated.
+Engine construction, identity/schema readiness, and `/livez`/`/readyz` are
+advanced by **PED-I02** (see `docs/PED-I02-API-DB-READINESS-CONTRACT.md`).
+PED-I03+ remains **NOT AUTHORIZED** until separately gated.

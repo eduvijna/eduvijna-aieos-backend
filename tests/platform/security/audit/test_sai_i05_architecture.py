@@ -414,6 +414,9 @@ class TestDataMinimizationAndAuthoritySeparation:
         PED-I01 may validate the migrator *role name* env
         (``AIEOS_MIGRATOR_ROLE``) for separation checks, and must reject
         ``AIEOS_DATABASE_URL`` in the API runtime environment loader.
+
+        PED-I02 may construct a runtime Engine via ``create_engine`` only in
+        ``platform/runtime/database.py`` (never from migrator DSN).
         """
         for path in _py_files(SRC_ROOT / "aieos"):
             text = path.read_text(encoding="utf-8")
@@ -422,7 +425,8 @@ class TestDataMinimizationAndAuthoritySeparation:
             if "platform" in path.parts and "runtime" in path.parts:
                 assert "aieos_migrator" not in text
                 assert "MIGRATOR_USER" not in text
-                assert "create_engine" not in text
+                if path.name != "database.py":
+                    assert "create_engine" not in text
                 continue
             assert "aieos_migrator" not in text
             assert "MIGRATOR_USER" not in text
@@ -434,6 +438,12 @@ class TestDataMinimizationAndAuthoritySeparation:
         assert "AIEOS_DATABASE_URL" in config_src
         assert "AIEOS_MIGRATOR_ROLE" in config_src
         assert "must not be present in the API runtime environment" in config_src
+        database_src = (
+            SRC_ROOT / "aieos" / "platform" / "runtime" / "database.py"
+        ).read_text(encoding="utf-8")
+        assert "create_engine" in database_src
+        assert "AIEOS_DATABASE_URL" not in database_src
+        assert "runtime_database_url" in database_src
 
 
 class TestMigrationChainAndOpenApi:

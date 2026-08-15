@@ -29,6 +29,9 @@ ENV_SECURITY_SCHEMA_OWNER_ROLE = "AIEOS_SECURITY_SCHEMA_OWNER_ROLE"
 ENV_MIGRATOR_ROLE = "AIEOS_MIGRATOR_ROLE"
 ENV_CURSOR_SIGNING_KEY_B64 = "AIEOS_CURSOR_SIGNING_KEY_B64"
 ENV_IDEMPOTENCY_RETENTION_SECONDS = "AIEOS_IDEMPOTENCY_RETENTION_SECONDS"
+ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS = (
+    "AIEOS_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS"
+)
 
 # Alembic migrator DSN — must not be present in STAGING/PRODUCTION API runtime env.
 ENV_MIGRATOR_DATABASE_URL = "AIEOS_DATABASE_URL"
@@ -51,6 +54,7 @@ _REQUIRED_ENV = (
     ENV_MIGRATOR_ROLE,
     ENV_CURSOR_SIGNING_KEY_B64,
     ENV_IDEMPOTENCY_RETENTION_SECONDS,
+    ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS,
 )
 
 
@@ -143,6 +147,14 @@ def _parse_idempotency_retention(raw: str) -> timedelta:
     return timedelta(seconds=int(raw))
 
 
+def _parse_connect_timeout(raw: str) -> int:
+    if not re.fullmatch(r"[1-9][0-9]*", raw):
+        raise RuntimeConfigurationError(
+            f"{ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS} must be a positive integer"
+        )
+    return int(raw)
+
+
 def _assert_role_separation(
     *,
     runtime_role: str,
@@ -221,6 +233,9 @@ def load_api_runtime_config(environ: Mapping[str, str]) -> ApiRuntimeConfig:
     retention = _parse_idempotency_retention(
         _require(environ, ENV_IDEMPOTENCY_RETENTION_SECONDS)
     )
+    connect_timeout = _parse_connect_timeout(
+        _require(environ, ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS)
+    )
     return ApiRuntimeConfig(
         environment=environment,
         release_identity=release,
@@ -231,6 +246,7 @@ def load_api_runtime_config(environ: Mapping[str, str]) -> ApiRuntimeConfig:
         migrator_role=migrator,
         cursor_signing_key=cursor_key,
         idempotency_retention=retention,
+        runtime_database_connect_timeout_seconds=connect_timeout,
     )
 
 

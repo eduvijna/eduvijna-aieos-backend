@@ -500,6 +500,17 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                     f"jsonb, text, uuid, bigint) TO {RUNTIME_USER}"
                 )
             )
+            # PED-I02: narrow migration-head metadata read for API readiness only.
+            conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {RUNTIME_USER}"))
+            conn.execute(
+                text(f"GRANT SELECT ON TABLE public.alembic_version TO {RUNTIME_USER}")
+            )
+            conn.execute(
+                text(
+                    f"REVOKE INSERT, UPDATE, DELETE, TRUNCATE "
+                    f"ON TABLE public.alembic_version FROM {RUNTIME_USER}"
+                )
+            )
             conn.execute(
                 text(f"GRANT USAGE ON SCHEMA security TO {MIGRATION_RUNTIME_USER}")
             )

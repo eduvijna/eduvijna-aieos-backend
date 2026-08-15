@@ -18,15 +18,17 @@ from aieos.domains.content.application.ports import (
 )
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.app import create_app
+from aieos.platform.runtime.health import register_operational_health_routes
 from aieos.platform.runtime.models import ApiRuntimeConfig, ReleaseIdentity
+from aieos.platform.runtime.readiness import ApiReadinessProbe
 from aieos.platform.security.context import SecurityContextResolver
 
 
 @dataclass(frozen=True, slots=True)
 class ApiRuntimeDependencies:
-    """All production-facing contracts required by ``create_app``.
+    """All production-facing contracts required by API composition.
 
-    No dependency is optional. PED-I01 does not supply permissive defaults.
+    No dependency is optional. No permissive production defaults.
     """
 
     uow_factory: ContentUnitOfWorkFactory
@@ -39,6 +41,7 @@ class ApiRuntimeDependencies:
     publication_governance: PublicationGovernancePort
     asset_reference_validation: AssetReferenceValidationPort
     asset_current_governance: AssetCurrentGovernancePort
+    readiness_probe: ApiReadinessProbe
 
 
 def compose_api_application(
@@ -48,7 +51,7 @@ def compose_api_application(
     """Compose the FastAPI application from config + explicit dependencies.
 
     Does not create a SQLAlchemy Engine. Does not start an ASGI server.
-    Does not register health endpoints or mutation activation switches.
+    Does not activate mutations. Registers operational /livez and /readyz.
     """
     app = create_app(
         uow_factory=dependencies.uow_factory,
@@ -71,4 +74,6 @@ def compose_api_application(
         artifact_digest=config.release_identity.artifact_digest,
     )
     app.state.deployment_environment = config.environment
+    app.state.readiness_probe = dependencies.readiness_probe
+    register_operational_health_routes(app)
     return app

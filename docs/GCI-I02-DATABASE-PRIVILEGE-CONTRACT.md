@@ -157,6 +157,24 @@ Privileged UPDATE/DELETE are blocked by an immutability trigger even for bootstr
 
 Production role creation/grants remain infrastructure/deployment work. Test fixtures may provision ephemeral identities; that does not complete production provisioning.
 
+### `public.alembic_version` (PED-I02 API readiness metadata)
+
+Ordinary API runtime may receive a **narrow** grant for migration-head readiness only:
+
+- `USAGE` on schema `public`
+- `SELECT` on `public.alembic_version`
+
+Explicitly retained denials for API runtime:
+
+- **no** `INSERT` / `UPDATE` / `DELETE` / `TRUNCATE` on `public.alembic_version`
+- **no** `CREATE` on schema `public` as a substitute for infrastructure authority
+
+Reading `public.alembic_version` is **not** migration authority. It does **not** authorize Alembic execution, DDL, `SET ROLE`, schema ownership, or migrator credentials.
+
+Event dispatcher and workflow dispatcher must **not** gain write authority on `public.alembic_version`. Prefer no access unless a later slice explicitly requires it.
+
+Production privilege provisioning for these readiness grants remains external deployment work and is **not** performed by PED-I02 application code.
+
 ## Tenant context
 
 Tenant context is transaction-local (`SET LOCAL` / `set_config(..., is_local := true)` for `aieos.tenant_id`) for `content`, `api`, `workflow`, `integration`, and `security` policies.

@@ -32,11 +32,13 @@ from aieos.platform.runtime.config import (
     ENV_MIGRATOR_DATABASE_URL,
     ENV_MIGRATOR_ROLE,
     ENV_RELEASE_VERSION,
+    ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS,
     ENV_RUNTIME_DATABASE_ROLE,
     ENV_RUNTIME_DATABASE_URL,
     ENV_SCHEMA_OWNER_ROLE,
     ENV_SECURITY_SCHEMA_OWNER_ROLE,
 )
+from aieos.platform.runtime.readiness import ReadinessCode, ReadinessResult
 from tests.fakes import (
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
@@ -69,7 +71,13 @@ REQUIRED_ENV_NAMES = (
     ENV_MIGRATOR_ROLE,
     ENV_CURSOR_SIGNING_KEY_B64,
     ENV_IDEMPOTENCY_RETENTION_SECONDS,
+    ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS,
 )
+
+
+class _ReadyProbe:
+    def check(self) -> ReadinessResult:
+        return ReadinessResult(True, ReadinessCode.READY)
 
 
 def _valid_environ(
@@ -82,6 +90,7 @@ def _valid_environ(
     db_password: str = SECRET_DB_PASSWORD,
     cursor_b64: str = CURSOR_B64,
     retention: str = "86400",
+    connect_timeout: str = "5",
     git_sha: str = VALID_GIT_SHA,
     artifact_digest: str = VALID_DIGEST,
 ) -> dict[str, str]:
@@ -101,6 +110,7 @@ def _valid_environ(
         ENV_MIGRATOR_ROLE: migrator,
         ENV_CURSOR_SIGNING_KEY_B64: cursor_b64,
         ENV_IDEMPOTENCY_RETENTION_SECONDS: retention,
+        ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS: connect_timeout,
     }
 
 
@@ -124,6 +134,7 @@ class TestValidConfigLoad:
         assert config.release_identity.artifact_digest == VALID_DIGEST
         assert config.runtime_database_role == "aieos_runtime"
         assert config.idempotency_retention == timedelta(seconds=86400)
+        assert config.runtime_database_connect_timeout_seconds == 5
         assert config.cursor_signing_key == SECRET_CURSOR_KEY
         _assert_no_secret_leak(repr(config))
         _assert_no_secret_leak(str(config))
@@ -331,6 +342,7 @@ class TestComposition:
             publication_governance=AllowPublicationGovernance(),
             asset_reference_validation=AllowAssetReferenceValidation(),
             asset_current_governance=AllowAssetCurrentGovernance(),
+            readiness_probe=_ReadyProbe(),
         )
 
     def test_composition_requires_explicit_dependencies(self) -> None:
@@ -340,6 +352,7 @@ class TestComposition:
             for name, param in sig.parameters.items()
             if param.default is inspect.Parameter.empty
         ]
+        assert "readiness_probe" in required
         assert "security_resolver" in required
         assert "review_authorization" in required
         assert "publication_authorization" in required

@@ -1,7 +1,7 @@
-"""Production/staging API runtime configuration and composition (PED-I01).
+"""Production/staging API runtime configuration and composition.
 
-Configuration and composition foundation only. Not production-ready,
-not deployable, and not a mutation-activation gate.
+PED-I01 configuration foundation + PED-I02 database/readiness foundation.
+Not production-approved and not a mutation-activation gate.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from aieos.platform.runtime.config import (
     load_api_runtime_config,
     load_api_runtime_config_from_process_environment,
 )
+from aieos.platform.runtime.database import create_api_runtime_engine
 from aieos.platform.runtime.errors import RuntimeConfigurationError
 from aieos.platform.runtime.models import (
     ApiRuntimeConfig,
@@ -21,15 +22,30 @@ from aieos.platform.runtime.models import (
     ReleaseIdentity,
     WorkloadKind,
 )
+from aieos.platform.runtime.readiness import (
+    EXPECTED_ALEMBIC_HEAD,
+    EXPECTED_POSTGRES_MAJOR,
+    ApiReadinessProbe,
+    ReadinessCode,
+    ReadinessResult,
+    SqlAlchemyApiReadinessProbe,
+)
 
 __all__ = [
+    "EXPECTED_ALEMBIC_HEAD",
+    "EXPECTED_POSTGRES_MAJOR",
+    "ApiReadinessProbe",
     "ApiRuntimeConfig",
     "ApiRuntimeDependencies",
     "DeploymentEnvironment",
+    "ReadinessCode",
+    "ReadinessResult",
     "ReleaseIdentity",
     "RuntimeConfigurationError",
+    "SqlAlchemyApiReadinessProbe",
     "WorkloadKind",
     "compose_api_application",
+    "create_api_runtime_engine",
     "load_api_runtime_config",
     "load_api_runtime_config_from_process_environment",
 ]

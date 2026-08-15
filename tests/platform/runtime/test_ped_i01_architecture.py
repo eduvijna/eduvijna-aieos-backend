@@ -59,8 +59,9 @@ def test_runtime_package_import_boundary() -> None:
         assert "StubSecurityContextResolver" not in text
         assert "AllowReviewAuthorization" not in text
         assert "AllowPublicationAuthorization" not in text
-        assert "create_engine" not in text
         assert "metadata.create_all" not in text
+        if path.name != "database.py":
+            assert "create_engine" not in text
         # No module-level production singleton (assignment at column 0)
         for line in text.splitlines():
             if line.startswith("app = compose_api_application") or line.startswith(
@@ -69,11 +70,9 @@ def test_runtime_package_import_boundary() -> None:
                 raise AssertionError(f"module-level app singleton in {path}: {line}")
 
 
-def test_no_health_or_mutation_activation() -> None:
+def test_no_mutation_activation_in_runtime_package() -> None:
     for path in _py_files(RUNTIME_ROOT):
         text = path.read_text(encoding="utf-8")
-        assert "/livez" not in text
-        assert "/readyz" not in text
         assert "MUTATIONS_ENABLED" not in text
         assert "AIEOS_MUTATIONS_ENABLED" not in text
 
@@ -92,7 +91,9 @@ def test_migration_head_unchanged() -> None:
     versions = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
     assert versions[-1] == "saii020001_security_audit_ledger.py"
     for path in MIGRATIONS.rglob("*.py"):
-        assert "pedi010001" not in path.read_text(encoding="utf-8")
+        body = path.read_text(encoding="utf-8")
+        assert "pedi010001" not in body
+        assert "pedi020001" not in body
 
 
 def test_boundary_doc_and_changelog() -> None:

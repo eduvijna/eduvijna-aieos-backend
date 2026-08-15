@@ -55,6 +55,7 @@ class ApiRuntimeConfig:
     migrator_role: str
     cursor_signing_key: bytes
     idempotency_retention: timedelta
+    runtime_database_connect_timeout_seconds: int
 
     def __repr__(self) -> str:
         return (
@@ -67,7 +68,9 @@ class ApiRuntimeConfig:
             f"security_schema_owner_role={self.security_schema_owner_role!r}, "
             f"migrator_role={self.migrator_role!r}, "
             "cursor_signing_key=<redacted>, "
-            f"idempotency_retention={self.idempotency_retention!r}"
+            f"idempotency_retention={self.idempotency_retention!r}, "
+            "runtime_database_connect_timeout_seconds="
+            f"{self.runtime_database_connect_timeout_seconds!r}"
             ")"
         )
 
