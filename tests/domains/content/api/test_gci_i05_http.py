@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from aieos.domains.content.application.audit import api_mutation_audit_provenance
+
 import json
 import threading
 import uuid
@@ -813,6 +815,7 @@ class TestRollbackAtomicity:
                     actor_principal_id=principal_id,
                     effective_actor_id=principal_id,
                 ),
+                audit_provenance=api_mutation_audit_provenance(principal_id),
             )
         assert _count_versions(bootstrap_engine, content_id) == 0
         with bootstrap_engine.connect() as conn:

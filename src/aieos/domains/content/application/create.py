@@ -5,6 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from aieos.domains.content.application.audit import (
+    MutationAuditProvenance,
+    insert_required_content_audit,
+)
 from aieos.domains.content.application.errors import (
     IdempotencyKeyReused,
     InvalidContentRequest,
@@ -25,6 +29,7 @@ from aieos.platform.events.content_events import content_created_outbox
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.idempotency.hashing import fingerprint_material, hash_idempotency_key
 from aieos.platform.idempotency.models import CONTENT_CREATE_V1, IdempotencyOutcome, IdempotencyScope
+from aieos.platform.security.audit import SecurityAuditAction
 
 
 def _create_fingerprint(command: CreateContentCommand) -> str:
@@ -83,6 +88,7 @@ class CreateContentService:
         *,
         idempotency_key: str,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> ContentReadModel:
         fingerprint = _create_fingerprint(command)
@@ -137,6 +143,18 @@ class CreateContentService:
                     context=event_context,
                     created_at=created_at,
                 )
+            )
+            insert_required_content_audit(
+                uow,
+                tenant_id=execution_tenant_id,
+                action=SecurityAuditAction.CONTENT_CREATE,
+                content_id=content.content_id.value,
+                resource_revision_before=None,
+                resource_revision_after=0,
+                related_resource_refs=(),
+                mutation_event_context=event_context,
+                audit_provenance=audit_provenance,
+                occurred_at=created_at,
             )
             uow.idempotency.insert(
                 IdempotencyOutcome(

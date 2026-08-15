@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from aieos.domains.content.application.audit import api_mutation_audit_provenance
+
 import ast
 import uuid
 from datetime import UTC, datetime
@@ -503,6 +505,7 @@ class TestSubmitEvents:
                 ),
                 idempotency_key=f"fail-submit-{uuid.uuid7()}",
                 event_context=_event_context(principal_id),
+                audit_provenance=api_mutation_audit_provenance(principal_id),
             )
         after = content_row(bootstrap_engine, content_id)
         assert after.stewardship_state == before.stewardship_state
@@ -614,6 +617,7 @@ class TestReviewDecisionEvents:
                 comment=None,
                 idempotency_key=f"fail-approve-{uuid.uuid7()}",
                 event_context=_event_context(principal_id),
+                audit_provenance=api_mutation_audit_provenance(principal_id),
             )
         after = content_row(bootstrap_engine, content_id)
         assert after.stewardship_state == before.stewardship_state

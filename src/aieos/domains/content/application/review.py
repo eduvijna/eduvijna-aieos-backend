@@ -5,6 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from aieos.domains.content.application.audit import (
+    MutationAuditProvenance,
+    content_version_ref,
+    insert_required_content_audit,
+    review_decision_ref,
+)
 from aieos.domains.content.application.errors import (
     AggregateRevisionConflict,
     ContentNotFound,
@@ -76,10 +82,21 @@ from aieos.platform.workflows.identities import (
     WorkflowStartIntentId,
 )
 from aieos.platform.workflows.models import WorkflowCommandIntent, WorkflowStartIntent
+from aieos.platform.security.audit import SecurityAuditAction
 
 _FROZEN_SUBMIT_STATE = StewardshipState.IN_REVIEW.value
 _FROZEN_APPROVE_STATE = StewardshipState.APPROVED.value
 _FROZEN_NEGATIVE_STATE = StewardshipState.GENERATED.value
+
+
+def _decision_audit_action(decision: ReviewDecisionCode) -> SecurityAuditAction:
+    if decision is ReviewDecisionCode.APPROVE:
+        return SecurityAuditAction.CONTENT_REVIEW_APPROVE
+    if decision is ReviewDecisionCode.REQUEST_CHANGES:
+        return SecurityAuditAction.CONTENT_REVIEW_REQUEST_CHANGES
+    if decision is ReviewDecisionCode.REJECT:
+        return SecurityAuditAction.CONTENT_REVIEW_REJECT
+    raise InvalidContentRequest("unsupported review decision")
 
 
 def _now(now: datetime | None) -> datetime:
@@ -168,6 +185,7 @@ class ReviewCommandService:
         expected_aggregate_revision: AggregateRevision,
         idempotency_key: str,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> ReviewSubmissionResult:
         self._authorization.authorize(
@@ -222,6 +240,18 @@ class ReviewCommandService:
                 event_context=event_context,
                 updated_at=decided_at,
             )
+            insert_required_content_audit(
+                uow,
+                tenant_id=execution_tenant_id,
+                action=SecurityAuditAction.CONTENT_REVIEW_SUBMIT,
+                content_id=content_id.value,
+                resource_revision_before=int(expected_aggregate_revision),
+                resource_revision_after=int(revision),
+                related_resource_refs=(content_version_ref(version_id.value),),
+                mutation_event_context=event_context,
+                audit_provenance=audit_provenance,
+                occurred_at=decided_at,
+            )
             uow.idempotency.insert(
                 IdempotencyOutcome(
                     tenant_id=scope.tenant_id,
@@ -258,6 +288,7 @@ class ReviewCommandService:
         comment: str | None,
         idempotency_key: str,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> ReviewDecisionResult:
         return self._decide(
@@ -275,6 +306,7 @@ class ReviewCommandService:
             require_comment=False,
             idempotency_key=idempotency_key,
             event_context=event_context,
+            audit_provenance=audit_provenance,
             now=now,
         )
 
@@ -290,6 +322,7 @@ class ReviewCommandService:
         comment: str | None,
         idempotency_key: str,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> ReviewDecisionResult:
         return self._decide(
@@ -307,6 +340,7 @@ class ReviewCommandService:
             require_comment=True,
             idempotency_key=idempotency_key,
             event_context=event_context,
+            audit_provenance=audit_provenance,
             now=now,
         )
 
@@ -322,6 +356,7 @@ class ReviewCommandService:
         comment: str | None,
         idempotency_key: str,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> ReviewDecisionResult:
         return self._decide(
@@ -339,6 +374,7 @@ class ReviewCommandService:
             require_comment=False,
             idempotency_key=idempotency_key,
             event_context=event_context,
+            audit_provenance=audit_provenance,
             now=now,
         )
 
@@ -359,6 +395,7 @@ class ReviewCommandService:
         require_comment: bool,
         idempotency_key: str,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         now: datetime | None,
     ) -> ReviewDecisionResult:
         self._authorization.authorize(
@@ -409,6 +446,21 @@ class ReviewCommandService:
                 target_state=target_state,
                 event_context=event_context,
                 decided_at=decided_at,
+            )
+            insert_required_content_audit(
+                uow,
+                tenant_id=execution_tenant_id,
+                action=_decision_audit_action(decision),
+                content_id=content_id.value,
+                resource_revision_before=int(expected_aggregate_revision),
+                resource_revision_after=int(revision),
+                related_resource_refs=(
+                    content_version_ref(version_id.value),
+                    review_decision_ref(stored.review_decision_id.value),
+                ),
+                mutation_event_context=event_context,
+                audit_provenance=audit_provenance,
+                occurred_at=decided_at,
             )
             uow.idempotency.insert(
                 IdempotencyOutcome(

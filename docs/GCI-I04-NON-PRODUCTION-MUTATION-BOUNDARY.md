@@ -1,11 +1,11 @@
 ---
-id: SAI-I02-NON-PRODUCTION-MUTATION-BOUNDARY
-title: Generic Content mutations remain non-production; security audit ledger exists without Content integration
+id: SAI-I03-NON-PRODUCTION-MUTATION-BOUNDARY
+title: API-origin Content mutations have transactional audit; production still blocked
 status: draft
-version: 1.3.0
+version: 1.4.0
 ---
 
-# SAI-I02 non-production mutation boundary
+# SAI-I03 non-production mutation boundary
 
 Idempotency-Key is now required for:
 
@@ -19,33 +19,49 @@ Idempotency-Key is now required for:
 
 GCI-I12–I14 remain as previously documented (Review Queue reads, migration foundation, adversarial validation).
 
-## ADR-AIEOS-028 / SAI-I01 / SAI-I02
+## ADR-AIEOS-028 / SAI-I01 / SAI-I02 / SAI-I03
 
 ADR-AIEOS-028 (Security Audit & Mutation Accountability) is frozen.
 
 SAI-I01 framework-neutral security mutation-audit contracts exist under
 `src/aieos/platform/security/audit/`.
 
-SAI-I02 adds the PostgreSQL security audit ledger:
+SAI-I02 adds the PostgreSQL security audit ledger (`security.audit_records`,
+Alembic `saii020001`).
 
-- schema `security` owned by configured `AIEOS_SECURITY_SCHEMA_OWNER_ROLE`
-- table `security.audit_records` (append-only, FORCE RLS, INSERT-only policy)
-- SQLAlchemy mapping + insert-only `SqlAlchemySecurityMutationAuditRepository`
-- Alembic revision `saii020001` (revises `gcii130001`; there is no `saii010001`)
+SAI-I03 wires **API-origin** Generic Content mutations to insert one
+`SecurityMutationAuditRecord` in the **same** Content UoW / PostgreSQL
+transaction as business state, outbox intent, workflow intent (where
+applicable), and idempotency outcome:
 
-SAI-I02 does **not**:
+- `content.create`
+- `content.version.create` (human HTTP append only)
+- `content.review.submit`
+- `content.review.approve`
+- `content.review.request_changes`
+- `content.review.reject`
+- `content.publish`
 
-- wire Content mutations (create/append/review/publish/AI/migration) to write audit rows
-- expose audit HTTP / OpenAPI
-- implement failed/denied-attempt audit, SIEM export, or crypto sealing
-- add a security audit reader role or SELECT policy
+## Still missing (SAI-I04+)
+
+- `content.ai.materialize` audit integration
+- `content.migration.import` audit integration
+- any required workflow-origin protected mutation audit (`WORKFLOW_ACTIVITY`)
+- final adversarial production gate (SAI-I05)
 
 Therefore:
 
-- protected Content transactions can still currently commit **without** writing
-  `security.audit_records`
+- production mutation remains **NOT AUTHORIZED**
+- production migration remains **NOT AUTHORIZED**
 - Content mutations and controlled migration import remain **NON-PRODUCTION**
-- production mutation and production migration remain **NOT AUTHORIZED**
+
+SAI-I03 does **not**:
+
+- add Alembic `saii030001` (head remains `saii020001`)
+- expose audit HTTP / OpenAPI
+- implement failed/denied-attempt audit, SIEM export, or crypto sealing
+- change MutationEventContext or TrustedSecurityContext
+- change Temporal workflow definitions or JetStream event contracts
 
 Migration head:
 

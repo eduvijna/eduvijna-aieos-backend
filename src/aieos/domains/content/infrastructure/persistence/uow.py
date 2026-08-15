@@ -9,6 +9,9 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.engine import Transaction
 
 from aieos.domains.content.application.errors import PersistenceOperationFailed
+from aieos.domains.content.infrastructure.persistence.audit_repository import (
+    ContentSecurityMutationAuditRepository,
+)
 from aieos.domains.content.infrastructure.persistence.errors import (
     reraise_as_application_error,
 )
@@ -46,6 +49,7 @@ class SqlAlchemyContentUnitOfWork:
         self.idempotency: SqlAlchemyIdempotencyRepository
         self.workflow_intents: SqlAlchemyWorkflowIntentRepository
         self.outbox: SqlAlchemyOutboxRepository
+        self.audit: ContentSecurityMutationAuditRepository
 
     def __enter__(self) -> SqlAlchemyContentUnitOfWork:
         try:
@@ -75,6 +79,7 @@ class SqlAlchemyContentUnitOfWork:
             )
             self.workflow_intents = SqlAlchemyWorkflowIntentRepository(self._connection)
             self.outbox = SqlAlchemyOutboxRepository(self._connection)
+            self.audit = ContentSecurityMutationAuditRepository(self._connection)
             return self
         except Exception as exc:
             self._cleanup(suppress=True)

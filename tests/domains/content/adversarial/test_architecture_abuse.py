@@ -143,7 +143,7 @@ class TestArchitectureAbuse:
         for path in (REPO_ROOT / "migrations").rglob("*.py"):
             assert "content.archived" not in path.read_text(encoding="utf-8")
 
-    def test_security_audit_ledger_exists_without_content_mutation_wiring(self) -> None:
+    def test_security_audit_ledger_exists_api_wired_ai_migration_pending(self) -> None:
         hits: list[str] = []
         for path in (REPO_ROOT / "migrations").rglob("*.py"):
             if "audit_events" in path.read_text(encoding="utf-8"):
@@ -153,16 +153,22 @@ class TestArchitectureAbuse:
                 hits.append(str(path.relative_to(REPO_ROOT)))
         assert hits == []
         assert (MIGRATIONS / "saii020001_security_audit_ledger.py").is_file()
-        content_hits: list[str] = []
-        for path in (REPO_ROOT / "src" / "aieos" / "domains" / "content").rglob("*.py"):
-            text = path.read_text(encoding="utf-8")
-            for needle in (
-                "SqlAlchemySecurityMutationAuditRepository",
-                "build_security_mutation_audit_record",
-            ):
-                if needle in text:
-                    content_hits.append(f"{path.name}:{needle}")
-        assert content_hits == []
+        assert not (MIGRATIONS / "saii030001_security_audit_content.py").exists()
+        # SAI-I03: API mutations use the Content audit helper; platform SQLAlchemy types
+        # stay behind the Content adapter except in infrastructure.
+        create = (CONTENT_ROOT / "application" / "create.py").read_text(encoding="utf-8")
+        assert "insert_required_content_audit" in create
+        ai = (CONTENT_ROOT / "application" / "ai_materialization.py").read_text(
+            encoding="utf-8"
+        )
+        migration = (CONTENT_ROOT / "application" / "migration_import.py").read_text(
+            encoding="utf-8"
+        )
+        assert "insert_required_content_audit" not in ai
+        assert "insert_required_content_audit" not in migration
+        ports = (CONTENT_ROOT / "application" / "ports.py").read_text(encoding="utf-8")
+        assert "SqlAlchemySecurityMutationAuditRepository" not in ports
+        assert "SecurityMutationAuditRepository" in ports
 
     def test_openapi_has_no_migrate_import_adversarial_ops(self, runtime_engine) -> None:
         tenant_id = uuid.uuid7()

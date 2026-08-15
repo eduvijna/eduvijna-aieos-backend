@@ -32,6 +32,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GCI-I14 adversarial TEST-ONLY suite under `tests/domains/content/adversarial/` (`pytest -m gci_i14`): identity/immutability, tenancy, review, AI, publication, workflow/events, migration, review queue, architecture abuse, and outbox atomicity cross-cuts. No production `src/` or `gcii140001` migration.
 - SAI-I01 Security Audit contracts under `src/aieos/platform/security/audit/`: `AuditRecordId`, typed actions/channels, `SecurityMutationAuditContext`/`Record`, canonical builder, insert-only repository port. No DB table, no Content mutation wiring, still non-production.
 - SAI-I02 PostgreSQL security audit ledger: `security.audit_records` via `saii020001`, distinct `AIEOS_SECURITY_SCHEMA_OWNER_ROLE`, FORCE RLS INSERT-only policy, immutability triggers, SQLAlchemy insert-only repository. No Content mutation wiring, still non-production.
+- SAI-I03 Generic Content API transactional security-audit integration: create / human append / review submit+decide / publish write one `security.audit_records` row in the same Content UoW transaction as business + outbox (+ workflow intent) + idempotency. AI materialization, migration import, and workflow-origin audit remain SAI-I04; production mutation still NOT AUTHORIZED. No new migration.
 
 ### Changed
 

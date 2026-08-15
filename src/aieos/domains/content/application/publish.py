@@ -5,6 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from aieos.domains.content.application.audit import (
+    MutationAuditProvenance,
+    content_version_ref,
+    insert_required_content_audit,
+    publication_ref,
+    review_decision_ref,
+)
 from aieos.domains.content.application.errors import (
     AggregateRevisionConflict,
     ContentNotFound,
@@ -44,6 +51,7 @@ from aieos.platform.events.content_events import published_outbox
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.idempotency.hashing import fingerprint_material, hash_idempotency_key
 from aieos.platform.idempotency.models import CONTENT_PUBLISH_V1, IdempotencyOutcome, IdempotencyScope
+from aieos.platform.security.audit import SecurityAuditAction
 
 
 def _now(now: datetime | None) -> datetime:
@@ -95,6 +103,7 @@ class PublishContentService:
         expected_aggregate_revision: AggregateRevision,
         idempotency_key: str,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> PublicationResult:
         self._authorization.authorize(
@@ -132,6 +141,22 @@ class PublishContentService:
                 expected_aggregate_revision=expected_aggregate_revision,
                 event_context=event_context,
                 published_at=published_at,
+            )
+            insert_required_content_audit(
+                uow,
+                tenant_id=execution_tenant_id,
+                action=SecurityAuditAction.CONTENT_PUBLISH,
+                content_id=content_id.value,
+                resource_revision_before=int(expected_aggregate_revision),
+                resource_revision_after=int(result.aggregate_revision),
+                related_resource_refs=(
+                    content_version_ref(version_id.value),
+                    review_decision_ref(result.approval_decision_id.value),
+                    publication_ref(result.publication_id.value),
+                ),
+                mutation_event_context=event_context,
+                audit_provenance=audit_provenance,
+                occurred_at=published_at,
             )
             uow.idempotency.insert(
                 IdempotencyOutcome(

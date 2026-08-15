@@ -28,6 +28,7 @@ from aieos.domains.content.domain.version_asset_ref import VersionAssetRef
 from aieos.platform.events.ports import OutboxRepository
 from aieos.platform.idempotency.ports import IdempotencyRepository
 from aieos.platform.resources import ResourceRef
+from aieos.platform.security.audit.ports import SecurityMutationAuditRepository
 from aieos.platform.workflows.ports import WorkflowIntentRepository
 
 CONTENT_REVIEW_SUBMIT = "content.review.submit"
@@ -305,6 +306,7 @@ class ContentUnitOfWork(Protocol):
     idempotency: IdempotencyRepository
     workflow_intents: WorkflowIntentRepository
     outbox: OutboxRepository
+    audit: SecurityMutationAuditRepository
 
     def __enter__(self) -> ContentUnitOfWork: ...
 

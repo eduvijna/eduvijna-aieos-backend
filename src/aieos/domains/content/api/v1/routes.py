@@ -36,6 +36,7 @@ from aieos.domains.content.api.v1.models import (
     TeacherReviewQueueListResponse,
 )
 from aieos.domains.content.application.create import CreateContentService
+from aieos.domains.content.application.audit import api_mutation_audit_provenance
 from aieos.domains.content.application.errors import InvalidContentRequest
 from aieos.domains.content.application.http_append import (
     GetContentVersionService,
@@ -195,6 +196,7 @@ def content_create(
         ),
         idempotency_key=key,
         event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
     )
     response.headers["Location"] = f"/api/v1/contents/{model.content_id}"
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
@@ -291,6 +293,7 @@ def content_version_append(
         payload=body.payload,
         idempotency_key=key,
         event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
         asset_refs=[ref.model_dump(mode="python") for ref in body.asset_refs],
     )
     response.headers["Location"] = (
@@ -366,6 +369,7 @@ def _decide_http(
         comment=body.comment,
         idempotency_key=key,
         event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
     )
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
     return _to_decision_response(model)
@@ -398,6 +402,7 @@ def content_review_submit(
         expected_aggregate_revision=expected,
         idempotency_key=key,
         event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
     )
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
     return _to_submission_response(model)
@@ -535,6 +540,7 @@ def content_publish(
         expected_aggregate_revision=expected,
         idempotency_key=key,
         event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
     )
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
     return _to_publication_response(model)

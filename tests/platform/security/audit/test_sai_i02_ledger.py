@@ -922,28 +922,30 @@ class TestSaiI02Architecture:
                     hits.append(f"{path.name}:{stripped}")
         assert hits == []
 
-    def test_content_still_unwired(self) -> None:
-        hits: list[str] = []
-        for path in CONTENT_ROOT.rglob("*.py"):
-            text = path.read_text(encoding="utf-8")
-            for needle in (
-                "SecurityMutationAuditRepository",
-                "SqlAlchemySecurityMutationAuditRepository",
-                "build_security_mutation_audit_record",
-            ):
-                if needle in text:
-                    hits.append(f"{path}:{needle}")
-        assert hits == []
+    def test_content_api_audit_wired_ai_migration_still_pending(self) -> None:
+        """SAI-I03 wires API mutations; AI/migration remain SAI-I04."""
+        create = (CONTENT_ROOT / "application" / "create.py").read_text(encoding="utf-8")
+        assert "insert_required_content_audit" in create
+        ai = (CONTENT_ROOT / "application" / "ai_materialization.py").read_text(
+            encoding="utf-8"
+        )
+        migration = (CONTENT_ROOT / "application" / "migration_import.py").read_text(
+            encoding="utf-8"
+        )
+        assert "insert_required_content_audit" not in ai
+        assert "insert_required_content_audit" not in migration
         uow = (
             CONTENT_ROOT
             / "infrastructure"
             / "persistence"
             / "uow.py"
         ).read_text(encoding="utf-8")
-        assert "SqlAlchemySecurityMutationAuditRepository" not in uow
-        assert "SecurityMutationAuditRepository" not in uow
-        assert "build_security_mutation_audit_record" not in uow
-        assert ".audit" not in uow
+        assert "ContentSecurityMutationAuditRepository" in uow
+        assert "self.audit =" in uow
+        # Platform SQLAlchemy audit types stay out of application ports.
+        ports = (CONTENT_ROOT / "application" / "ports.py").read_text(encoding="utf-8")
+        assert "SecurityMutationAuditRepository" in ports
+        assert "SqlAlchemySecurityMutationAuditRepository" not in ports
 
     def test_no_audit_http(self) -> None:
         routes = (

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from aieos.domains.content.application.audit import api_mutation_audit_provenance
+
 import json
 import threading
 import uuid
@@ -1018,6 +1020,7 @@ class TestAtomicity:
                     actor_principal_id=principal_id,
                     effective_actor_id=principal_id,
                 ),
+                audit_provenance=api_mutation_audit_provenance(principal_id),
             )
         assert _decision_rows(bootstrap_engine, content_id) == []
         row = _content_row(bootstrap_engine, content_id)
@@ -1062,6 +1065,7 @@ class TestAtomicity:
                     actor_principal_id=principal_id,
                     effective_actor_id=principal_id,
                 ),
+                audit_provenance=api_mutation_audit_provenance(principal_id),
             )
         assert _decision_rows(bootstrap_engine, content_id) == []
         row = _content_row(bootstrap_engine, content_id)

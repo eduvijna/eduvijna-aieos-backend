@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from aieos.domains.content.application.audit import api_mutation_audit_provenance
+
 import threading
 import uuid
 from datetime import UTC, datetime
@@ -906,6 +908,7 @@ class TestTrustBoundaryAndPipeline:
             expected_aggregate_revision=AggregateRevision(1),
             idempotency_key=str(uuid.uuid7()),
             event_context=_event_context(principal_id),
+            audit_provenance=api_mutation_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         approved = review.approve(
@@ -918,6 +921,7 @@ class TestTrustBoundaryAndPipeline:
             reason_code=None,
             idempotency_key=str(uuid.uuid7()),
             event_context=_event_context(principal_id),
+            audit_provenance=api_mutation_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         published = publish.publish(
@@ -928,6 +932,7 @@ class TestTrustBoundaryAndPipeline:
             expected_aggregate_revision=approved.aggregate_revision,
             idempotency_key=str(uuid.uuid7()),
             event_context=_event_context(principal_id),
+            audit_provenance=api_mutation_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         head = _head(bootstrap_engine, imported.content_id.value)

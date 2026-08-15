@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from aieos.domains.content.application.audit import api_mutation_audit_provenance
+
 import io
 import uuid
 from contextlib import redirect_stdout
@@ -270,6 +272,7 @@ class TestAtomicity:
                         actor_principal_id=principal_id,
                         effective_actor_id=principal_id,
                     ),
+                    audit_provenance=api_mutation_audit_provenance(principal_id),
                 )
         finally:
             SqlAlchemyWorkflowIntentRepository.insert_start_intent = original  # type: ignore[method-assign]
@@ -318,6 +321,7 @@ class TestAtomicity:
                         actor_principal_id=principal_id,
                         effective_actor_id=principal_id,
                     ),
+                    audit_provenance=api_mutation_audit_provenance(principal_id),
                 )
         finally:
             SqlAlchemyWorkflowIntentRepository.insert_command_intent = original  # type: ignore[method-assign]

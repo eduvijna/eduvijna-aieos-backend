@@ -12,6 +12,11 @@ from aieos.domains.content.application.asset_refs import (
     canonical_asset_ref_fingerprint_items,
     validate_asset_bindings,
 )
+from aieos.domains.content.application.audit import (
+    MutationAuditProvenance,
+    content_version_ref,
+    insert_required_content_audit,
+)
 from aieos.domains.content.application.errors import (
     ContentNotFound,
     ContentPayloadInvalid,
@@ -48,6 +53,7 @@ from aieos.platform.idempotency.models import (
     IdempotencyOutcome,
     IdempotencyScope,
 )
+from aieos.platform.security.audit import SecurityAuditAction
 
 
 class HttpAppendContentVersionService:
@@ -78,6 +84,7 @@ class HttpAppendContentVersionService:
         payload: Mapping[str, object],
         idempotency_key: str,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         asset_refs: Sequence[Mapping[str, Any]] | None = None,
         now: datetime | None = None,
     ) -> tuple[ContentVersionReadModel, AggregateRevision]:
@@ -188,6 +195,18 @@ class HttpAppendContentVersionService:
                 now=created_at,
                 event_context=event_context,
                 head=head,
+            )
+            insert_required_content_audit(
+                uow,
+                tenant_id=execution_tenant_id,
+                action=SecurityAuditAction.CONTENT_VERSION_CREATE,
+                content_id=content_id.value,
+                resource_revision_before=int(expected_aggregate_revision),
+                resource_revision_after=int(result.aggregate_revision),
+                related_resource_refs=(content_version_ref(version.version_id.value),),
+                mutation_event_context=event_context,
+                audit_provenance=audit_provenance,
+                occurred_at=created_at,
             )
             uow.idempotency.insert(
                 IdempotencyOutcome(

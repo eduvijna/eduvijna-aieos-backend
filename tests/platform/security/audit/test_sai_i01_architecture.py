@@ -100,17 +100,12 @@ def test_audit_contract_package_has_no_sql() -> None:
 
 
 def test_content_domain_does_not_import_audit_yet() -> None:
-    hits = _source_mentions(
-        CONTENT_ROOT,
-        (
-            "platform.security.audit",
-            "SecurityMutationAuditRepository",
-            "SqlAlchemySecurityMutationAuditRepository",
-            "build_security_mutation_audit_record",
-            "SecurityMutationAuditRecord",
-        ),
-    )
-    assert hits == []
+    """SAI-I01 boundary: Content must not import audit until SAI-I03.
+
+    Kept as a historical assertion renamed via later SAI-I03 architecture suite.
+    """
+    # Deferred: SAI-I03 wires Content application audit; see test_sai_i03_architecture.
+    pytest.skip("superseded by SAI-I03 Content audit wiring")
 
 
 def test_sai_i02_ledger_exists_without_saii010001_or_content_wiring() -> None:
@@ -126,6 +121,7 @@ def test_sai_i02_ledger_exists_without_saii010001_or_content_wiring() -> None:
         assert "saii010001" not in body
         assert "gcii140001" not in body
         assert "gcii150001" not in body
+        assert "saii030001" not in body
 
 
 def test_mutation_event_context_and_trusted_security_context_unchanged() -> None:
