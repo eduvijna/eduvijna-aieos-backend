@@ -50,4 +50,5 @@ markers = [
     "sai_i02: PostgreSQL security audit ledger / RLS",
     "sai_i03: Generic Content API transactional security-audit integration",
     "sai_i04: AI materialization and controlled migration security-audit integration",
+    "sai_i05: Final adversarial security-audit / transaction / tenancy gate",
 ]

@@ -1,11 +1,11 @@
 ---
-id: SAI-I04-NON-PRODUCTION-MUTATION-BOUNDARY
-title: API, AI, and migration committed-mutation audit integrated; production still blocked
+id: SAI-I05-NON-PRODUCTION-MUTATION-BOUNDARY
+title: Security-audit implementation baseline complete; production still blocked
 status: draft
-version: 1.5.0
+version: 1.6.0
 ---
 
-# SAI-I04 non-production mutation boundary
+# SAI-I05 non-production mutation boundary
 
 Idempotency-Key is now required for:
 
@@ -19,40 +19,35 @@ Idempotency-Key is now required for:
 
 GCI-I12–I14 remain as previously documented (Review Queue reads, migration foundation, adversarial validation).
 
-## ADR-AIEOS-028 / SAI-I01–I04
+## AIEOS Security Audit Implementation Baseline (SAI-I01–SAI-I05)
 
 ADR-AIEOS-028 (Security Audit & Mutation Accountability) is frozen.
 
-SAI-I01 framework-neutral security mutation-audit contracts exist under
-`src/aieos/platform/security/audit/`.
+**AIEOS Security Audit Implementation Baseline SAI-I01–SAI-I05 = IMPLEMENTATION-BASELINE COMPLETE**
 
-SAI-I02 adds the PostgreSQL security audit ledger (`security.audit_records`,
-Alembic `saii020001`).
+Classification: **NON-PRODUCTION / DEPLOYMENT NOT YET AUTHORIZED**.
 
-SAI-I03 wires **API-origin** Generic Content mutations to insert one
-`SecurityMutationAuditRecord` in the same Content UoW transaction.
+| Slice | Scope |
+|-------|--------|
+| SAI-I01 | Framework-neutral security mutation-audit contracts |
+| SAI-I02 / I02R1 | PostgreSQL `security.audit_records` ledger, RLS, ResourceRef defense |
+| SAI-I03 | API-origin Generic Content committed-mutation audit (same txn) |
+| SAI-I04 | AI materialize + controlled migration import audit (same txn) |
+| SAI-I05 | Final adversarial / transaction / tenancy / implementation-readiness gate |
 
-SAI-I04 wires the remaining committed-mutation audit gaps:
+All **currently implemented** Generic Content protected committed mutations write required
+security audit evidence in the same authoritative PostgreSQL transaction as business
+mutation + required outbox (+ workflow/idempotency intent where applicable):
 
-- `content.ai.materialize` via `MaterializeAIGeneratedContentVersionService`
-  (`SecurityAuditExecutionChannel.AI_MATERIALIZATION`)
-- `content.migration.import` via `ImportMigratedContentService`
-  (`SecurityAuditExecutionChannel.MIGRATION`)
+- `content.create`
+- `content.version.create` (HTTP human append)
+- `content.review.submit` / `approve` / `request_changes` / `reject`
+- `content.publish`
+- `content.ai.materialize`
+- `content.migration.import`
 
-Both reuse `ContentUnitOfWork.audit` / `insert_required_content_audit` —
-no second audit repository, connection, or transaction.
-
-## Workflow-origin status (N/A)
-
-`ContentReviewWorkflowV1` is process truth only (run / signal / query).
-It does **not** execute a Content-mutating Temporal Activity.
-
-Therefore:
-
-- `SecurityAuditExecutionChannel.WORKFLOW_ACTIVITY` remains a frozen enum value
-- no current Content implementation inserts WORKFLOW_ACTIVITY audit rows
-- receiving `review_decision_recorded` is observation only — the authoritative
-  review audit was already written by the API path (SAI-I03)
+Workflow-origin Content mutation remains **NONE / N/A** (`ContentReviewWorkflowV1` is
+process truth only; `WORKFLOW_ACTIVITY` unused).
 
 ### Future workflow rule (documentation only — not implemented)
 
@@ -63,7 +58,9 @@ If a future Temporal Activity invokes a protected Content business command, it m
 3. supply explicit `WORKFLOW_ACTIVITY` provenance
 4. write business + outbox + audit atomically
 
-Do not invent such an Activity in SAI-I04.
+Do not invent such an Activity in SAI-I05.
+
+Archive and physical purge remain **NOT IMPLEMENTED**.
 
 ## Authority separation
 
@@ -71,39 +68,20 @@ Do not invent such an Activity in SAI-I04.
 - `SecurityMutationAuditRecord` = committed-mutation security evidence
 - `content.migration_import_records` FAILED/IMPORTED = migration execution evidence  
   (FAILED evidence is **not** a successful security committed-mutation audit)
+- ReviewDecision / Publication / Content remain business truth; audit is not queried
+  to authorize or decide state
 
-## Still required before production declaration
-
-- SAI-I05 final adversarial audit/security gate
-- production role/credential provisioning
-- production runtime/environment validation
-- any other frozen deployment gates
-
-Therefore:
-
-- production mutation remains **NOT AUTHORIZED**
-- production migration remains **NOT AUTHORIZED**
-  (no legacy connectors, production migration runner, cutover, or real
-  legacy/AIEOS write coexistence)
-
-SAI-I04 does **not**:
-
-- add Alembic `saii030001` / `saii040001` (head remains `saii020001`)
-- expose audit HTTP / OpenAPI
-- implement failed/denied-attempt audit, SIEM export, or crypto sealing
-- change MutationEventContext or TrustedSecurityContext
-- change Temporal workflow definitions, Activities, or JetStream contracts
-- add AI/migration HTTP product entrypoints
-
-Migration head:
-
-`gcii020001 → … → gcii110001 → gcii130001 → saii020001`
-
-## Production role provisioning boundary
+## Production provisioning boundary
 
 Ephemeral test fixtures may create/grant `aieos_security_owner`, migrator
 `SET ROLE` membership, and runtime/migration-runtime `USAGE` + `INSERT` on
-`security.audit_records`. That does **not** complete production provisioning.
+`security.audit_records`. That does **not** complete production provisioning and does
+**not** verify real production credentials, secret storage, database users, network
+policy, TLS, backup controls, or operational access.
+
+SAI-I05 is a **repository implementation-readiness gate**. It does **not** validate
+the actual production environment. A complete PASS does **not** authorize production
+mutation, migration, or deployment.
 
 Before eventual production deployment, operators must provision:
 
@@ -112,4 +90,23 @@ Before eventual production deployment, operators must provision:
 - runtime and content-migration-runtime INSERT-only privileges on the ledger
   (no SELECT/UPDATE/DELETE; no schema ownership; no `BYPASSRLS`)
 
-No production deployment or production database mutation entrypoint is authorized by this slice.
+## Explicit authorization status
+
+- production mutation remains **NOT AUTHORIZED**
+- production migration remains **NOT AUTHORIZED**
+- production deployment remains **NOT AUTHORIZED**
+
+Do **not** treat this baseline as production-approved, deployment-cleared, or
+mutation-authorized.
+
+## What SAI-I05 does not add
+
+- no production `src/` or Alembic migration changes (`saii030001`/`saii040001`/`saii050001` absent; head remains `saii020001`)
+- no audit HTTP / OpenAPI surface
+- no failed/denied-attempt audit, SIEM/export, or crypto sealing
+- no new Content mutation, workflow Activity, archive, or purge
+- no frontend / feature-flag change
+
+Migration head:
+
+`gcii020001 → … → gcii110001 → gcii130001 → saii020001`
