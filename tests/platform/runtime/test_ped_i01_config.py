@@ -241,6 +241,45 @@ class TestDsnRoleCoherence:
         assert ENV_RUNTIME_DATABASE_ROLE in str(excinfo.value)
         _assert_no_secret_leak(str(excinfo.value))
 
+    def test_database_name_required(self) -> None:
+        env = _valid_environ()
+        env[ENV_RUNTIME_DATABASE_URL] = (
+            f"postgresql+psycopg://aieos_runtime:{SECRET_DB_PASSWORD}@127.0.0.1"
+        )
+        with pytest.raises(RuntimeConfigurationError) as excinfo:
+            load_api_runtime_config(env)
+        assert ENV_RUNTIME_DATABASE_URL in str(excinfo.value)
+        assert "database name" in str(excinfo.value).lower()
+        _assert_no_secret_leak(str(excinfo.value))
+
+
+class TestPsycopg3DriverExact:
+    def test_postgresql_psycopg_accepted(self) -> None:
+        config = load_api_runtime_config(_valid_environ())
+        assert "postgresql+psycopg://" in config.runtime_database_url
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            f"postgresql://aieos_runtime:{SECRET_DB_PASSWORD}@127.0.0.1:5432/aieos",
+            f"postgresql+psycopg2://aieos_runtime:{SECRET_DB_PASSWORD}@127.0.0.1:5432/aieos",
+            f"postgresql+pg8000://aieos_runtime:{SECRET_DB_PASSWORD}@127.0.0.1:5432/aieos",
+            f"postgresql+asyncpg://aieos_runtime:{SECRET_DB_PASSWORD}@127.0.0.1:5432/aieos",
+            f"sqlite:///{SECRET_DB_PASSWORD}.db",
+        ],
+    )
+    def test_non_psycopg3_drivers_rejected(self, url: str) -> None:
+        env = _valid_environ()
+        env[ENV_RUNTIME_DATABASE_URL] = url
+        with pytest.raises(RuntimeConfigurationError) as excinfo:
+            load_api_runtime_config(env)
+        message = str(excinfo.value)
+        assert ENV_RUNTIME_DATABASE_URL in message
+        assert "Psycopg" in message or "psycopg" in message.lower()
+        _assert_no_secret_leak(message)
+        _assert_no_secret_leak(repr(excinfo.value))
+        assert url not in message
+
 
 class TestCursorKey:
     def test_rejects_empty_and_malformed(self) -> None:

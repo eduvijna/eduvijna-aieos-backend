@@ -39,6 +39,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- PED-I01R1: STAGING/PRODUCTION `AIEOS_RUNTIME_DATABASE_URL` accepts only the exact SQLAlchemy driver `postgresql+psycopg` (Psycopg 3). Bare `postgresql://` and alternate dialects are rejected fail-closed. No dependency change.
 - SAI-I02R1: `security.related_resource_refs_are_valid` duplicate identity uses normalized UUID text; `resource_revision` accepts only canonical non-negative integer JSON (`^[0-9]+$`), rejecting `1.0` and out-of-range values. Head remains `saii020001`.
 - GCI-I02R1: ordinary runtime has no DELETE on `contents` and no UPDATE/DELETE on `content_versions`; Alembic DDL runs under an explicit NOLOGIN schema-owner role distinct from migrator and runtime.
 - GCI-I02R2: Alembic offline SQL emits `SET LOCAL ROLE` for the configured schema-owner before Generic Content DDL, matching online ownership.

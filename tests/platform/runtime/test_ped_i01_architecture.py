@@ -36,6 +36,19 @@ def _py_files(root: Path) -> list[Path]:
     return [p for p in root.rglob("*.py") if p.is_file()]
 
 
+def test_runtime_db_driver_is_exact_psycopg3() -> None:
+    from aieos.platform.runtime.config import REQUIRED_RUNTIME_DB_DRIVER
+
+    assert REQUIRED_RUNTIME_DB_DRIVER == "postgresql+psycopg"
+    config_src = (RUNTIME_ROOT / "config.py").read_text(encoding="utf-8")
+    assert 'REQUIRED_RUNTIME_DB_DRIVER = "postgresql+psycopg"' in config_src
+    assert 'frozenset({"postgresql"' not in config_src
+    assert "postgresql+psycopg2" not in config_src
+    doc = BOUNDARY_DOC.read_text(encoding="utf-8")
+    assert "postgresql+psycopg://" in doc
+    assert "Bare `postgresql://`" in doc or "bare `postgresql://`" in doc.lower()
+
+
 def test_runtime_package_import_boundary() -> None:
     for path in _py_files(RUNTIME_ROOT):
         text = path.read_text(encoding="utf-8")

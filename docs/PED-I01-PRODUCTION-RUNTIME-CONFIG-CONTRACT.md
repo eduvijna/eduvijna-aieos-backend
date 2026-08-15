@@ -32,7 +32,7 @@ STAGING and PRODUCTION API workload.
 | `AIEOS_GIT_SHA` | Full 40-char lowercase hex Git SHA |
 | `AIEOS_BUILD_ID` | Build identifier |
 | `AIEOS_ARTIFACT_DIGEST` | `sha256:<64 lowercase hex>` |
-| `AIEOS_RUNTIME_DATABASE_URL` | Runtime DB URL (secret; not echoed in errors) |
+| `AIEOS_RUNTIME_DATABASE_URL` | Runtime DB URL (secret; not echoed in errors). **Must** use exact driver `postgresql+psycopg://` (Psycopg 3). Bare `postgresql://` and other dialects/drivers are rejected. |
 | `AIEOS_RUNTIME_DATABASE_ROLE` | Runtime role; must match URL username |
 | `AIEOS_SCHEMA_OWNER_ROLE` | Content schema owner (not runtime) |
 | `AIEOS_SECURITY_SCHEMA_OWNER_ROLE` | Security schema owner (not runtime) |

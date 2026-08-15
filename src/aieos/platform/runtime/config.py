@@ -36,6 +36,8 @@ ENV_MIGRATOR_DATABASE_URL = "AIEOS_DATABASE_URL"
 _ROLE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 _ARTIFACT_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+# Exact SQLAlchemy dialect for the installed Psycopg 3 dependency baseline.
+REQUIRED_RUNTIME_DB_DRIVER = "postgresql+psycopg"
 _REQUIRED_ENV = (
     ENV_DEPLOYMENT_ENVIRONMENT,
     ENV_RELEASE_VERSION,
@@ -50,7 +52,6 @@ _REQUIRED_ENV = (
     ENV_CURSOR_SIGNING_KEY_B64,
     ENV_IDEMPOTENCY_RETENTION_SECONDS,
 )
-_POSTGRES_DRIVERS = frozenset({"postgresql", "postgresql+psycopg"})
 
 
 def _require(environ: Mapping[str, str], name: str) -> str:
@@ -100,9 +101,10 @@ def _parse_runtime_database_url(url_value: str, expected_role: str) -> str:
         raise RuntimeConfigurationError(
             f"{ENV_RUNTIME_DATABASE_URL} is not a valid SQLAlchemy database URL"
         ) from exc
-    if url.drivername not in _POSTGRES_DRIVERS:
+    if url.drivername != REQUIRED_RUNTIME_DB_DRIVER:
         raise RuntimeConfigurationError(
-            f"{ENV_RUNTIME_DATABASE_URL} must use a PostgreSQL/psycopg-compatible backend"
+            f"{ENV_RUNTIME_DATABASE_URL} must use the PostgreSQL + Psycopg 3 "
+            f"SQLAlchemy driver ({REQUIRED_RUNTIME_DB_DRIVER})"
         )
     if not url.database:
         raise RuntimeConfigurationError(
