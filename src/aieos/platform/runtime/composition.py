@@ -18,6 +18,10 @@ from aieos.domains.content.application.ports import (
 )
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.app import create_app
+from aieos.platform.runtime.activation import (
+    ApiMutationActivationGate,
+    install_mutation_activation_interlock,
+)
 from aieos.platform.runtime.health import register_operational_health_routes
 from aieos.platform.runtime.models import ApiRuntimeConfig, ReleaseIdentity
 from aieos.platform.runtime.readiness import ApiReadinessProbe
@@ -42,6 +46,7 @@ class ApiRuntimeDependencies:
     asset_reference_validation: AssetReferenceValidationPort
     asset_current_governance: AssetCurrentGovernancePort
     readiness_probe: ApiReadinessProbe
+    mutation_activation_gate: ApiMutationActivationGate
 
 
 def compose_api_application(
@@ -51,7 +56,8 @@ def compose_api_application(
     """Compose the FastAPI application from config + explicit dependencies.
 
     Does not create a SQLAlchemy Engine. Does not start an ASGI server.
-    Does not activate mutations. Registers operational /livez and /readyz.
+    Installs the PED-I03 fail-closed mutation activation interlock.
+    Registers operational /livez and /readyz (independent of activation).
     """
     app = create_app(
         uow_factory=dependencies.uow_factory,
@@ -76,4 +82,7 @@ def compose_api_application(
     app.state.deployment_environment = config.environment
     app.state.readiness_probe = dependencies.readiness_probe
     register_operational_health_routes(app)
+    install_mutation_activation_interlock(
+        app, dependencies.mutation_activation_gate
+    )
     return app

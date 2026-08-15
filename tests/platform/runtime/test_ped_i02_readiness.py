@@ -18,6 +18,8 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.platform.runtime import (
     EXPECTED_ALEMBIC_HEAD,
     ApiRuntimeDependencies,
+    MutationActivationDecision,
+    MutationActivationStatus,
     ReadinessCode,
     ReadinessResult,
     SqlAlchemyApiReadinessProbe,
@@ -85,6 +87,13 @@ class _BoomIfCalledProbe:
         raise AssertionError("livez must not invoke readiness")
 
 
+class _DisabledMutationGate:
+    def check(self) -> MutationActivationDecision:
+        return MutationActivationDecision(
+            False, MutationActivationStatus.DISABLED
+        )
+
+
 def _config_for_runtime_url(runtime_url: str, *, timeout: str = "5"):
     return load_api_runtime_config(
         {
@@ -120,6 +129,7 @@ def _compose(config, probe, uow_factory) -> Any:
             asset_reference_validation=AllowAssetReferenceValidation(),
             asset_current_governance=AllowAssetCurrentGovernance(),
             readiness_probe=probe,
+            mutation_activation_gate=_DisabledMutationGate(),
         ),
     )
 

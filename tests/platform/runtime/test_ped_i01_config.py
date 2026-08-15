@@ -39,6 +39,10 @@ from aieos.platform.runtime.config import (
     ENV_SECURITY_SCHEMA_OWNER_ROLE,
 )
 from aieos.platform.runtime.readiness import ReadinessCode, ReadinessResult
+from aieos.platform.runtime.activation import (
+    MutationActivationDecision,
+    MutationActivationStatus,
+)
 from tests.fakes import (
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
@@ -78,6 +82,13 @@ REQUIRED_ENV_NAMES = (
 class _ReadyProbe:
     def check(self) -> ReadinessResult:
         return ReadinessResult(True, ReadinessCode.READY)
+
+
+class _DisabledMutationGate:
+    def check(self) -> MutationActivationDecision:
+        return MutationActivationDecision(
+            False, MutationActivationStatus.DISABLED
+        )
 
 
 def _valid_environ(
@@ -343,6 +354,7 @@ class TestComposition:
             asset_reference_validation=AllowAssetReferenceValidation(),
             asset_current_governance=AllowAssetCurrentGovernance(),
             readiness_probe=_ReadyProbe(),
+            mutation_activation_gate=_DisabledMutationGate(),
         )
 
     def test_composition_requires_explicit_dependencies(self) -> None:
@@ -353,6 +365,7 @@ class TestComposition:
             if param.default is inspect.Parameter.empty
         ]
         assert "readiness_probe" in required
+        assert "mutation_activation_gate" in required
         assert "security_resolver" in required
         assert "review_authorization" in required
         assert "publication_authorization" in required

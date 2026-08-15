@@ -73,8 +73,10 @@ def test_runtime_package_import_boundary() -> None:
 def test_no_mutation_activation_in_runtime_package() -> None:
     for path in _py_files(RUNTIME_ROOT):
         text = path.read_text(encoding="utf-8")
-        assert "MUTATIONS_ENABLED" not in text
+        # Historical alias forbidden; PED-I03 uses AIEOS_API_MUTATION_ACTIVATION.
         assert "AIEOS_MUTATIONS_ENABLED" not in text
+        if path.name != "activation.py":
+            assert "MUTATIONS_ENABLED" not in text
 
 
 def test_no_ci_cd_or_container_artefacts_added() -> None:

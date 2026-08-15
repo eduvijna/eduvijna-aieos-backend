@@ -70,6 +70,9 @@ or cursor keys.
 
 Health routes are operational and excluded from product OpenAPI.
 
+`/readyz` is intentionally independent from mutation activation (PED-I03).
+A mutation-disabled or broken activation gate must not change PED-I02 readiness.
+
 ## What readiness does **not** require
 
 - NATS (unavailable NATS does not make API `/readyz` not ready)
