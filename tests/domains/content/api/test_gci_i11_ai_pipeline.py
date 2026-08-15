@@ -24,6 +24,7 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.platform.api.app import create_app
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.resources import ResourceRef
+from aieos.domains.content.application.audit import ai_materialization_audit_provenance
 from tests.fakes import (
     AllowAIGenerationAuthorization,
     AllowAssetCurrentGovernance,
@@ -104,6 +105,7 @@ class TestAIReviewPublishPipeline:
                 actor_principal_id=principal_id,
                 effective_actor_id=principal_id,
             ),
+            audit_provenance=ai_materialization_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         version_id = str(result.version_id.value)

@@ -9,6 +9,11 @@ from aieos.domains.content.application.asset_refs import (
     build_version_asset_refs,
     validate_asset_bindings,
 )
+from aieos.domains.content.application.audit import (
+    MutationAuditProvenance,
+    content_version_ref,
+    insert_required_content_audit,
+)
 from aieos.domains.content.application.errors import (
     AIProvenanceInvalid,
     ContentNotFound,
@@ -35,6 +40,7 @@ from aieos.domains.content.domain.origin import ContentOrigin
 from aieos.domains.content.domain.schema import ContentSchemaRegistry, SchemaId, SchemaVersion
 from aieos.domains.content.domain.version import ContentPayload, ContentVersion
 from aieos.platform.events.models import MutationEventContext
+from aieos.platform.security.audit import SecurityAuditAction
 
 
 class MaterializeAIGeneratedContentVersionService:
@@ -59,6 +65,7 @@ class MaterializeAIGeneratedContentVersionService:
         command: AIGeneratedVersionMaterializationCommand,
         *,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> AppendContentVersionResult:
         created_at = now if now is not None else datetime.now(UTC)
@@ -156,6 +163,18 @@ class MaterializeAIGeneratedContentVersionService:
                 now=created_at,
                 event_context=event_context,
                 head=head,
+            )
+            insert_required_content_audit(
+                uow,
+                tenant_id=execution_tenant_id,
+                action=SecurityAuditAction.CONTENT_AI_MATERIALIZE,
+                content_id=command.content_id.value,
+                resource_revision_before=int(command.expected_aggregate_revision),
+                resource_revision_after=int(result.aggregate_revision),
+                related_resource_refs=(content_version_ref(version.version_id.value),),
+                mutation_event_context=event_context,
+                audit_provenance=audit_provenance,
+                occurred_at=created_at,
             )
             uow.commit()
             return result

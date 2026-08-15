@@ -34,6 +34,7 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.events.persistence.repositories import SqlAlchemyOutboxRepository
 from aieos.platform.resources import ResourceRef
+from aieos.domains.content.application.audit import ai_materialization_audit_provenance
 from tests.dbutil import REPO_ROOT
 from tests.fakes import (
     AllowAIGenerationAuthorization,
@@ -197,9 +198,10 @@ class TestAIMaterializeAtomicity:
 
         monkeypatch.setattr(SqlAlchemyContentVersionRepository, "insert", boom)
         with pytest.raises(PersistenceOperationFailed):
+            principal_id = uuid.uuid7()
             _materializer(runtime_engine).materialize(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 AIGeneratedVersionMaterializationCommand(
                     content_id=content_id,
                     expected_aggregate_revision=AggregateRevision(0),
@@ -210,6 +212,7 @@ class TestAIMaterializeAtomicity:
                     asset_refs=(),
                 ),
                 event_context=ctx,
+                audit_provenance=ai_materialization_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         head = _head(bootstrap_engine, content_id)
@@ -270,9 +273,10 @@ class TestAIMaterializeAtomicity:
         )
         ctx = _event_context()
         with pytest.raises(PersistenceOperationFailed):
+            principal_id = uuid.uuid7()
             _materializer(runtime_engine).materialize(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 AIGeneratedVersionMaterializationCommand(
                     content_id=content_id,
                     expected_aggregate_revision=AggregateRevision(1),
@@ -283,6 +287,7 @@ class TestAIMaterializeAtomicity:
                     asset_refs=(asset,),
                 ),
                 event_context=ctx,
+                audit_provenance=ai_materialization_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         head = _head(bootstrap_engine, content_id)
@@ -302,9 +307,10 @@ class TestAIMaterializeAtomicity:
 
         monkeypatch.setattr(SqlAlchemyOutboxRepository, "insert", boom)
         with pytest.raises(PersistenceOperationFailed):
+            principal_id = uuid.uuid7()
             _materializer(runtime_engine).materialize(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 AIGeneratedVersionMaterializationCommand(
                     content_id=content_id,
                     expected_aggregate_revision=AggregateRevision(0),
@@ -315,6 +321,7 @@ class TestAIMaterializeAtomicity:
                     asset_refs=(),
                 ),
                 event_context=ctx,
+                audit_provenance=ai_materialization_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         head = _head(bootstrap_engine, content_id)
@@ -327,9 +334,10 @@ class TestAIMaterializeAtomicity:
         tenant_id = uuid.uuid7()
         content_id = _seed_content(bootstrap_engine, tenant_id)
         ctx = _event_context()
+        principal_id = uuid.uuid7()
         result = _materializer(runtime_engine).materialize(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             AIGeneratedVersionMaterializationCommand(
                 content_id=content_id,
                 expected_aggregate_revision=AggregateRevision(0),
@@ -340,6 +348,7 @@ class TestAIMaterializeAtomicity:
                 asset_refs=(),
             ),
             event_context=ctx,
+            audit_provenance=ai_materialization_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         head = _head(bootstrap_engine, content_id)

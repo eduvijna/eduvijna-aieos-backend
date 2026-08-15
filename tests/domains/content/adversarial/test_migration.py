@@ -8,6 +8,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
+from aieos.domains.content.application.audit import migration_audit_provenance
 from aieos.domains.content.application.errors import (
     MigrationForbidden,
     MigrationSourceConflict,
@@ -66,11 +67,13 @@ class TestMigrationConflictsAndTrust:
 
         def run_a() -> None:
             with pytest.raises(PersistenceOperationFailed):
+                principal_id = uuid.uuid7()
                 importer_a.import_content(
                     tenant_id,
-                    uuid.uuid7(),
+                    principal_id,
                     _candidate(source_resource_id="i14-gap", digest=DIGEST_A),
                     event_context=_event_context(),
+                    audit_provenance=migration_audit_provenance(principal_id),
                     now=FIXED_NOW,
                 )
 
@@ -82,11 +85,13 @@ class TestMigrationConflictsAndTrust:
 
         def run_b() -> None:
             try:
+                principal_id = uuid.uuid7()
                 _importer(migration_runtime_engine).import_content(
                     tenant_id,
-                    uuid.uuid7(),
+                    principal_id,
                     _candidate(source_resource_id="i14-gap", digest=DIGEST_B),
                     event_context=_event_context(),
+                    audit_provenance=migration_audit_provenance(principal_id),
                     now=FIXED_NOW,
                 )
                 b_outcomes.append("ok")
@@ -117,35 +122,41 @@ class TestMigrationConflictsAndTrust:
     ) -> None:
         tenant_id = uuid.uuid7()
         service = _importer(migration_runtime_engine)
+        principal_id = uuid.uuid7()
         service.import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(source_resource_id="i14-conflict"),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         with pytest.raises(MigrationSourceConflict):
             service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="i14-conflict", digest=DIGEST_B),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         with pytest.raises(MigrationSourceConflict):
+            principal_id = uuid.uuid7()
             service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="i14-conflict", source_version="2"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         with pytest.raises(MigrationSourceConflict):
             service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="i14-conflict", mapping_version=2),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 1
@@ -154,11 +165,13 @@ class TestMigrationConflictsAndTrust:
         self, migration_runtime_engine, bootstrap_engine
     ) -> None:
         tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
         result = _importer(migration_runtime_engine).import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(source_resource_id="i14-legacy-trust"),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         head = _head(bootstrap_engine, result.content_id.value)
@@ -174,11 +187,13 @@ class TestMigrationConflictsAndTrust:
         tenant_id = uuid.uuid7()
         auth = AllowMigrationAuthorization(allow=True)
         service = _importer(migration_runtime_engine, auth=auth)
+        principal_id = uuid.uuid7()
         first = service.import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(source_resource_id="i14-auth-replay"),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         assert first.replayed is False
@@ -186,9 +201,10 @@ class TestMigrationConflictsAndTrust:
         with pytest.raises(MigrationForbidden):
             service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="i14-auth-replay"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 1

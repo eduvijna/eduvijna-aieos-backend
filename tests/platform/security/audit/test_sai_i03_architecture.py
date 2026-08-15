@@ -83,25 +83,20 @@ def test_canonical_helper_and_resource_types() -> None:
         assert forbidden not in helper
 
 
-def test_api_mutations_wire_audit_ai_and_migration_do_not() -> None:
+def test_api_mutations_wire_audit_ai_and_migration_also_wired_in_i04() -> None:
+    """SAI-I03 wired API; SAI-I04 advances AI/migration (see sai_i04 architecture)."""
     for name in ("create.py", "http_append.py", "review.py", "publish.py"):
         text = (CONTENT_ROOT / "application" / name).read_text(encoding="utf-8")
         assert "insert_required_content_audit" in text, name
     ai = AI_SERVICE.read_text(encoding="utf-8")
     migration = MIGRATION_SERVICE.read_text(encoding="utf-8")
-    for needle in (
-        "insert_required_content_audit",
-        "build_security_mutation_audit_record",
-        "content.ai.materialize",
-        "content.migration.import",
-        "SecurityAuditAction",
-    ):
-        assert needle not in ai, needle
-        assert needle not in migration, needle
-    assert "SAI-I04" in BOUNDARY_DOC.read_text(encoding="utf-8")
+    assert "insert_required_content_audit" in ai
+    assert "insert_required_content_audit" in migration
     doc = BOUNDARY_DOC.read_text(encoding="utf-8")
+    assert "SAI-I04" in doc
     assert "content.ai.materialize" in doc
-    assert "migration import" in doc.lower() or "content.migration.import" in doc
+    assert "content.migration.import" in doc
+    assert "SAI-I05" in doc
 
 
 def test_no_audit_http_api() -> None:
@@ -133,7 +128,8 @@ def test_mutation_event_and_trusted_security_context_unchanged() -> None:
     }
 
 
-def test_no_workflow_activity_audit_channel_in_i03() -> None:
+def test_no_workflow_activity_audit_channel_in_content() -> None:
+    """WORKFLOW_ACTIVITY remains unused by Content through SAI-I04."""
     hits: list[str] = []
     for path in CONTENT_ROOT.rglob("*.py"):
         text = path.read_text(encoding="utf-8")

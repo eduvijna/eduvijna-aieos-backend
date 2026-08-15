@@ -48,6 +48,7 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 )
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.resources import ResourceRef
+from aieos.domains.content.application.audit import ai_materialization_audit_provenance
 from tests.fakes import (
     AllowAIGenerationAuthorization,
     AllowAssetReferenceValidation,
@@ -296,6 +297,7 @@ class TestMaterializeAIGeneratedContentVersion:
                 provenance=_provenance(correlation_id),
             ),
             event_context=_event_context(correlation_id),
+            audit_provenance=ai_materialization_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         head = _head(bootstrap_engine, content_id)
@@ -344,11 +346,12 @@ class TestMaterializeAIGeneratedContentVersion:
         content_id = _seed_content(bootstrap_engine, tenant_id)
         correlation_id = uuid.uuid7()
         with pytest.raises(AIGenerationForbidden):
+            principal_id = uuid.uuid7()
             _materializer(
                 runtime_engine, auth=AllowAIGenerationAuthorization(allow=False)
             ).materialize(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 AIGeneratedVersionMaterializationCommand(
                     content_id=content_id,
                     expected_aggregate_revision=AggregateRevision(0),
@@ -358,6 +361,7 @@ class TestMaterializeAIGeneratedContentVersion:
                     provenance=_provenance(correlation_id),
                 ),
                 event_context=_event_context(correlation_id),
+                audit_provenance=ai_materialization_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, content_id) == (0, 0, 0)
@@ -371,9 +375,10 @@ class TestMaterializeAIGeneratedContentVersion:
         content_id = _seed_content(bootstrap_engine, tenant_b)
         correlation_id = uuid.uuid7()
         with pytest.raises(ContentNotFound):
+            principal_id = uuid.uuid7()
             _materializer(runtime_engine).materialize(
                 tenant_a,
-                uuid.uuid7(),
+                principal_id,
                 AIGeneratedVersionMaterializationCommand(
                     content_id=content_id,
                     expected_aggregate_revision=AggregateRevision(0),
@@ -383,6 +388,7 @@ class TestMaterializeAIGeneratedContentVersion:
                     provenance=_provenance(correlation_id),
                 ),
                 event_context=_event_context(correlation_id),
+                audit_provenance=ai_materialization_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, content_id) == (0, 0, 0)
@@ -392,9 +398,10 @@ class TestMaterializeAIGeneratedContentVersion:
         content_id = _seed_content(bootstrap_engine, tenant_id)
         correlation_id = uuid.uuid7()
         with pytest.raises(ContentPayloadInvalid):
+            principal_id = uuid.uuid7()
             _materializer(runtime_engine).materialize(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 AIGeneratedVersionMaterializationCommand(
                     content_id=content_id,
                     expected_aggregate_revision=AggregateRevision(0),
@@ -404,6 +411,7 @@ class TestMaterializeAIGeneratedContentVersion:
                     provenance=_provenance(correlation_id),
                 ),
                 event_context=_event_context(correlation_id),
+                audit_provenance=ai_materialization_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, content_id) == (0, 0, 0)
@@ -413,13 +421,14 @@ class TestMaterializeAIGeneratedContentVersion:
         content_id = _seed_content(bootstrap_engine, tenant_id)
         correlation_id = uuid.uuid7()
         denied = uuid.uuid7()
+        principal_id = uuid.uuid7()
         with pytest.raises(AssetReferenceValidationFailed):
             _materializer(
                 runtime_engine,
                 assets=AllowAssetReferenceValidation(deny_ids={denied}),
             ).materialize(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 AIGeneratedVersionMaterializationCommand(
                     content_id=content_id,
                     expected_aggregate_revision=AggregateRevision(0),
@@ -437,6 +446,7 @@ class TestMaterializeAIGeneratedContentVersion:
                     ),
                 ),
                 event_context=_event_context(correlation_id),
+                audit_provenance=ai_materialization_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, content_id) == (0, 0, 0)
@@ -445,9 +455,10 @@ class TestMaterializeAIGeneratedContentVersion:
         tenant_id = uuid.uuid7()
         content_id = _seed_content(bootstrap_engine, tenant_id)
         with pytest.raises(AIProvenanceInvalid):
+            principal_id = uuid.uuid7()
             _materializer(runtime_engine).materialize(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 AIGeneratedVersionMaterializationCommand(
                     content_id=content_id,
                     expected_aggregate_revision=AggregateRevision(0),
@@ -457,6 +468,7 @@ class TestMaterializeAIGeneratedContentVersion:
                     provenance=_provenance(uuid.uuid7()),
                 ),
                 event_context=_event_context(uuid.uuid7()),
+                audit_provenance=ai_materialization_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, content_id) == (0, 0, 0)
@@ -480,6 +492,7 @@ class TestMaterializeAIGeneratedContentVersion:
                 provenance=_provenance(correlation_id),
             ),
             event_context=_event_context(correlation_id),
+            audit_provenance=ai_materialization_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         with bootstrap_engine.begin() as conn:
@@ -520,6 +533,7 @@ class TestMaterializeAIGeneratedContentVersion:
                     ),
                 ),
                 event_context=_event_context(correlation2),
+                audit_provenance=ai_materialization_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         after = _head(bootstrap_engine, content_id)

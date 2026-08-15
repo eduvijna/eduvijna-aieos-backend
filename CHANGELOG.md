@@ -33,6 +33,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SAI-I01 Security Audit contracts under `src/aieos/platform/security/audit/`: `AuditRecordId`, typed actions/channels, `SecurityMutationAuditContext`/`Record`, canonical builder, insert-only repository port. No DB table, no Content mutation wiring, still non-production.
 - SAI-I02 PostgreSQL security audit ledger: `security.audit_records` via `saii020001`, distinct `AIEOS_SECURITY_SCHEMA_OWNER_ROLE`, FORCE RLS INSERT-only policy, immutability triggers, SQLAlchemy insert-only repository. No Content mutation wiring, still non-production.
 - SAI-I03 Generic Content API transactional security-audit integration: create / human append / review submit+decide / publish write one `security.audit_records` row in the same Content UoW transaction as business + outbox (+ workflow intent) + idempotency. AI materialization, migration import, and workflow-origin audit remain SAI-I04; production mutation still NOT AUTHORIZED. No new migration.
+- SAI-I04 AI materialization + controlled migration transactional security-audit integration: `content.ai.materialize` and `content.migration.import` write one audit row in the same Content UoW transaction. Workflow-origin Content mutation remains absent/N/A. Production mutation and production migration still NOT AUTHORIZED. No new migration.
 
 ### Changed
 

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from aieos.domains.content.application.audit import api_mutation_audit_provenance
+from aieos.domains.content.application.audit import (
+    api_mutation_audit_provenance,
+    migration_audit_provenance,
+)
 
 import threading
 import uuid
@@ -339,6 +342,7 @@ class TestImportHappyPath:
             principal_id,
             _candidate(),
             event_context=_event_context(principal_id),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         assert result.replayed is False
@@ -416,11 +420,13 @@ class TestImportHappyPath:
                     "now": FIXED_NOW,
                 },
             )
+        principal_id = uuid.uuid7()
         result = _importer(migration_runtime_engine).import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(source_resource_id=str(existing.value)),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         assert result.content_id.value != existing.value
@@ -430,9 +436,10 @@ class TestImportHappyPath:
     ) -> None:
         tenant_id = uuid.uuid7()
         asset_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
         ok = _importer(migration_runtime_engine).import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(
                 source_resource_id="with-asset",
                 asset_refs=(
@@ -445,16 +452,18 @@ class TestImportHappyPath:
                 ),
             ),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         assert _counts(bootstrap_engine, tenant_id=tenant_id, content_id=ok.content_id.value)["refs"] == 1
         with pytest.raises(AssetReferenceValidationFailed):
+            principal_id = uuid.uuid7()
             _importer(
                 migration_runtime_engine,
                 assets=AllowAssetReferenceValidation(deny_ids={asset_id}),
             ).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(
                     source_resource_id="denied-asset",
                     asset_refs=(
@@ -467,12 +476,14 @@ class TestImportHappyPath:
                     ),
                 ),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         with pytest.raises(AssetReferenceValidationFailed):
+            principal_id = uuid.uuid7()
             _importer(migration_runtime_engine).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(
                     source_resource_id="dup-slot",
                     asset_refs=(
@@ -491,6 +502,7 @@ class TestImportHappyPath:
                     ),
                 ),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
 
@@ -501,13 +513,15 @@ class TestAuthAndValidation:
     ) -> None:
         tenant_id = uuid.uuid7()
         with pytest.raises(MigrationForbidden):
+            principal_id = uuid.uuid7()
             _importer(
                 migration_runtime_engine, auth=AllowMigrationAuthorization(allow=False)
             ).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 0
@@ -518,11 +532,13 @@ class TestAuthAndValidation:
     ) -> None:
         tenant_id = uuid.uuid7()
         with pytest.raises(ContentPayloadInvalid):
+            principal_id = uuid.uuid7()
             _importer(migration_runtime_engine).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(payload={"wrong": True}),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         row = _mig_row(bootstrap_engine, tenant_id)
@@ -540,23 +556,27 @@ class TestReplayAndConflicts:
         auth = AllowMigrationAuthorization()
         service = _importer(migration_runtime_engine, auth=auth)
         candidate = _candidate()
+        principal_id = uuid.uuid7()
         first = service.import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             candidate,
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         before = _counts(bootstrap_engine, tenant_id=tenant_id)
         assets = AllowAssetReferenceValidation()
         auth2 = AllowMigrationAuthorization()
+        principal_id = uuid.uuid7()
         second = _importer(
             migration_runtime_engine, auth=auth2, assets=assets
         ).import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             candidate,
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         assert second.replayed is True
@@ -574,35 +594,41 @@ class TestReplayAndConflicts:
     ) -> None:
         tenant_id = uuid.uuid7()
         service = _importer(migration_runtime_engine)
+        principal_id = uuid.uuid7()
         service.import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         with pytest.raises(MigrationSourceConflict):
             service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(digest=DIGEST_B),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         with pytest.raises(MigrationSourceConflict):
+            principal_id = uuid.uuid7()
             service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_version="2"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         with pytest.raises(MigrationSourceConflict):
             service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(mapping_version=2),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 1
@@ -613,29 +639,34 @@ class TestReplayAndConflicts:
         tenant_id = uuid.uuid7()
         service = _importer(migration_runtime_engine)
         with pytest.raises(ContentPayloadInvalid):
+            principal_id = uuid.uuid7()
             service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(payload={"wrong": True}),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         row = _mig_row(bootstrap_engine, tenant_id)
         assert row.outcome == "FAILED"
         assert int(row.attempt_count) == 1
         with pytest.raises(MigrationSourceConflict):
+            principal_id = uuid.uuid7()
             service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(digest=DIGEST_B),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         result = service.import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         assert result.replayed is False
@@ -653,38 +684,44 @@ class TestResumeAndConcurrency:
         service = _importer(migration_runtime_engine)
         ids = []
         for i in range(3):
+            principal_id = uuid.uuid7()
             result = service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id=f"batch-{i}"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
             ids.append(result.content_id.value)
         with pytest.raises(ContentPayloadInvalid):
             service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="batch-fail", payload={"wrong": True}),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 3
         for i, content_id in enumerate(ids):
+            principal_id = uuid.uuid7()
             replay = service.import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id=f"batch-{i}"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
             assert replay.replayed is True
             assert replay.content_id.value == content_id
         recovered = service.import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(source_resource_id="batch-fail"),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         assert recovered.replayed is False
@@ -700,12 +737,14 @@ class TestResumeAndConcurrency:
 
         def worker() -> None:
             try:
+                principal_id = uuid.uuid7()
                 results.append(
                     _importer(migration_runtime_engine).import_content(
                         tenant_id,
-                        uuid.uuid7(),
+                        principal_id,
                         candidate,
                         event_context=_event_context(),
+                        audit_provenance=migration_audit_provenance(principal_id),
                         now=FIXED_NOW,
                     )
                 )
@@ -736,11 +775,13 @@ class TestResumeAndConcurrency:
         def worker(digest: str) -> None:
             barrier.wait()
             try:
+                principal_id = uuid.uuid7()
                 _importer(migration_runtime_engine).import_content(
                     tenant_id,
-                    uuid.uuid7(),
+                    principal_id,
                     _candidate(source_resource_id="concurrent-diff", digest=digest),
                     event_context=_event_context(),
+                    audit_provenance=migration_audit_provenance(principal_id),
                     now=FIXED_NOW,
                 )
                 outcomes.append("ok")
@@ -782,11 +823,13 @@ class TestResumeAndConcurrency:
 
         def run_a() -> None:
             with pytest.raises(PersistenceOperationFailed):
+                principal_id = uuid.uuid7()
                 importer_a.import_content(
                     tenant_id,
-                    uuid.uuid7(),
+                    principal_id,
                     _candidate(source_resource_id="no-gap", digest=DIGEST_A),
                     event_context=_event_context(),
+                    audit_provenance=migration_audit_provenance(principal_id),
                     now=FIXED_NOW,
                 )
 
@@ -803,11 +846,13 @@ class TestResumeAndConcurrency:
 
         def run_b() -> None:
             try:
+                principal_id = uuid.uuid7()
                 _importer(migration_runtime_engine).import_content(
                     tenant_id,
-                    uuid.uuid7(),
+                    principal_id,
                     _candidate(source_resource_id="no-gap", digest=DIGEST_B),
                     event_context=_event_context(),
+                    audit_provenance=migration_audit_provenance(principal_id),
                     now=FIXED_NOW,
                 )
                 b_outcomes.append("ok")
@@ -839,11 +884,13 @@ class TestResumeAndConcurrency:
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["created"] == 0
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["versioned"] == 0
 
+        principal_id = uuid.uuid7()
         recovered = _importer(migration_runtime_engine).import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(source_resource_id="no-gap", digest=DIGEST_A),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         assert recovered.replayed is False
@@ -859,11 +906,13 @@ class TestTrustBoundaryAndPipeline:
         self, migration_runtime_engine, bootstrap_engine
     ) -> None:
         tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
         result = _importer(migration_runtime_engine).import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(source_resource_id="legacy-approved"),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         head = _head(bootstrap_engine, result.content_id.value)
@@ -884,6 +933,7 @@ class TestTrustBoundaryAndPipeline:
             principal_id,
             _candidate(source_resource_id="pipeline"),
             event_context=_event_context(principal_id),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         review = ReviewCommandService(
@@ -950,11 +1000,13 @@ class TestAtomicity:
         monkeypatch.setattr(SqlAlchemyContentRepository, "insert", boom)
         tenant_id = uuid.uuid7()
         with pytest.raises(PersistenceOperationFailed):
+            principal_id = uuid.uuid7()
             _importer(migration_runtime_engine).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="atom-content"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 0
@@ -970,11 +1022,13 @@ class TestAtomicity:
         monkeypatch.setattr(SqlAlchemyContentVersionRepository, "insert", boom)
         tenant_id = uuid.uuid7()
         with pytest.raises(PersistenceOperationFailed):
+            principal_id = uuid.uuid7()
             _importer(migration_runtime_engine).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="atom-version"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 0
@@ -989,9 +1043,10 @@ class TestAtomicity:
         monkeypatch.setattr(SqlAlchemyVersionAssetRefRepository, "insert_many", boom)
         tenant_id = uuid.uuid7()
         with pytest.raises(PersistenceOperationFailed):
+            principal_id = uuid.uuid7()
             _importer(migration_runtime_engine).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(
                     source_resource_id="atom-assets",
                     asset_refs=(
@@ -1004,6 +1059,7 @@ class TestAtomicity:
                     ),
                 ),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 0
@@ -1023,11 +1079,13 @@ class TestAtomicity:
         monkeypatch.setattr(SqlAlchemyOutboxRepository, "insert", boom_outbox)
         tenant_id = uuid.uuid7()
         with pytest.raises(PersistenceOperationFailed):
+            principal_id = uuid.uuid7()
             _importer(migration_runtime_engine).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="atom-outbox-created"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 0
@@ -1042,11 +1100,13 @@ class TestAtomicity:
 
         monkeypatch.setattr(SqlAlchemyOutboxRepository, "insert", boom_version_outbox)
         with pytest.raises(PersistenceOperationFailed):
+            principal_id = uuid.uuid7()
             _importer(migration_runtime_engine).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="atom-outbox-version"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 0
@@ -1058,11 +1118,13 @@ class TestAtomicity:
             SqlAlchemyMigrationImportRecordRepository, "insert_imported", boom_mig
         )
         with pytest.raises(PersistenceOperationFailed):
+            principal_id = uuid.uuid7()
             _importer(migration_runtime_engine).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="atom-mig-final"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         assert _counts(bootstrap_engine, tenant_id=tenant_id)["contents"] == 0

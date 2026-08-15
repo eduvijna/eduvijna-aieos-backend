@@ -922,8 +922,8 @@ class TestSaiI02Architecture:
                     hits.append(f"{path.name}:{stripped}")
         assert hits == []
 
-    def test_content_api_audit_wired_ai_migration_still_pending(self) -> None:
-        """SAI-I03 wires API mutations; AI/migration remain SAI-I04."""
+    def test_content_api_ai_migration_audit_wired_workflow_pending(self) -> None:
+        """SAI-I03/I04: API+AI+migration audit wired; workflow-origin still N/A."""
         create = (CONTENT_ROOT / "application" / "create.py").read_text(encoding="utf-8")
         assert "insert_required_content_audit" in create
         ai = (CONTENT_ROOT / "application" / "ai_materialization.py").read_text(
@@ -932,8 +932,8 @@ class TestSaiI02Architecture:
         migration = (CONTENT_ROOT / "application" / "migration_import.py").read_text(
             encoding="utf-8"
         )
-        assert "insert_required_content_audit" not in ai
-        assert "insert_required_content_audit" not in migration
+        assert "insert_required_content_audit" in ai
+        assert "insert_required_content_audit" in migration
         uow = (
             CONTENT_ROOT
             / "infrastructure"
@@ -942,10 +942,11 @@ class TestSaiI02Architecture:
         ).read_text(encoding="utf-8")
         assert "ContentSecurityMutationAuditRepository" in uow
         assert "self.audit =" in uow
-        # Platform SQLAlchemy audit types stay out of application ports.
         ports = (CONTENT_ROOT / "application" / "ports.py").read_text(encoding="utf-8")
         assert "SecurityMutationAuditRepository" in ports
         assert "SqlAlchemySecurityMutationAuditRepository" not in ports
+        assert "WORKFLOW_ACTIVITY" not in ai
+        assert "WORKFLOW_ACTIVITY" not in migration
 
     def test_no_audit_http(self) -> None:
         routes = (

@@ -7,6 +7,7 @@ import uuid
 from uuid import UUID
 
 import pytest
+from aieos.domains.content.application.audit import migration_audit_provenance
 from sqlalchemy import text
 
 from tests.dbutil import set_tenant
@@ -186,11 +187,13 @@ class TestImmutableFactsDenied:
         )
 
         tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
         result = _importer(migration_runtime_engine).import_content(
             tenant_id,
-            uuid.uuid7(),
+            principal_id,
             _candidate(source_resource_id="i14-rewrite"),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         assert result.replayed is False

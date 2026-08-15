@@ -1,11 +1,11 @@
 ---
-id: SAI-I03-NON-PRODUCTION-MUTATION-BOUNDARY
-title: API-origin Content mutations have transactional audit; production still blocked
+id: SAI-I04-NON-PRODUCTION-MUTATION-BOUNDARY
+title: API, AI, and migration committed-mutation audit integrated; production still blocked
 status: draft
-version: 1.4.0
+version: 1.5.0
 ---
 
-# SAI-I03 non-production mutation boundary
+# SAI-I04 non-production mutation boundary
 
 Idempotency-Key is now required for:
 
@@ -19,7 +19,7 @@ Idempotency-Key is now required for:
 
 GCI-I12–I14 remain as previously documented (Review Queue reads, migration foundation, adversarial validation).
 
-## ADR-AIEOS-028 / SAI-I01 / SAI-I02 / SAI-I03
+## ADR-AIEOS-028 / SAI-I01–I04
 
 ADR-AIEOS-028 (Security Audit & Mutation Accountability) is frozen.
 
@@ -30,38 +30,70 @@ SAI-I02 adds the PostgreSQL security audit ledger (`security.audit_records`,
 Alembic `saii020001`).
 
 SAI-I03 wires **API-origin** Generic Content mutations to insert one
-`SecurityMutationAuditRecord` in the **same** Content UoW / PostgreSQL
-transaction as business state, outbox intent, workflow intent (where
-applicable), and idempotency outcome:
+`SecurityMutationAuditRecord` in the same Content UoW transaction.
 
-- `content.create`
-- `content.version.create` (human HTTP append only)
-- `content.review.submit`
-- `content.review.approve`
-- `content.review.request_changes`
-- `content.review.reject`
-- `content.publish`
+SAI-I04 wires the remaining committed-mutation audit gaps:
 
-## Still missing (SAI-I04+)
+- `content.ai.materialize` via `MaterializeAIGeneratedContentVersionService`
+  (`SecurityAuditExecutionChannel.AI_MATERIALIZATION`)
+- `content.migration.import` via `ImportMigratedContentService`
+  (`SecurityAuditExecutionChannel.MIGRATION`)
 
-- `content.ai.materialize` audit integration
-- `content.migration.import` audit integration
-- any required workflow-origin protected mutation audit (`WORKFLOW_ACTIVITY`)
-- final adversarial production gate (SAI-I05)
+Both reuse `ContentUnitOfWork.audit` / `insert_required_content_audit` —
+no second audit repository, connection, or transaction.
+
+## Workflow-origin status (N/A)
+
+`ContentReviewWorkflowV1` is process truth only (run / signal / query).
+It does **not** execute a Content-mutating Temporal Activity.
+
+Therefore:
+
+- `SecurityAuditExecutionChannel.WORKFLOW_ACTIVITY` remains a frozen enum value
+- no current Content implementation inserts WORKFLOW_ACTIVITY audit rows
+- receiving `review_decision_recorded` is observation only — the authoritative
+  review audit was already written by the API path (SAI-I03)
+
+### Future workflow rule (documentation only — not implemented)
+
+If a future Temporal Activity invokes a protected Content business command, it must:
+
+1. revalidate current authority
+2. invoke the normal application command
+3. supply explicit `WORKFLOW_ACTIVITY` provenance
+4. write business + outbox + audit atomically
+
+Do not invent such an Activity in SAI-I04.
+
+## Authority separation
+
+- `AIGenerationProvenanceV1` = AI generation provenance (ContentVersion)
+- `SecurityMutationAuditRecord` = committed-mutation security evidence
+- `content.migration_import_records` FAILED/IMPORTED = migration execution evidence  
+  (FAILED evidence is **not** a successful security committed-mutation audit)
+
+## Still required before production declaration
+
+- SAI-I05 final adversarial audit/security gate
+- production role/credential provisioning
+- production runtime/environment validation
+- any other frozen deployment gates
 
 Therefore:
 
 - production mutation remains **NOT AUTHORIZED**
 - production migration remains **NOT AUTHORIZED**
-- Content mutations and controlled migration import remain **NON-PRODUCTION**
+  (no legacy connectors, production migration runner, cutover, or real
+  legacy/AIEOS write coexistence)
 
-SAI-I03 does **not**:
+SAI-I04 does **not**:
 
-- add Alembic `saii030001` (head remains `saii020001`)
+- add Alembic `saii030001` / `saii040001` (head remains `saii020001`)
 - expose audit HTTP / OpenAPI
 - implement failed/denied-attempt audit, SIEM export, or crypto sealing
 - change MutationEventContext or TrustedSecurityContext
-- change Temporal workflow definitions or JetStream event contracts
+- change Temporal workflow definitions, Activities, or JetStream contracts
+- add AI/migration HTTP product entrypoints
 
 Migration head:
 

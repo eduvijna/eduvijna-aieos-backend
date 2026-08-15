@@ -1,4 +1,4 @@
-"""Required Content committed-mutation audit evidence helpers (SAI-I03)."""
+"""Required Content committed-mutation audit evidence helpers (SAI-I03/I04)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from aieos.domains.content.application.errors import InvalidContentRequest
 from aieos.domains.content.application.ports import ContentUnitOfWork
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.resources import ResourceRef
@@ -19,6 +20,17 @@ RESOURCE_CONTENT = "content.content"
 RESOURCE_CONTENT_VERSION = "content.content_version"
 RESOURCE_REVIEW_DECISION = "content.review_decision"
 RESOURCE_PUBLICATION = "content.publication"
+
+_SPECIALIZED_CHANNEL_BY_ACTION: dict[
+    SecurityAuditAction, SecurityAuditExecutionChannel
+] = {
+    SecurityAuditAction.CONTENT_AI_MATERIALIZE: (
+        SecurityAuditExecutionChannel.AI_MATERIALIZATION
+    ),
+    SecurityAuditAction.CONTENT_MIGRATION_IMPORT: (
+        SecurityAuditExecutionChannel.MIGRATION
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +53,26 @@ def api_mutation_audit_provenance(principal_id: UUID) -> MutationAuditProvenance
     )
 
 
+def ai_materialization_audit_provenance(principal_id: UUID) -> MutationAuditProvenance:
+    """AI materialization provenance. Not client-controlled."""
+    return MutationAuditProvenance(
+        executing_principal_id=principal_id,
+        execution_channel=SecurityAuditExecutionChannel.AI_MATERIALIZATION,
+        delegation_id=None,
+        trace_id=None,
+    )
+
+
+def migration_audit_provenance(principal_id: UUID) -> MutationAuditProvenance:
+    """Controlled migration provenance. Not client-controlled."""
+    return MutationAuditProvenance(
+        executing_principal_id=principal_id,
+        execution_channel=SecurityAuditExecutionChannel.MIGRATION,
+        delegation_id=None,
+        trace_id=None,
+    )
+
+
 def content_primary_ref(content_id: UUID, revision_after: int) -> ResourceRef:
     return ResourceRef(RESOURCE_CONTENT, content_id, revision_after)
 
@@ -57,6 +89,17 @@ def publication_ref(publication_id: UUID) -> ResourceRef:
     return ResourceRef(RESOURCE_PUBLICATION, publication_id, None)
 
 
+def _require_specialized_channel(
+    action: SecurityAuditAction,
+    audit_provenance: MutationAuditProvenance,
+) -> None:
+    required = _SPECIALIZED_CHANNEL_BY_ACTION.get(action)
+    if required is None:
+        return
+    if audit_provenance.execution_channel is not required:
+        raise InvalidContentRequest("audit execution provenance is invalid")
+
+
 def insert_required_content_audit(
     uow: ContentUnitOfWork,
     *,
@@ -71,6 +114,7 @@ def insert_required_content_audit(
     occurred_at: datetime,
 ) -> None:
     """Insert one required SecurityMutationAuditRecord via the Content UoW."""
+    _require_specialized_channel(action, audit_provenance)
     record = build_security_mutation_audit_record(
         tenant_id=tenant_id,
         action=action,

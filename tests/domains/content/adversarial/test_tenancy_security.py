@@ -6,6 +6,7 @@ import uuid
 from uuid import UUID
 
 import pytest
+from aieos.domains.content.application.audit import migration_audit_provenance
 from sqlalchemy import text
 
 from tests.dbutil import set_tenant
@@ -59,18 +60,21 @@ class TestPooledTenantIsolation:
         )
         assert approved_b.status_code == 200
 
+        principal_id = uuid.uuid7()
         _importer(migration_runtime_engine).import_content(
             tenant_a,
-            uuid.uuid7(),
+            principal_id,
             _candidate(source_resource_id="i14-tenant-a"),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
         _importer(migration_runtime_engine).import_content(
             tenant_b,
-            uuid.uuid7(),
+            principal_id,
             _candidate(source_resource_id="i14-tenant-b"),
             event_context=_event_context(),
+            audit_provenance=migration_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
 

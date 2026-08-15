@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from aieos.domains.content.application.errors import PersistenceOperationFailed
 from aieos.platform.events.persistence.repositories import SqlAlchemyOutboxRepository
+from aieos.domains.content.application.audit import migration_audit_provenance
 from tests.domains.content.adversarial.helpers import (
     client,
     content_row,
@@ -123,11 +124,13 @@ class TestOutboxFailureRollbackCrosscut:
         tenant_id = uuid.uuid7()
         _boom_outbox(monkeypatch)
         with pytest.raises(PersistenceOperationFailed):
+            principal_id = uuid.uuid7()
             _importer(migration_runtime_engine).import_content(
                 tenant_id,
-                uuid.uuid7(),
+                principal_id,
                 _candidate(source_resource_id="i14-outbox-mig"),
                 event_context=_event_context(),
+                audit_provenance=migration_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
         counts = _counts(bootstrap_engine, tenant_id=tenant_id)

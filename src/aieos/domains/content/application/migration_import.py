@@ -11,6 +11,11 @@ from aieos.domains.content.application.asset_refs import (
     ensure_unique_asset_slots,
     validate_asset_bindings,
 )
+from aieos.domains.content.application.audit import (
+    MutationAuditProvenance,
+    content_version_ref,
+    insert_required_content_audit,
+)
 from aieos.domains.content.application.errors import (
     AssetReferenceValidationFailed,
     ContentPayloadInvalid,
@@ -76,6 +81,7 @@ from aieos.domains.content.domain.states import StewardshipState
 from aieos.domains.content.domain.version import ContentPayload, ContentVersion
 from aieos.platform.events.content_events import content_created_outbox
 from aieos.platform.events.models import MutationEventContext
+from aieos.platform.security.audit import SecurityAuditAction
 
 _FAILURE_SCHEMA = "schema_validation_failed"
 _FAILURE_ASSET = "asset_binding_failed"
@@ -158,6 +164,7 @@ class ImportMigratedContentService:
         candidate: MigrationContentCandidate,
         *,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> ImportMigratedContentResult:
         created_at = now if now is not None else datetime.now(UTC)
@@ -218,6 +225,7 @@ class ImportMigratedContentService:
                         candidate,
                         validated,
                         event_context=event_context,
+                        audit_provenance=audit_provenance,
                         created_at=created_at,
                         prior=existing,
                     )
@@ -357,6 +365,7 @@ class ImportMigratedContentService:
         validated: tuple[ContentPayload, list[dict[str, object]]],
         *,
         event_context: MutationEventContext,
+        audit_provenance: MutationAuditProvenance,
         created_at: datetime,
         prior: MigrationImportRecord | None,
     ) -> ImportMigratedContentResult:
@@ -484,6 +493,18 @@ class ImportMigratedContentService:
                 migration_batch_id=candidate.migration_batch_id,
                 completed_at=created_at,
             )
+        insert_required_content_audit(
+            uow,
+            tenant_id=execution_tenant_id,
+            action=SecurityAuditAction.CONTENT_MIGRATION_IMPORT,
+            content_id=content_id.value,
+            resource_revision_before=None,
+            resource_revision_after=1,
+            related_resource_refs=(content_version_ref(version_id.value),),
+            mutation_event_context=event_context,
+            audit_provenance=audit_provenance,
+            occurred_at=created_at,
+        )
         return ImportMigratedContentResult(
             content_id=content_id,
             version_id=version_id,

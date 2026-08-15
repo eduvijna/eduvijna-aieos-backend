@@ -143,7 +143,7 @@ class TestArchitectureAbuse:
         for path in (REPO_ROOT / "migrations").rglob("*.py"):
             assert "content.archived" not in path.read_text(encoding="utf-8")
 
-    def test_security_audit_ledger_exists_api_wired_ai_migration_pending(self) -> None:
+    def test_security_audit_ledger_exists_api_ai_migration_wired(self) -> None:
         hits: list[str] = []
         for path in (REPO_ROOT / "migrations").rglob("*.py"):
             if "audit_events" in path.read_text(encoding="utf-8"):
@@ -154,8 +154,7 @@ class TestArchitectureAbuse:
         assert hits == []
         assert (MIGRATIONS / "saii020001_security_audit_ledger.py").is_file()
         assert not (MIGRATIONS / "saii030001_security_audit_content.py").exists()
-        # SAI-I03: API mutations use the Content audit helper; platform SQLAlchemy types
-        # stay behind the Content adapter except in infrastructure.
+        assert not any(MIGRATIONS.glob("saii040001*"))
         create = (CONTENT_ROOT / "application" / "create.py").read_text(encoding="utf-8")
         assert "insert_required_content_audit" in create
         ai = (CONTENT_ROOT / "application" / "ai_materialization.py").read_text(
@@ -164,8 +163,8 @@ class TestArchitectureAbuse:
         migration = (CONTENT_ROOT / "application" / "migration_import.py").read_text(
             encoding="utf-8"
         )
-        assert "insert_required_content_audit" not in ai
-        assert "insert_required_content_audit" not in migration
+        assert "insert_required_content_audit" in ai
+        assert "insert_required_content_audit" in migration
         ports = (CONTENT_ROOT / "application" / "ports.py").read_text(encoding="utf-8")
         assert "SqlAlchemySecurityMutationAuditRepository" not in ports
         assert "SecurityMutationAuditRepository" in ports
