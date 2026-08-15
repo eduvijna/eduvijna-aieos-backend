@@ -57,6 +57,9 @@ containing wheel, sdist, verified-build-manifest.json, OpenAPI snapshot, and
 
 `NON_PRODUCTION`
 
+OpenAPI digest in the manifest uses the LF-normalized frozen product OpenAPI
+SHA256 recorded in `tools/release/common.py` / SAI-I05 architecture tests.
+
 `production_authorized`, `deployable`, and `mutation_authorized` are false.
 
 Bundle SHA-256 is the immutable identity of this PED-I04 artefact. It is **not**
