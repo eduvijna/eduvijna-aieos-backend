@@ -49,7 +49,7 @@ On each `/readyz` probe connection:
 7. Schema owners match config (content/api/workflow/integration → content owner;
    security → security owner); runtime owns none of those schemas
 8. PostgreSQL major version **18** only
-9. Exactly one `public.alembic_version` row equal to `saii020001`
+9. Exactly one `public.alembic_version` row equal to `pedi090001`
 
 Governed codes only (no raw exception text): `READY`,
 `DATABASE_UNAVAILABLE`, `DATABASE_IDENTITY_MISMATCH`, `DATABASE_ROLE_UNSAFE`,
@@ -100,7 +100,7 @@ private connectivity validation. Those remain target-environment PED-G15 gates.
 - Pool sizing / autoscaling env contracts
 - NATS or Temporal fields on `ApiRuntimeConfig`
 - CI/CD, containers, Kubernetes/Helm/Terraform, hosting manifests
-- New Alembic migration (head remains `saii020001`)
+- New Alembic migration beyond the then-current head (PED-I02 historically expected `saii020001`; PED-I09 advances readiness head to `pedi090001`)
 - Production role/credential provisioning
 
 ## Authorization status

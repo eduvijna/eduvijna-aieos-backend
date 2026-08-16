@@ -63,7 +63,7 @@ PED-I01 does **not** provide:
 - mutation activation switches or feature flags
 - CI/CD workflows, containers, Kubernetes/Helm/Terraform, or hosting manifests
 - NATS or Temporal requirements on the API config surface
-- database migrations (head remains `saii020001`)
+- database migrations (historical PED-I01 head was `saii020001`; current head after PED-I09 is `pedi090001`)
 - OpenAPI / HTTP contract changes
 
 ## Authorization status

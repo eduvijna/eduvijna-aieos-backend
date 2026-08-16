@@ -62,6 +62,7 @@ _EXPECTED_MIGRATIONS = [
     "gcii100001_version_asset_refs.py",
     "gcii110001_ai_provenance.py",
     "gcii130001_migration_import.py",
+    "pedi090001_security_authority.py",
     "saii020001_security_audit_ledger.py",
 ]
 
@@ -153,7 +154,7 @@ class TestArchitectureAbuse:
             if "audit_events" in path.read_text(encoding="utf-8"):
                 hits.append(str(path.relative_to(REPO_ROOT)))
         assert hits == []
-        assert (MIGRATIONS / "saii020001_security_audit_ledger.py").is_file()
+        assert (MIGRATIONS / "pedi090001_security_authority.py").is_file()
         assert not (MIGRATIONS / "saii030001_security_audit_content.py").exists()
         assert not any(MIGRATIONS.glob("saii040001*"))
         create = (CONTENT_ROOT / "application" / "create.py").read_text(encoding="utf-8")

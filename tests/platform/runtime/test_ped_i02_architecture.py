@@ -41,7 +41,7 @@ def _py_files(root: Path) -> list[Path]:
 
 
 def test_expected_alembic_head_matches_script_directory() -> None:
-    assert EXPECTED_ALEMBIC_HEAD == "saii020001"
+    assert EXPECTED_ALEMBIC_HEAD == "pedi090001"
     cfg = Config(str(REPO_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(cfg)
     heads = script.get_heads()
@@ -93,6 +93,7 @@ def test_no_permissive_production_ready_default() -> None:
 
 def test_migration_head_unchanged_no_pedi02_migration() -> None:
     versions = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
+    assert "pedi090001_security_authority.py" in versions
     assert versions[-1] == "saii020001_security_audit_ledger.py"
     for path in MIGRATIONS.rglob("*.py"):
         body = path.read_text(encoding="utf-8")
@@ -106,7 +107,7 @@ def test_docs_and_changelog() -> None:
     assert "/livez" in doc
     assert "/readyz" in doc
     assert "PostgreSQL" in doc and "18" in doc
-    assert "saii020001" in doc
+    assert "pedi090001" in doc
     assert "NOT AUTHORIZED" in doc
     assert "production ready" not in doc.lower()
     assert "safe to deploy" not in doc.lower()

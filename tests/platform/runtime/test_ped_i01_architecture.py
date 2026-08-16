@@ -111,6 +111,7 @@ def test_no_ci_cd_or_container_artefacts_added() -> None:
 
 def test_migration_head_unchanged() -> None:
     versions = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
+    assert "pedi090001_security_authority.py" in versions
     assert versions[-1] == "saii020001_security_audit_ledger.py"
     for path in MIGRATIONS.rglob("*.py"):
         body = path.read_text(encoding="utf-8")

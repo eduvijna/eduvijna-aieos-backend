@@ -147,7 +147,7 @@ class TestAlembicCycle:
         command.upgrade(cfg, "head")
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("saii020001")
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("pedi090001")
             api_tables = {
                 row[0]
                 for row in conn.execute(
@@ -170,5 +170,6 @@ class TestAlembicCycle:
             "gcii100001_version_asset_refs.py",
             "gcii110001_ai_provenance.py",
             "gcii130001_migration_import.py",
-            "saii020001_security_audit_ledger.py",
+            "pedi090001_security_authority.py",
+        "saii020001_security_audit_ledger.py",
         ]

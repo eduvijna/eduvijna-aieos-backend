@@ -115,7 +115,7 @@ Health endpoints remain excluded from product OpenAPI.
 
 ## Remaining production-enablement gaps (explicit)
 
-PED-I08 does **not** provide:
+At PED-I08 completion, this slice did **not** provide:
 
 - Full Authorization Kernel / policy engine
 - Review or publication authorization adapters
@@ -125,10 +125,12 @@ PED-I08 does **not** provide:
 - Principal mapping tables or migrations
 - Production mutation enablement
 
+PED-I09 later supplies the ADR-AIEOS-031 embedded Authorization Kernel and
+Content capability adapters (see `docs/PED-I09-PRODUCTION-AUTHORIZATION-KERNEL.md`).
+This PED-I08 document is not rewritten as if PED-I09 existed at PED-I08 time.
+
 ## Authorization status
 
 - production deployment remains **NOT AUTHORIZED**
 - production mutation remains **NOT AUTHORIZED**
 - production migration remains **NOT AUTHORIZED**
-
-PED-I09+ remains **NOT AUTHORIZED** until separately gated.

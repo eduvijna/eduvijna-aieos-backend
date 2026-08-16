@@ -61,4 +61,5 @@ markers = [
     "ped_i06: ASGI server and NON_PRODUCTION OCI runtime viability foundation",
     "ped_i07: Trusted request identity and current-tenant SecurityContext foundation",
     "ped_i08: Concrete production JWT Bearer RequestIdentityAuthenticator",
+    "ped_i09: Production Authorization Kernel (ADR-AIEOS-031)",
 ]
