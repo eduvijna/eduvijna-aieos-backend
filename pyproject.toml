@@ -62,4 +62,5 @@ markers = [
     "ped_i07: Trusted request identity and current-tenant SecurityContext foundation",
     "ped_i08: Concrete production JWT Bearer RequestIdentityAuthenticator",
     "ped_i09: Production Authorization Kernel (ADR-AIEOS-031)",
+    "ped_i10a: Production Governance Adapter Foundation (ADR-AIEOS-032)",
 ]
