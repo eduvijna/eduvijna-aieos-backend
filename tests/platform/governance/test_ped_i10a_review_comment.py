@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from uuid import uuid7
-
 import pytest
 
 from aieos.domains.content.application.errors import ReviewCommentRejected
@@ -46,7 +44,8 @@ class TestReviewCommentPolicyAllowed:
         POLICY.evaluate("the password field is unclear")
         POLICY.evaluate("tokenization is incorrect")
         POLICY.evaluate("explain API key rotation")
-        POLICY.evaluate(str(uuid7()))
+        # Fixed UUID prose: random UUIDv7 digit runs can spuriously pass Luhn.
+        POLICY.evaluate("0190abcd-ef01-7000-8000-000000000001")
         POLICY.evaluate(f"answer equals {_INVALID_LUHN_CARD}")
 
     @pytest.mark.parametrize(
