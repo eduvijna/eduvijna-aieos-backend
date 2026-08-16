@@ -63,6 +63,7 @@ from aieos.platform.api.http_errors import (
     PreconditionRequiredError,
 )
 from aieos.platform.api.pagination import InvalidCursorError
+from aieos.platform.governance.errors import GovernanceUnavailableError
 from aieos.platform.security.context import (
     AuthenticationUnavailableError,
     AuthorizationUnavailableError,
@@ -521,6 +522,18 @@ def install_exception_handlers(app) -> None:
             detail="Authorization is temporarily unavailable",
         )
 
+    @app.exception_handler(GovernanceUnavailableError)
+    async def governance_unavailable_handler(
+        request: Request, exc: GovernanceUnavailableError
+    ) -> JSONResponse:
+        return problem_response(
+            request,
+            status=503,
+            code="governance_unavailable",
+            title="Governance unavailable",
+            detail="Governance is temporarily unavailable",
+        )
+
     @app.exception_handler(InvalidTenantHeaderError)
     async def tenant_header_handler(
         request: Request, exc: InvalidTenantHeaderError
@@ -603,6 +616,7 @@ def install_exception_handlers(app) -> None:
                 UnauthorizedError,
                 AuthenticationUnavailableError,
                 AuthorizationUnavailableError,
+                GovernanceUnavailableError,
                 InvalidCursorError,
                 InvalidTenantHeaderError,
                 PreconditionRequiredError,
