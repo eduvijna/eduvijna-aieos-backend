@@ -1,7 +1,8 @@
 """HTTP/runtime authentication adapter port.
 
 May be Starlette/FastAPI-facing. Do not place Request types in domain/ or
-Content business contracts. No production authenticator is provided here.
+Content business contracts. Production JWT Bearer adapter:
+``JwtBearerRequestIdentityAuthenticator`` (ADR-AIEOS-030 / PED-I08).
 """
 
 from __future__ import annotations

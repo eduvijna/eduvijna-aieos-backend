@@ -859,6 +859,14 @@
         "title": "VersionAssetRefRequest",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "AIEOSBearerAuth": {
+        "bearerFormat": "JWT",
+        "description": "ADR-AIEOS-030 JWT access token (RS256). Authentication of principal identity only; not tenant authority or capability authorization.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -1116,6 +1124,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Content List",
         "tags": [
           "contents"
@@ -1400,6 +1413,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Content Create",
         "tags": [
           "contents"
@@ -1663,6 +1681,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Content Get",
         "tags": [
           "contents"
@@ -2042,6 +2065,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Content Publish",
         "tags": [
           "contents"
@@ -2433,6 +2461,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Content Version Append",
         "tags": [
           "contents"
@@ -2700,6 +2733,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Content Version Get",
         "tags": [
           "contents"
@@ -3095,6 +3133,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Content Review Approve",
         "tags": [
           "contents"
@@ -3490,6 +3533,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Content Review Reject",
         "tags": [
           "contents"
@@ -3885,6 +3933,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Content Review Request Changes",
         "tags": [
           "contents"
@@ -4270,6 +4323,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Content Review Submit",
         "tags": [
           "contents"
@@ -4523,6 +4581,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Teacher Os Review Queue List",
         "tags": [
           "contents",
@@ -4791,6 +4854,11 @@
             }
           }
         },
+        "security": [
+          {
+            "AIEOSBearerAuth": []
+          }
+        ],
         "summary": "Teacher Os Review Queue Get",
         "tags": [
           "contents",
@@ -4798,5 +4866,10 @@
         ]
       }
     }
-  }
+  },
+  "security": [
+    {
+      "AIEOSBearerAuth": []
+    }
+  ]
 }

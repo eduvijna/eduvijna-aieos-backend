@@ -40,6 +40,9 @@ STAGING and PRODUCTION API workload.
 | `AIEOS_CURSOR_SIGNING_KEY_B64` | Base64 cursor signing key (no default) |
 | `AIEOS_IDEMPOTENCY_RETENTION_SECONDS` | Positive integer seconds |
 | `AIEOS_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS` | Positive integer seconds for Psycopg connect timeout (PED-I02; required for STAGING/PRODUCTION; no silent default) |
+| `AIEOS_AUTH_ISSUER` | Exact JWT issuer (PED-I08 / ADR-AIEOS-030; no default) |
+| `AIEOS_AUTH_AUDIENCE` | Exact JWT audience (PED-I08 / ADR-AIEOS-030; no default) |
+| `AIEOS_AUTH_JWKS_URI` | Absolute HTTPS JWKS URI (PED-I08 / ADR-AIEOS-030; no default) |
 
 `AIEOS_DATABASE_URL` remains the Alembic migrator DSN and **must not** be present
 in STAGING/PRODUCTION API runtime environments.
