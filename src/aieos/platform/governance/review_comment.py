@@ -16,9 +16,16 @@ _PRIVATE_KEY = re.compile(
     re.IGNORECASE,
 )
 
-# B. Bearer / access token material (not bare prose "bearer")
-_AUTH_BEARER = re.compile(
-    r"(?i)(?:Authorization\s*:\s*)?Bearer\s+[A-Za-z0-9._\-+/=]{8,}"
+# B. Bearer / access token material
+# Explicit Authorization header: any nontrivial non-whitespace credential token.
+_AUTH_HEADER_BEARER = re.compile(
+    r"(?i)\bAuthorization\s*:\s*Bearer\s+\S+"
+)
+# Bare Bearer: require credential-like evidence (digit or token punctuation).
+_BARE_BEARER_CREDENTIAL = re.compile(
+    r"(?i)(?<![A-Za-z0-9_])Bearer\s+"
+    r"(?=[A-Za-z0-9._\-+/=]*[0-9._\-+/=])"
+    r"[A-Za-z0-9._\-+/=]{8,}"
 )
 
 # C. Labeled secret / credential assignments
@@ -38,13 +45,27 @@ _CREDENTIAL_URI = re.compile(
 # E. Payment card-like digit runs (spaces/hyphens allowed); Luhn applied later
 _CARD_CANDIDATE = re.compile(r"(?<!\d)(?:\d[ -]*?){13,19}(?!\d)")
 
-# F. Label-anchored government / national identifiers
-_GOV_LABEL = (
-    r"(?:aadhaa?r|ssn|social\s+security(?:\s+number)?|passport|"
-    r"national\s+id|tax\s+id|\bpan\b)"
+# F. Label-anchored government / national identifiers (bounded, label-specific)
+_AADHAAR = re.compile(
+    r"(?i)\baadhaa?r\b\s*[:=#-]?\s*(?:\d[\s-]*){11}\d(?!\d)"
 )
-_GOV_ID = re.compile(
-    rf"(?i)\b{_GOV_LABEL}\b\s*[:=#-]?\s*[A-Za-z0-9][A-Za-z0-9\s-]{{3,}}"
+_SSN = re.compile(
+    r"(?i)\b(?:ssn|social\s+security(?:\s+number)?)\b\s*[:=#-]?\s*"
+    r"\d{3}[\s-]?\d{2}[\s-]?\d{4}\b"
+)
+_PASSPORT = re.compile(
+    r"(?i)\bpassport\b\s*[:=#-]?\s*(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{6,}\b"
+)
+_PAN = re.compile(
+    r"(?i)\bpan\b\s*[:=#-]?\s*[A-Za-z]{5}\d{4}[A-Za-z]\b"
+)
+_NATIONAL_ID = re.compile(
+    r"(?i)\bnational\s+id\b\s*[:=#-]?\s*"
+    r"(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{4,}\b"
+)
+_TAX_ID = re.compile(
+    r"(?i)\btax\s+id\b\s*[:=#-]?\s*"
+    r"(?=\d)(?:\d[\d\s-]*){2,}\d\b"
 )
 
 # G. Direct contact data
@@ -77,10 +98,23 @@ def _contains_luhn_card(text: str) -> bool:
     return False
 
 
+def _contains_gov_id(text: str) -> bool:
+    return bool(
+        _AADHAAR.search(text)
+        or _SSN.search(text)
+        or _PASSPORT.search(text)
+        or _PAN.search(text)
+        or _NATIONAL_ID.search(text)
+        or _TAX_ID.search(text)
+    )
+
+
 def _is_prohibited(comment: str) -> bool:
     if _PRIVATE_KEY.search(comment):
         return True
-    if _AUTH_BEARER.search(comment):
+    if _AUTH_HEADER_BEARER.search(comment):
+        return True
+    if _BARE_BEARER_CREDENTIAL.search(comment):
         return True
     if _LABELED_SECRET.search(comment):
         return True
@@ -88,7 +122,7 @@ def _is_prohibited(comment: str) -> bool:
         return True
     if _contains_luhn_card(comment):
         return True
-    if _GOV_ID.search(comment):
+    if _contains_gov_id(comment):
         return True
     if _EMAIL.search(comment):
         return True

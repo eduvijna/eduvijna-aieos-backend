@@ -1,4 +1,4 @@
-"""PED-I10A DeterministicReviewCommentPolicyV1 unit tests."""
+"""PED-I10A / PED-I10AR1 DeterministicReviewCommentPolicyV1 unit tests."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ POLICY = DeterministicReviewCommentPolicyV1()
 _VALID_LUHN_CARD = "4111 1111 1111 1111"
 _INVALID_LUHN_CARD = "4111 1111 1111 1112"
 _SECRET = "sk_live_SUPERSECRETVALUE99"
+_JWT_LIKE = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature"
 
 
 def _assert_rejected(comment: str) -> None:
@@ -32,6 +33,10 @@ def _assert_rejected(comment: str) -> None:
     assert "4111" not in message
     assert "example.com" not in message
     assert "reviewer@" not in message
+    assert "2345" not in message
+    assert "123-45-6789" not in message
+    assert "ABCDE1234F" not in message
+    assert "eyJhbGci" not in message
 
 
 class TestReviewCommentPolicyAllowed:
@@ -43,7 +48,31 @@ class TestReviewCommentPolicyAllowed:
         POLICY.evaluate("explain API key rotation")
         POLICY.evaluate(str(uuid7()))
         POLICY.evaluate(f"answer equals {_INVALID_LUHN_CARD}")
-        POLICY.evaluate("the bearer of this certificate must sign")
+
+    @pytest.mark.parametrize(
+        "comment",
+        [
+            "Bearer authentication is required",
+            "Bearer authentication scheme is unclear",
+            "Bearer token handling should be documented",
+            "the bearer of this certificate must sign",
+            "bearer certificate ownership is unclear",
+            "passport field is unclear",
+            "passport requirements are unclear",
+            "SSN field should not be shown",
+            "SSN format explanation is confusing",
+            "Social Security field description is unclear",
+            "PAN card format explanation",
+            "PAN field should be optional",
+            "national id field should be optional",
+            "national id requirements are unclear",
+            "tax id label is confusing",
+            "tax id field should be renamed",
+            "Aadhaar field should not be required",
+        ],
+    )
+    def test_false_positive_prose_allowed(self, comment: str) -> None:
+        POLICY.evaluate(comment)
 
     def test_policy_identity_and_determinism(self) -> None:
         assert POLICY.policy_id == REVIEW_COMMENT_POLICY_V1
@@ -63,8 +92,13 @@ class TestReviewCommentPolicyRejected:
             "-----BEGIN EC PRIVATE KEY-----\nabc",
             "-----BEGIN OPENSSH PRIVATE KEY-----\nabc",
             "-----BEGIN PRIVATE KEY-----\nabc",
+            "Authorization: Bearer abcdefgh",
             f"Authorization: Bearer {_SECRET}",
+            "authorization : bearer eyJhbGciOiJIUzI1NiJ9.payload.sig",
             f"Bearer {_SECRET}",
+            "Bearer abc12345678",
+            f"Bearer {_JWT_LIKE}",
+            "Bearer abc_def-gh",
             f"api_key={_SECRET}",
             f"api-key: {_SECRET}",
             f"password: {_SECRET}",
