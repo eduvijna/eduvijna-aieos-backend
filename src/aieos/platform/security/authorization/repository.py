@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
+from typing import TypeVar
 from uuid import UUID
 
 from sqlalchemy import and_, select, text
 from sqlalchemy.engine import Connection, Engine
 
+from aieos.platform.security.authorization.decisions import (
+    GrantStatus,
+    MembershipStatus,
+    PrincipalStatus,
+    TenantStatus,
+)
 from aieos.platform.security.authorization.session import security_authority_read
 from aieos.platform.security.authorization.tables import (
     capability_grants_table,
@@ -18,26 +26,67 @@ from aieos.platform.security.authorization.tables import (
 )
 from aieos.platform.security.context import AuthorizationUnavailableError
 
+_StatusT = TypeVar("_StatusT", bound=StrEnum)
+
+
+def coerce_authority_status(enum_cls: type[_StatusT], raw: object) -> _StatusT:
+    """Materialize a frozen status vocabulary value.
+
+    Valid vocabulary members are returned as enums. Unknown/corrupt values mean
+    authority cannot be safely evaluated (not ordinary DENY).
+    """
+    if not isinstance(raw, str):
+        raise AuthorizationUnavailableError("authorization unavailable")
+    try:
+        return enum_cls(raw)
+    except ValueError as exc:
+        raise AuthorizationUnavailableError(
+            "authorization unavailable"
+        ) from exc
+
 
 @dataclass(frozen=True, slots=True)
 class PrincipalAuthorityRow:
     principal_id: UUID
-    status: str
+    status: PrincipalStatus
+
+    def __post_init__(self) -> None:
+        if isinstance(self.status, PrincipalStatus):
+            return
+        object.__setattr__(
+            self, "status", coerce_authority_status(PrincipalStatus, self.status)
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class TenantAuthorityRow:
     tenant_id: UUID
-    status: str
+    status: TenantStatus
+
+    def __post_init__(self) -> None:
+        if isinstance(self.status, TenantStatus):
+            return
+        object.__setattr__(
+            self, "status", coerce_authority_status(TenantStatus, self.status)
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class MembershipAuthorityRow:
     tenant_id: UUID
     principal_id: UUID
-    status: str
+    status: MembershipStatus
     expires_at: datetime | None
     revoked_at: datetime | None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.status, MembershipStatus):
+            return
+        object.__setattr__(
+            self,
+            "status",
+            coerce_authority_status(MembershipStatus, self.status),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,9 +94,16 @@ class GrantAuthorityRow:
     tenant_id: UUID
     principal_id: UUID
     capability: str
-    status: str
+    status: GrantStatus
     expires_at: datetime | None
     revoked_at: datetime | None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.status, GrantStatus):
+            return
+        object.__setattr__(
+            self, "status", coerce_authority_status(GrantStatus, self.status)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,11 +202,9 @@ class SqlAlchemySecurityAuthorityRepository:
         )
         if row is None:
             return None
-        status = row["status"]
-        if not isinstance(status, str):
-            raise AuthorizationUnavailableError("authorization unavailable")
         return PrincipalAuthorityRow(
-            principal_id=row["principal_id"], status=status
+            principal_id=row["principal_id"],
+            status=coerce_authority_status(PrincipalStatus, row["status"]),
         )
 
     def _fetch_tenant(
@@ -167,10 +221,10 @@ class SqlAlchemySecurityAuthorityRepository:
         )
         if row is None:
             return None
-        status = row["status"]
-        if not isinstance(status, str):
-            raise AuthorizationUnavailableError("authorization unavailable")
-        return TenantAuthorityRow(tenant_id=row["tenant_id"], status=status)
+        return TenantAuthorityRow(
+            tenant_id=row["tenant_id"],
+            status=coerce_authority_status(TenantStatus, row["status"]),
+        )
 
     def _fetch_membership(
         self, conn: Connection, *, principal_id: UUID, tenant_id: UUID
@@ -195,13 +249,10 @@ class SqlAlchemySecurityAuthorityRepository:
         )
         if row is None:
             return None
-        status = row["status"]
-        if not isinstance(status, str):
-            raise AuthorizationUnavailableError("authorization unavailable")
         return MembershipAuthorityRow(
             tenant_id=row["tenant_id"],
             principal_id=row["principal_id"],
-            status=status,
+            status=coerce_authority_status(MembershipStatus, row["status"]),
             expires_at=row["expires_at"],
             revoked_at=row["revoked_at"],
         )
@@ -236,15 +287,14 @@ class SqlAlchemySecurityAuthorityRepository:
         )
         if row is None:
             return None
-        status = row["status"]
         cap = row["capability"]
-        if not isinstance(status, str) or not isinstance(cap, str):
+        if not isinstance(cap, str):
             raise AuthorizationUnavailableError("authorization unavailable")
         return GrantAuthorityRow(
             tenant_id=row["tenant_id"],
             principal_id=row["principal_id"],
             capability=cap,
-            status=status,
+            status=coerce_authority_status(GrantStatus, row["status"]),
             expires_at=row["expires_at"],
             revoked_at=row["revoked_at"],
         )
@@ -253,8 +303,6 @@ class SqlAlchemySecurityAuthorityRepository:
 def membership_is_currently_valid(
     membership: MembershipAuthorityRow, *, now: datetime
 ) -> bool:
-    from aieos.platform.security.authorization.decisions import MembershipStatus
-
     if membership.status != MembershipStatus.ACTIVE:
         return False
     if membership.revoked_at is not None:
@@ -267,8 +315,6 @@ def membership_is_currently_valid(
 def grant_is_currently_valid(
     grant: GrantAuthorityRow, *, now: datetime
 ) -> bool:
-    from aieos.platform.security.authorization.decisions import GrantStatus
-
     if grant.status != GrantStatus.ACTIVE:
         return False
     if grant.revoked_at is not None:

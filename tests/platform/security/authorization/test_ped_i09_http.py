@@ -42,6 +42,7 @@ from aieos.platform.security.authorization import (
     KernelReviewAuthorization,
 )
 from aieos.platform.security.authorization.decisions import (
+    MembershipStatus,
     PrincipalStatus,
     TenantStatus,
 )
@@ -352,6 +353,152 @@ class TestTenantAuthorityHttp:
         token = _mint(private_key, principal_id=principal)
         response = client.get("/api/v1/contents", headers=_headers(tenant, token))
         _assert_problem(response, status=503, code="authorization_unavailable")
+        assert factory.calls == 0
+
+
+class TestCorruptAuthorityHttp:
+    def test_corrupt_tenant_authority_503_zero_uow(self, rsa_material) -> None:
+        from datetime import UTC, datetime
+
+        from aieos.platform.security.authorization.repository import (
+            MembershipAuthorityRow,
+            PrincipalAuthorityRow,
+            TenantAccessBundle,
+            TenantAuthorityRow,
+        )
+
+        private_key, public_jwk = rsa_material
+        principal = uuid.uuid7()
+        tenant = uuid.uuid7()
+        now = datetime.now(UTC)
+
+        class _CorruptTenantRepo:
+            def load_tenant_access_bundle(self, *, principal_id, tenant_id):
+                return TenantAccessBundle(
+                    principal=PrincipalAuthorityRow(
+                        principal_id=principal_id, status="CORRUPT"  # type: ignore[arg-type]
+                    ),
+                    tenant=TenantAuthorityRow(
+                        tenant_id=tenant_id, status=TenantStatus.ACTIVE
+                    ),
+                    membership=MembershipAuthorityRow(
+                        tenant_id=tenant_id,
+                        principal_id=principal_id,
+                        status=MembershipStatus.ACTIVE,
+                        expires_at=None,
+                        revoked_at=None,
+                    ),
+                    evaluated_at=now,
+                )
+
+            def load_capability_bundle(self, *, principal_id, tenant_id, capability):
+                raise AssertionError("capability must not be consulted")
+
+        kernel = AuthorizationKernel(
+            create_engine("postgresql+psycopg://unused/unused"),
+            known_capabilities=AIEOS_CONTENT_CAPABILITIES,
+            repository=_CorruptTenantRepo(),  # type: ignore[arg-type]
+        )
+        factory = RecordingUowFactory()
+        app, factory = _app(
+            authenticator=_authenticator(public_jwk),
+            authority=KernelCurrentTenantAccessAuthority(kernel),
+            uow_factory=factory,
+            enable_mutations=True,
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        token = _mint(private_key, principal_id=principal)
+        response = client.get("/api/v1/contents", headers=_headers(tenant, token))
+        body = _assert_problem(
+            response, status=503, code="authorization_unavailable"
+        )
+        blob = json.dumps(body).lower()
+        assert "corrupt" not in blob
+        assert "bogus" not in blob
+        assert factory.calls == 0
+
+    def test_corrupt_capability_authority_503_zero_uow(
+        self, rsa_material, bootstrap_engine, runtime_engine
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from aieos.platform.security.authorization.decisions import (
+            MembershipStatus as _MS,
+            PrincipalStatus as _PS,
+        )
+        from aieos.platform.security.authorization.repository import (
+            CapabilityBundle,
+            GrantAuthorityRow,
+            MembershipAuthorityRow,
+            PrincipalAuthorityRow,
+            TenantAuthorityRow,
+        )
+
+        private_key, public_jwk = rsa_material
+        principal = uuid.uuid7()
+        tenant = uuid.uuid7()
+        seed_active_authority(
+            bootstrap_engine, tenant_id=tenant, principal_id=principal
+        )
+        now = datetime.now(UTC)
+        good_tenant = KernelCurrentTenantAccessAuthority(_kernel(runtime_engine))
+
+        class _CorruptGrantRepo:
+            def load_tenant_access_bundle(self, *, principal_id, tenant_id):
+                raise AssertionError("tenant path uses runtime kernel")
+
+            def load_capability_bundle(self, *, principal_id, tenant_id, capability):
+                return CapabilityBundle(
+                    principal=PrincipalAuthorityRow(
+                        principal_id=principal_id, status=_PS.ACTIVE
+                    ),
+                    tenant=TenantAuthorityRow(
+                        tenant_id=tenant_id, status=TenantStatus.ACTIVE
+                    ),
+                    membership=MembershipAuthorityRow(
+                        tenant_id=tenant_id,
+                        principal_id=principal_id,
+                        status=_MS.ACTIVE,
+                        expires_at=None,
+                        revoked_at=None,
+                    ),
+                    grant=GrantAuthorityRow(
+                        tenant_id=tenant_id,
+                        principal_id=principal_id,
+                        capability=capability,
+                        status="CORRUPT",  # type: ignore[arg-type]
+                        expires_at=None,
+                        revoked_at=None,
+                    ),
+                    evaluated_at=now,
+                )
+
+        cap_kernel = AuthorizationKernel(
+            create_engine("postgresql+psycopg://unused/unused"),
+            known_capabilities=AIEOS_CONTENT_CAPABILITIES,
+            repository=_CorruptGrantRepo(),  # type: ignore[arg-type]
+        )
+        factory = RecordingUowFactory()
+        app, factory = _app(
+            authenticator=_authenticator(public_jwk),
+            authority=good_tenant,
+            review_authorization=KernelReviewAuthorization(cap_kernel),
+            uow_factory=factory,
+            enable_mutations=True,
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        token = _mint(private_key, principal_id=principal)
+        headers = _headers(tenant, token)
+        headers["If-Match"] = '"r0"'
+        response = client.post(
+            f"/api/v1/contents/{uuid.uuid7()}/versions/{uuid.uuid7()}/"
+            "actions/submit-for-review",
+            headers=headers,
+        )
+        body = _assert_problem(
+            response, status=503, code="authorization_unavailable"
+        )
+        assert "corrupt" not in json.dumps(body).lower()
         assert factory.calls == 0
 
 

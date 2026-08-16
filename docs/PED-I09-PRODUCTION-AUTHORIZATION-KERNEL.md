@@ -149,6 +149,14 @@ Connection-pool reuse must not leak tenant scope across transactions.
 | Authenticated but tenant/member/capability denied | 403 `forbidden` |
 | Authority cannot be evaluated safely | 503 `authorization_unavailable` |
 
+Valid non-ACTIVE authoritative statuses (`SUSPENDED`, `DISABLED`, `REVOKED`)
+remain ordinary **DENY** / 403.
+
+Corrupt / unrecognized authoritative status strings (outside the frozen
+vocabularies) mean authority cannot be safely interpreted →
+`AuthorizationUnavailableError` → 503 `authorization_unavailable`. Raw corrupt
+status text must not appear in Problem Details.
+
 Infrastructure failure is **not** DENY. Never turn an exception into ALLOW.
 Driver/SQL details must not leak.
 

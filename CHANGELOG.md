@@ -46,6 +46,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- PED-I09R2: corrupt / unrecognized authority status strings raise `AuthorizationUnavailableError` (503) rather than ordinary DENY (403); valid `SUSPENDED`/`DISABLED`/`REVOKED` remain DENY.
 - PED-I09R1: reject wildcard capability identifiers (`*` / `content.*` / etc.) at DB CHECK and AuthorizationKernel construction/decision; Content capability constants owned solely by `domains/content/application/ports.py` (no parallel definitions in generic `decisions.py`).
 - PED-I08R1: JWT header `typ` is mandatory and must be exactly `at+jwt` (reject absent/`JWT`/`ID`/other); no `application/at+jwt` media-type change. OpenAPI `AIEOSBearerAuth` unchanged.
 - PED-I08: ADR-AIEOS-030-authorized additive OpenAPI Bearer security scheme (`AIEOSBearerAuth`); not uncontrolled API drift. Auth env vars required by STAGING/PRODUCTION `ApiRuntimeConfig` load. PED-I07 architecture tests narrowly advanced to confine PyJWT to `jwt_bearer.py`.

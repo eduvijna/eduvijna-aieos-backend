@@ -429,6 +429,155 @@ class TestWildcardFailClosed:
         )
 
 
+class TestCorruptAuthorityState:
+    def test_coerce_rejects_unknown_statuses(self) -> None:
+        from aieos.platform.security.authorization.repository import (
+            coerce_authority_status,
+        )
+
+        with pytest.raises(AuthorizationUnavailableError):
+            coerce_authority_status(PrincipalStatus, "CORRUPT")
+        with pytest.raises(AuthorizationUnavailableError):
+            coerce_authority_status(TenantStatus, "BOGUS")
+        with pytest.raises(AuthorizationUnavailableError):
+            coerce_authority_status(MembershipStatus, "UNKNOWN")
+        with pytest.raises(AuthorizationUnavailableError):
+            coerce_authority_status(GrantStatus, "INVALID")
+
+    def test_row_materialization_rejects_corrupt_statuses(self) -> None:
+        from aieos.platform.security.authorization.repository import (
+            GrantAuthorityRow,
+            MembershipAuthorityRow,
+            PrincipalAuthorityRow,
+            TenantAuthorityRow,
+        )
+
+        pid = uuid.uuid7()
+        tid = uuid.uuid7()
+        with pytest.raises(AuthorizationUnavailableError):
+            PrincipalAuthorityRow(principal_id=pid, status="CORRUPT")  # type: ignore[arg-type]
+        with pytest.raises(AuthorizationUnavailableError):
+            TenantAuthorityRow(tenant_id=tid, status="BOGUS")  # type: ignore[arg-type]
+        with pytest.raises(AuthorizationUnavailableError):
+            MembershipAuthorityRow(
+                tenant_id=tid,
+                principal_id=pid,
+                status="UNKNOWN",  # type: ignore[arg-type]
+                expires_at=None,
+                revoked_at=None,
+            )
+        with pytest.raises(AuthorizationUnavailableError):
+            GrantAuthorityRow(
+                tenant_id=tid,
+                principal_id=pid,
+                capability=CONTENT_PUBLISH,
+                status="INVALID",  # type: ignore[arg-type]
+                expires_at=None,
+                revoked_at=None,
+            )
+
+    def test_kernel_propagates_corrupt_principal_as_unavailable(self) -> None:
+        from datetime import UTC, datetime
+
+        from aieos.platform.security.authorization.repository import (
+            PrincipalAuthorityRow,
+            TenantAccessBundle,
+            TenantAuthorityRow,
+            MembershipAuthorityRow,
+        )
+
+        principal = uuid.uuid7()
+        tenant = uuid.uuid7()
+        now = datetime.now(UTC)
+
+        class _CorruptPrincipalRepo:
+            def load_tenant_access_bundle(self, *, principal_id, tenant_id):
+                return TenantAccessBundle(
+                    principal=PrincipalAuthorityRow(
+                        principal_id=principal_id, status="CORRUPT"  # type: ignore[arg-type]
+                    ),
+                    tenant=TenantAuthorityRow(
+                        tenant_id=tenant_id, status=TenantStatus.ACTIVE
+                    ),
+                    membership=MembershipAuthorityRow(
+                        tenant_id=tenant_id,
+                        principal_id=principal_id,
+                        status=MembershipStatus.ACTIVE,
+                        expires_at=None,
+                        revoked_at=None,
+                    ),
+                    evaluated_at=now,
+                )
+
+            def load_capability_bundle(self, *, principal_id, tenant_id, capability):
+                raise AssertionError("not used")
+
+        kernel = AuthorizationKernel(
+            create_engine("postgresql+psycopg://unused/unused"),
+            known_capabilities=AIEOS_CONTENT_CAPABILITIES,
+            repository=_CorruptPrincipalRepo(),  # type: ignore[arg-type]
+        )
+        with pytest.raises(AuthorizationUnavailableError):
+            kernel.decide_tenant_access(principal_id=principal, tenant_id=tenant)
+
+    def test_kernel_propagates_corrupt_grant_as_unavailable(self) -> None:
+        from datetime import UTC, datetime
+
+        from aieos.platform.security.authorization.repository import (
+            CapabilityBundle,
+            GrantAuthorityRow,
+            MembershipAuthorityRow,
+            PrincipalAuthorityRow,
+            TenantAuthorityRow,
+        )
+
+        principal = uuid.uuid7()
+        tenant = uuid.uuid7()
+        now = datetime.now(UTC)
+
+        class _CorruptGrantRepo:
+            def load_tenant_access_bundle(self, *, principal_id, tenant_id):
+                raise AssertionError("not used")
+
+            def load_capability_bundle(self, *, principal_id, tenant_id, capability):
+                return CapabilityBundle(
+                    principal=PrincipalAuthorityRow(
+                        principal_id=principal_id, status=PrincipalStatus.ACTIVE
+                    ),
+                    tenant=TenantAuthorityRow(
+                        tenant_id=tenant_id, status=TenantStatus.ACTIVE
+                    ),
+                    membership=MembershipAuthorityRow(
+                        tenant_id=tenant_id,
+                        principal_id=principal_id,
+                        status=MembershipStatus.ACTIVE,
+                        expires_at=None,
+                        revoked_at=None,
+                    ),
+                    grant=GrantAuthorityRow(
+                        tenant_id=tenant_id,
+                        principal_id=principal_id,
+                        capability=capability,
+                        status="CORRUPT",  # type: ignore[arg-type]
+                        expires_at=None,
+                        revoked_at=None,
+                    ),
+                    evaluated_at=now,
+                )
+
+        kernel = AuthorizationKernel(
+            create_engine("postgresql+psycopg://unused/unused"),
+            known_capabilities=AIEOS_CONTENT_CAPABILITIES,
+            repository=_CorruptGrantRepo(),  # type: ignore[arg-type]
+        )
+        with pytest.raises(AuthorizationUnavailableError):
+            kernel.decide_capability(
+                principal_id=principal,
+                tenant_id=tenant,
+                capability=CONTENT_PUBLISH,
+            )
+
+
 class TestUnavailable:
     def test_database_unavailable_is_not_deny(self) -> None:
         engine = create_engine(
