@@ -49,6 +49,13 @@ def _require_nonempty_str(value: object, *, label: str) -> str:
     return value.strip()
 
 
+def _require_opaque_storage_key(value: object) -> str:
+    """Reject empty/whitespace-only keys; preserve accepted keys exactly."""
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidAssetRevisionError("storage_key must be a non-empty string")
+    return value
+
+
 def _require_sha256(value: object) -> str:
     if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
         raise InvalidAssetRevisionError(
@@ -92,7 +99,7 @@ class AssetRevision:
             self, "resource_type", parse_asset_resource_type(self.resource_type)
         )
         object.__setattr__(
-            self, "storage_key", _require_nonempty_str(self.storage_key, label="storage_key")
+            self, "storage_key", _require_opaque_storage_key(self.storage_key)
         )
         object.__setattr__(
             self, "media_type", _require_nonempty_str(self.media_type, label="media_type")

@@ -242,6 +242,43 @@ class TestAssetRevision:
         with pytest.raises(FrozenInstanceError):
             revision.byte_size = 9  # type: ignore[misc]
 
+    def test_storage_key_preserved_exactly(self) -> None:
+        revision = _revision(storage_key="opaque/key/1")
+        assert revision.storage_key == "opaque/key/1"
+
+    def test_storage_key_preserves_surrounding_whitespace(self) -> None:
+        keyed = "  opaque/key/1  "
+        revision = _revision(storage_key=keyed)
+        assert revision.storage_key == "  opaque/key/1  "
+        assert revision.storage_key == keyed
+
+    @pytest.mark.parametrize("bad", ["", " ", "   ", "\t"])
+    def test_storage_key_rejects_empty_or_whitespace_only(self, bad: str) -> None:
+        with pytest.raises(InvalidAssetRevisionError):
+            _revision(storage_key=bad)
+
+    def test_storage_key_has_no_path_uri_provider_interpretation(self) -> None:
+        source = (
+            REPO_ROOT
+            / "src"
+            / "aieos"
+            / "domains"
+            / "asset"
+            / "domain"
+            / "revision.py"
+        ).read_text(encoding="utf-8")
+        for needle in (
+            "pathlib",
+            "urlsplit",
+            "urlparse",
+            "urllib",
+            "boto3",
+            "s3://",
+            "normalize",
+            "os.path",
+        ):
+            assert needle not in source
+
     @pytest.mark.parametrize("bad", [-1, True, False, 1.5, "0"])
     def test_rejects_invalid_byte_size(self, bad: object) -> None:
         with pytest.raises(InvalidAssetRevisionError):
