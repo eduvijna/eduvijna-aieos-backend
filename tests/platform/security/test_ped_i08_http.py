@@ -131,6 +131,7 @@ def _mint(
     audience: str = AUDIENCE,
     alg: str = "RS256",
     headers: dict[str, Any] | None = None,
+    omit_header_keys: set[str] | None = None,
     extra_claims: dict[str, Any] | None = None,
     omit: set[str] | None = None,
     exp_delta: int = 3600,
@@ -154,9 +155,12 @@ def _mint(
     if omit:
         for key in omit:
             claims.pop(key, None)
-    hdr = {"kid": KID, "typ": "JWT"}
+    hdr = {"kid": KID, "typ": "at+jwt"}
     if headers:
         hdr.update(headers)
+    if omit_header_keys:
+        for key in omit_header_keys:
+            hdr.pop(key, None)
     return jwt.encode(claims, private_key, algorithm=alg, headers=hdr)
 
 
@@ -515,7 +519,50 @@ class TestCredentialFailures:
         _assert_problem(response, status=401, code="unauthenticated")
         assert factory.calls == 0
 
-    def test_wrong_token_typ_profile(self, rsa_material) -> None:
+    @pytest.mark.parametrize(
+        "typ_case",
+        [
+            ("absent", None),
+            ("JWT", "JWT"),
+            ("ID", "ID"),
+        ],
+    )
+    def test_typ_must_be_exactly_at_jwt_or_401_zero_uow(
+        self, rsa_material, typ_case: tuple[str, str | None]
+    ) -> None:
+        _label, typ_value = typ_case
+        private_key, public_jwk = rsa_material
+        principal = uuid.uuid7()
+        tenant = uuid.uuid7()
+        authority = MutableCurrentTenantAccessAuthority()
+        authority.grant(principal, tenant)
+        factory = RecordingUowFactory()
+        if typ_value is None:
+            token = _mint(
+                private_key, principal_id=principal, omit_header_keys={"typ"}
+            )
+        else:
+            token = _mint(
+                private_key, principal_id=principal, headers={"typ": typ_value}
+            )
+        app, factory = _app(
+            authenticator=_authenticator(public_jwk),
+            authority=authority,
+            uow_factory=factory,
+            enable_mutations=True,
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        read = client.get("/api/v1/contents", headers=_headers(tenant, token))
+        _assert_problem(read, status=401, code="unauthenticated")
+        assert factory.calls == 0
+        mutate = client.post(
+            "/api/v1/contents", json=CREATE_BODY, headers=_headers(tenant, token)
+        )
+        _assert_problem(mutate, status=401, code="unauthenticated")
+        assert factory.calls == 0
+        assert authority.calls == []
+
+    def test_typ_at_jwt_authenticates_principal(self, rsa_material) -> None:
         private_key, public_jwk = rsa_material
         principal = uuid.uuid7()
         tenant = uuid.uuid7()
@@ -523,7 +570,7 @@ class TestCredentialFailures:
         authority.grant(principal, tenant)
         factory = RecordingUowFactory()
         token = _mint(
-            private_key, principal_id=principal, headers={"typ": "ID"}
+            private_key, principal_id=principal, headers={"typ": "at+jwt"}
         )
         app, factory = _app(
             authenticator=_authenticator(public_jwk),
@@ -531,9 +578,10 @@ class TestCredentialFailures:
             uow_factory=factory,
         )
         client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/api/v1/contents", headers=_headers(tenant, token))
-        _assert_problem(response, status=401, code="unauthenticated")
-        assert factory.calls == 0
+        listed = client.get("/api/v1/contents", headers=_headers(tenant, token))
+        assert factory.calls == 1
+        assert authority.calls == [(principal, tenant)]
+        assert listed.status_code == 500
 
 
 class TestSpoofingAndTenantSeparation:

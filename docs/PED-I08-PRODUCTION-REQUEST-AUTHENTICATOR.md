@@ -20,7 +20,7 @@ This slice is a production-readiness **foundation** only.
 | Concern | Contract |
 |---------|----------|
 | Credential | `Authorization: Bearer <JWT access token>` only |
-| Profile | Compact JWS access-token JWT (`typ` absent, `JWT`, or `at+jwt`) |
+| Profile | Compact JWS access-token JWT; header `typ` **mandatory** and exactly `at+jwt` |
 | Algorithm | **RS256 only** (reject `none` and all other algs) |
 | Keys | Configured HTTPS JWKS URI only (token cannot choose JWKS/issuer/alg) |
 | Issuer | Exact `AIEOS_AUTH_ISSUER` |

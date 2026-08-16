@@ -45,6 +45,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- PED-I08R1: JWT header `typ` is mandatory and must be exactly `at+jwt` (reject absent/`JWT`/`ID`/other); no `application/at+jwt` media-type change. OpenAPI `AIEOSBearerAuth` unchanged.
 - PED-I08: ADR-AIEOS-030-authorized additive OpenAPI Bearer security scheme (`AIEOSBearerAuth`); not uncontrolled API drift. Auth env vars required by STAGING/PRODUCTION `ApiRuntimeConfig` load. PED-I07 architecture tests narrowly advanced to confine PyJWT to `jwt_bearer.py`.
 - PED-I07: advances SecurityContext resolution to consume trusted identity + requested tenant with current tenant-access authority; OpenAPI product surface unchanged.
 - PED-I06: advances PED-I01/PED-I04 architecture tests narrowly so uvicorn is permitted only in the authorized ASGI runtime module and a governed NON_PRODUCTION OCI probe may exist; registry push, deployment, production naming, mutation activation, and GitHub Release remain forbidden.

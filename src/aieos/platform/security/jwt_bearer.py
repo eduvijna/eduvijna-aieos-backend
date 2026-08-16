@@ -41,8 +41,8 @@ from aieos.platform.security.context import (
 from aieos.platform.security.identity import TrustedRequestIdentity
 
 _ALLOWED_ALG = "RS256"
+_REQUIRED_TYP = "at+jwt"
 _REQUIRED_CLAIMS = ("exp", "iat", "sub", "client_id", "jti", AIEOS_PRINCIPAL_ID_CLAIM)
-_ALLOWED_TYP = frozenset({"JWT", "at+jwt"})
 
 
 class _SigningKeyProvider(Protocol):
@@ -83,10 +83,9 @@ def _assert_access_token_header(token: str) -> None:
     alg = header.get("alg")
     if alg != _ALLOWED_ALG:
         raise _unauthenticated()
-    typ = header.get("typ")
-    if typ is not None:
-        if not isinstance(typ, str) or typ not in _ALLOWED_TYP:
-            raise _unauthenticated()
+    # ADR-AIEOS-030: typ is mandatory and must be exactly at+jwt.
+    if header.get("typ") != _REQUIRED_TYP:
+        raise _unauthenticated()
 
 
 def _require_non_empty_str(claims: dict[str, Any], name: str) -> str:
