@@ -95,6 +95,9 @@ stack traces, or secret exception text. Problem Details retain `request_id`,
 - Does not replace `ReviewAuthorizationPort` or `PublicationAuthorizationPort`
 - Does not authorize production deployment, mutation, or migration
 
+PED-I08 implements the ADR-AIEOS-030 JWT Bearer production authenticator behind
+these ports (see `docs/PED-I08-PRODUCTION-REQUEST-AUTHENTICATOR.md`).
+
 ## Health independence
 
 `/livez` and `/readyz` remain PED-I02 governed and must not require request
@@ -106,4 +109,4 @@ authentication, tenant membership, or an authorization kernel.
 - production mutation remains **NOT AUTHORIZED**
 - production migration remains **NOT AUTHORIZED**
 
-PED-I08+ remains **NOT AUTHORIZED** until separately gated.
+PED-I09+ remains **NOT AUTHORIZED** until separately gated.

@@ -111,6 +111,9 @@ def _config_for_runtime_url(runtime_url: str, *, timeout: str = "5"):
             ENV_CURSOR_SIGNING_KEY_B64: CURSOR_B64,
             ENV_IDEMPOTENCY_RETENTION_SECONDS: "86400",
             ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS: timeout,
+            "AIEOS_AUTH_ISSUER": "https://issuer.example.test/",
+            "AIEOS_AUTH_AUDIENCE": "aieos-api",
+            "AIEOS_AUTH_JWKS_URI": "https://issuer.example.test/.well-known/jwks.json",
         }
     )
 

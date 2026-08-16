@@ -125,6 +125,9 @@ def _config(runtime_url: str, *, git_sha: str = VALID_GIT_SHA, digest: str = VAL
             ENV_CURSOR_SIGNING_KEY_B64: CURSOR_B64,
             ENV_IDEMPOTENCY_RETENTION_SECONDS: "86400",
             ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS: "5",
+            "AIEOS_AUTH_ISSUER": "https://issuer.example.test/",
+            "AIEOS_AUTH_AUDIENCE": "aieos-api",
+            "AIEOS_AUTH_JWKS_URI": "https://issuer.example.test/.well-known/jwks.json",
         }
     )
 

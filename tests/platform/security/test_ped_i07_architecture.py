@@ -54,9 +54,6 @@ _FORBIDDEN_IDENTITY_HEADERS = (
 )
 
 _FORBIDDEN_AUTH_LIBS = (
-    "PyJWT",
-    "jwt",
-    "jose",
     "authlib",
     "python-jose",
     "openid",
@@ -69,7 +66,11 @@ _FORBIDDEN_AUTH_LIBS = (
     "openfga",
     "casbin",
     "opa",
+    "jose",
 )
+
+# PED-I08 authorizes PyJWT only in platform.security.jwt_bearer.
+_JWT_AUTHORIZED_RELATIVE = Path("jwt_bearer.py")
 
 _FORBIDDEN_PRODUCTION_FAKES = (
     "AlwaysAuthenticated",
@@ -181,23 +182,29 @@ def test_no_identity_header_shortcuts_in_src() -> None:
 
 
 def test_no_jwt_oidc_policy_engine_or_auth_sdk_in_src() -> None:
+    """PED-I07 forbid; PED-I08 advances: PyJWT only in jwt_bearer.py."""
     hits: list[str] = []
     for path in _py_files(SRC_ROOT):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
+            modules: list[str] = []
             if isinstance(node, ast.Import):
-                for alias in node.names:
-                    name = alias.name.lower()
-                    for needle in _FORBIDDEN_AUTH_LIBS:
-                        if needle.lower() in name.split(".")[0]:
-                            hits.append(f"{path.relative_to(REPO_ROOT)}:import {alias.name}")
+                modules = [alias.name for alias in node.names]
             elif isinstance(node, ast.ImportFrom) and node.module:
-                name = node.module.lower()
+                modules = [node.module]
+            for name in modules:
+                root = name.split(".")[0].lower()
+                if root in {"jwt", "pyjwt"}:
+                    if path.name != _JWT_AUTHORIZED_RELATIVE.name:
+                        hits.append(f"{path.relative_to(REPO_ROOT)}:import {name}")
+                    continue
                 for needle in _FORBIDDEN_AUTH_LIBS:
-                    if needle.lower() == name.split(".")[0]:
-                        hits.append(f"{path.relative_to(REPO_ROOT)}:from {node.module}")
+                    if needle.lower() == root:
+                        hits.append(f"{path.relative_to(REPO_ROOT)}:import {name}")
     deps = PYPROJECT.read_text(encoding="utf-8").lower()
-    for needle in ("pyjwt", "python-jose", "authlib", "msal", "cerbos", "casbin", "openfga"):
+    assert "pyjwt>=" in deps
+    assert "cryptography" in deps
+    for needle in ("python-jose", "authlib", "msal", "cerbos", "casbin", "openfga"):
         assert needle not in deps
     assert hits == []
 
@@ -274,15 +281,19 @@ def test_no_migration_or_identity_tables() -> None:
     for path in MIGRATIONS.rglob("*.py"):
         body = path.read_text(encoding="utf-8")
         assert "pedi070001" not in body
+        assert "pedi080001" not in body
         assert "trusted_request_identity" not in body.lower()
         assert "security_context" not in body.lower() or path.name.startswith("saii")
 
 
-def test_no_bearer_jwt_openapi_security_scheme_claimed_in_src() -> None:
+def test_bearer_openapi_scheme_is_aieos_bearer_only() -> None:
+    """PED-I08 advances OpenAPI with ADR-AIEOS-030 AIEOSBearerAuth only."""
     openapi = (API_ROOT / "openapi.py").read_text(encoding="utf-8")
-    assert "HTTPBearer" not in openapi
+    assert "AIEOSBearerAuth" in openapi
+    assert "bearerFormat" in openapi
     assert "OAuth2PasswordBearer" not in openapi
-    assert '"bearer"' not in openapi.lower()
+    assert "authorizationCode" not in openapi
+    assert "HTTPBearer" not in openapi
 
 
 def test_boundary_doc_and_changelog_and_marker() -> None:

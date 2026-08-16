@@ -95,6 +95,18 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
     schemas["ProblemErrorItem"] = ProblemErrorItem.model_json_schema(
         ref_template="#/components/schemas/{model}"
     )
+    # ADR-AIEOS-030 authorized additive Bearer security contract (not OAuth login).
+    security_schemes = components.setdefault("securitySchemes", {})
+    security_schemes["AIEOSBearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": (
+            "ADR-AIEOS-030 JWT access token (RS256). Authentication of principal "
+            "identity only; not tenant authority or capability authorization."
+        ),
+    }
+    schema["security"] = [{"AIEOSBearerAuth": []}]
     problem_content = {
         "application/problem+json": {
             "schema": {"$ref": "#/components/schemas/ProblemDetails"}
@@ -106,6 +118,7 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
         for method, operation in list(path_item.items()):
             if method.startswith("x-") or not isinstance(operation, dict):
                 continue
+            operation["security"] = [{"AIEOSBearerAuth": []}]
             params = operation.setdefault("parameters", [])
             if not any(
                 p.get("name") == "X-AIEOS-Correlation-ID" and p.get("in") == "header"

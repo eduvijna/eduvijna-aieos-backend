@@ -16,6 +16,10 @@ from aieos.platform.runtime.models import (
     DeploymentEnvironment,
     ReleaseIdentity,
 )
+from aieos.platform.security.auth_config import (
+    AuthConfigurationError,
+    load_auth_runtime_config,
+)
 
 ENV_DEPLOYMENT_ENVIRONMENT = "AIEOS_DEPLOYMENT_ENVIRONMENT"
 ENV_RELEASE_VERSION = "AIEOS_RELEASE_VERSION"
@@ -236,6 +240,10 @@ def load_api_runtime_config(environ: Mapping[str, str]) -> ApiRuntimeConfig:
     connect_timeout = _parse_connect_timeout(
         _require(environ, ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS)
     )
+    try:
+        auth = load_auth_runtime_config(environ)
+    except AuthConfigurationError as exc:
+        raise RuntimeConfigurationError(str(exc)) from exc
     return ApiRuntimeConfig(
         environment=environment,
         release_identity=release,
@@ -247,6 +255,9 @@ def load_api_runtime_config(environ: Mapping[str, str]) -> ApiRuntimeConfig:
         cursor_signing_key=cursor_key,
         idempotency_retention=retention,
         runtime_database_connect_timeout_seconds=connect_timeout,
+        auth_issuer=auth.issuer,
+        auth_audience=auth.audience,
+        auth_jwks_uri=auth.jwks_uri,
     )
 
 

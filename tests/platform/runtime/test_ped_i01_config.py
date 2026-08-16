@@ -38,6 +38,11 @@ from aieos.platform.runtime.config import (
     ENV_SCHEMA_OWNER_ROLE,
     ENV_SECURITY_SCHEMA_OWNER_ROLE,
 )
+from aieos.platform.security.auth_config import (
+    ENV_AUTH_AUDIENCE,
+    ENV_AUTH_ISSUER,
+    ENV_AUTH_JWKS_URI,
+)
 from aieos.platform.runtime.readiness import ReadinessCode, ReadinessResult
 from aieos.platform.runtime.activation import (
     MutationActivationDecision,
@@ -77,6 +82,9 @@ REQUIRED_ENV_NAMES = (
     ENV_CURSOR_SIGNING_KEY_B64,
     ENV_IDEMPOTENCY_RETENTION_SECONDS,
     ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS,
+    ENV_AUTH_ISSUER,
+    ENV_AUTH_AUDIENCE,
+    ENV_AUTH_JWKS_URI,
 )
 
 
@@ -123,6 +131,9 @@ def _valid_environ(
         ENV_CURSOR_SIGNING_KEY_B64: cursor_b64,
         ENV_IDEMPOTENCY_RETENTION_SECONDS: retention,
         ENV_RUNTIME_DATABASE_CONNECT_TIMEOUT_SECONDS: connect_timeout,
+        ENV_AUTH_ISSUER: "https://issuer.example.test/",
+        ENV_AUTH_AUDIENCE: "aieos-api",
+        ENV_AUTH_JWKS_URI: "https://issuer.example.test/.well-known/jwks.json",
     }
 
 
@@ -148,6 +159,12 @@ class TestValidConfigLoad:
         assert config.idempotency_retention == timedelta(seconds=86400)
         assert config.runtime_database_connect_timeout_seconds == 5
         assert config.cursor_signing_key == SECRET_CURSOR_KEY
+        assert config.auth_issuer == "https://issuer.example.test/"
+        assert config.auth_audience == "aieos-api"
+        assert (
+            config.auth_jwks_uri
+            == "https://issuer.example.test/.well-known/jwks.json"
+        )
         _assert_no_secret_leak(repr(config))
         _assert_no_secret_leak(str(config))
 

@@ -56,6 +56,9 @@ class ApiRuntimeConfig:
     cursor_signing_key: bytes
     idempotency_retention: timedelta
     runtime_database_connect_timeout_seconds: int
+    auth_issuer: str
+    auth_audience: str
+    auth_jwks_uri: str
 
     def __repr__(self) -> str:
         return (
@@ -70,7 +73,10 @@ class ApiRuntimeConfig:
             "cursor_signing_key=<redacted>, "
             f"idempotency_retention={self.idempotency_retention!r}, "
             "runtime_database_connect_timeout_seconds="
-            f"{self.runtime_database_connect_timeout_seconds!r}"
+            f"{self.runtime_database_connect_timeout_seconds!r}, "
+            f"auth_issuer={self.auth_issuer!r}, "
+            f"auth_audience={self.auth_audience!r}, "
+            f"auth_jwks_uri={self.auth_jwks_uri!r}"
             ")"
         )
 
