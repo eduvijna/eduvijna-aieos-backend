@@ -15,6 +15,13 @@ from aieos.domains.content.application.errors import (
     PublicationForbidden,
     ReviewForbidden,
 )
+from aieos.domains.content.application.ports import (
+    CONTENT_MIGRATE_IMPORT,
+    CONTENT_PUBLISH,
+    CONTENT_REVIEW_DECIDE,
+    CONTENT_REVIEW_SUBMIT,
+    CONTENT_VERSION_CREATE,
+)
 from aieos.platform.security.authorization import (
     AIEOS_CONTENT_CAPABILITIES,
     AuthorizationKernel,
@@ -26,16 +33,12 @@ from aieos.platform.security.authorization import (
     KernelReviewAuthorization,
 )
 from aieos.platform.security.authorization.decisions import (
-    CONTENT_MIGRATE_IMPORT,
-    CONTENT_PUBLISH,
-    CONTENT_REVIEW_DECIDE,
-    CONTENT_REVIEW_SUBMIT,
-    CONTENT_VERSION_CREATE,
     GrantStatus,
     MembershipStatus,
     PrincipalStatus,
     TenantStatus,
 )
+from aieos.platform.security.authorization.kernel import validate_known_capabilities
 from aieos.platform.security.context import (
     AuthorizationUnavailableError,
     UnauthorizedError,
@@ -377,6 +380,50 @@ class TestCurrentAuthorityNoCache:
                 principal_id=principal,
                 tenant_id=tenant,
                 capability=CONTENT_PUBLISH,
+            )
+            is AuthorityDecision.DENY
+        )
+
+
+class TestWildcardFailClosed:
+    def test_known_capabilities_rejects_star(self) -> None:
+        with pytest.raises(ValueError, match="wildcard"):
+            validate_known_capabilities({"content.publish", "*"})
+        with pytest.raises(ValueError, match="wildcard"):
+            AuthorizationKernel(
+                create_engine("postgresql+psycopg://unused/unused"),
+                known_capabilities=AIEOS_CONTENT_CAPABILITIES | {"*"},
+            )
+
+    def test_known_capabilities_rejects_prefix_wildcard(self) -> None:
+        with pytest.raises(ValueError, match="wildcard"):
+            validate_known_capabilities({"content.*"})
+        with pytest.raises(ValueError, match="wildcard"):
+            AuthorizationKernel(
+                create_engine("postgresql+psycopg://unused/unused"),
+                known_capabilities={"content.review.*"},
+            )
+
+    def test_decide_capability_star_never_allow(
+        self, bootstrap_engine, runtime_engine
+    ) -> None:
+        tenant = uuid.uuid7()
+        principal = uuid.uuid7()
+        seed_active_authority(
+            bootstrap_engine, tenant_id=tenant, principal_id=principal
+        )
+        kernel = _kernel(runtime_engine)
+        assert (
+            kernel.decide_capability(
+                principal_id=principal, tenant_id=tenant, capability="*"
+            )
+            is AuthorityDecision.DENY
+        )
+        assert (
+            kernel.decide_capability(
+                principal_id=principal,
+                tenant_id=tenant,
+                capability="content.*",
             )
             is AuthorityDecision.DENY
         )

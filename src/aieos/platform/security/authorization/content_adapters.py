@@ -1,4 +1,9 @@
-"""Content authorization port adapters backed by AuthorizationKernel."""
+"""Content authorization port adapters backed by AuthorizationKernel.
+
+Content capability vocabulary is owned by
+``aieos.domains.content.application.ports`` — this module composes the
+injected catalog from those canonical constants and does not redefine them.
+"""
 
 from __future__ import annotations
 
@@ -10,17 +15,28 @@ from aieos.domains.content.application.errors import (
     PublicationForbidden,
     ReviewForbidden,
 )
-from aieos.domains.content.domain.identities import ContentId, ContentVersionId
-from aieos.platform.security.authorization.decisions import (
+from aieos.domains.content.application.ports import (
     CONTENT_MIGRATE_IMPORT,
     CONTENT_PUBLISH,
     CONTENT_REVIEW_DECIDE,
     CONTENT_REVIEW_SUBMIT,
     CONTENT_VERSION_CREATE,
-    AuthorityDecision,
 )
+from aieos.domains.content.domain.identities import ContentId, ContentVersionId
+from aieos.platform.security.authorization.decisions import AuthorityDecision
 from aieos.platform.security.authorization.kernel import AuthorizationKernel
 from aieos.platform.security.context import AuthorizationUnavailableError
+
+# Code-governed Content capability catalog (composition only; not a DB catalog).
+AIEOS_CONTENT_CAPABILITIES: frozenset[str] = frozenset(
+    {
+        CONTENT_REVIEW_SUBMIT,
+        CONTENT_REVIEW_DECIDE,
+        CONTENT_PUBLISH,
+        CONTENT_VERSION_CREATE,
+        CONTENT_MIGRATE_IMPORT,
+    }
+)
 
 _REVIEW_CAPABILITIES = frozenset({CONTENT_REVIEW_SUBMIT, CONTENT_REVIEW_DECIDE})
 

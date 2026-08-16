@@ -125,7 +125,83 @@ def test_migration_revision_chain() -> None:
     assert "security.tenants" in mig
     assert "security.tenant_memberships" in mig
     assert "security.capability_grants" in mig
+    assert "ck_security_capability_grants_capability_no_wildcard" in mig
+    assert "position('*' in capability) = 0" in mig
     assert "CREATE SCHEMA security" not in mig
+
+
+def test_content_capability_vocabulary_owned_by_ports_not_decisions() -> None:
+    """Ownership gate: generic decisions.py must not redefine Content constants."""
+    decisions_path = AUTHZ_ROOT / "decisions.py"
+    decisions = decisions_path.read_text(encoding="utf-8")
+    for name in (
+        "CONTENT_REVIEW_SUBMIT",
+        "CONTENT_REVIEW_DECIDE",
+        "CONTENT_PUBLISH",
+        "CONTENT_VERSION_CREATE",
+        "CONTENT_MIGRATE_IMPORT",
+        "AIEOS_CONTENT_CAPABILITIES",
+    ):
+        assert f"{name} =" not in decisions
+    assert '"content.review.submit"' not in decisions
+    assert '"content.publish"' not in decisions
+
+    decisions_tree = ast.parse(decisions, filename=str(decisions_path))
+    for node in ast.walk(decisions_tree):
+        modules: list[str] = []
+        if isinstance(node, ast.Import):
+            modules = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            modules = [node.module]
+        for name in modules:
+            assert not name.startswith("aieos.domains.content")
+
+    kernel_src = (AUTHZ_ROOT / "kernel.py").read_text(encoding="utf-8")
+    kernel_tree = ast.parse(kernel_src, filename=str(AUTHZ_ROOT / "kernel.py"))
+    for node in ast.walk(kernel_tree):
+        modules = []
+        if isinstance(node, ast.Import):
+            modules = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            modules = [node.module]
+        for name in modules:
+            assert not name.startswith("aieos.domains.content")
+    assert "CONTENT_REVIEW_SUBMIT" not in kernel_src
+
+    adapters = (AUTHZ_ROOT / "content_adapters.py").read_text(encoding="utf-8")
+    assert "from aieos.domains.content.application.ports import" in adapters
+    for name in (
+        "CONTENT_REVIEW_SUBMIT",
+        "CONTENT_REVIEW_DECIDE",
+        "CONTENT_PUBLISH",
+        "CONTENT_VERSION_CREATE",
+        "CONTENT_MIGRATE_IMPORT",
+    ):
+        assert name in adapters
+    # Catalog is composed from imported symbols, not parallel string literals.
+    assert "AIEOS_CONTENT_CAPABILITIES: frozenset[str] = frozenset(" in adapters
+    assert '"content.review.submit"' not in adapters
+    assert '"content.publish"' not in adapters
+
+    from aieos.domains.content.application import ports as content_ports
+    from aieos.platform.security.authorization.content_adapters import (
+        AIEOS_CONTENT_CAPABILITIES,
+    )
+
+    assert AIEOS_CONTENT_CAPABILITIES == frozenset(
+        {
+            content_ports.CONTENT_REVIEW_SUBMIT,
+            content_ports.CONTENT_REVIEW_DECIDE,
+            content_ports.CONTENT_PUBLISH,
+            content_ports.CONTENT_VERSION_CREATE,
+            content_ports.CONTENT_MIGRATE_IMPORT,
+        }
+    )
+    # Package re-exports must be the same objects as ports (single source of truth).
+    from aieos.platform.security import authorization as authz_pkg
+
+    assert authz_pkg.CONTENT_PUBLISH is content_ports.CONTENT_PUBLISH
+    assert authz_pkg.CONTENT_REVIEW_SUBMIT is content_ports.CONTENT_REVIEW_SUBMIT
 
 
 def test_no_external_authorization_sdk_imports_or_deps() -> None:

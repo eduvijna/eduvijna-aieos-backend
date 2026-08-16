@@ -76,7 +76,10 @@ Disposable local test PostgreSQL execution is allowed for verification.
 ## Exact capability model
 
 Code-governed Content capability catalog (injected into the kernel; not a DB
-catalog):
+catalog). Canonical string constants are owned by
+`aieos.domains.content.application.ports`. The Content adapter layer composes
+`AIEOS_CONTENT_CAPABILITIES` from those constants. Generic `decisions.py` /
+`kernel.py` do **not** redefine Content capability strings.
 
 - `content.review.submit`
 - `content.review.decide`
@@ -84,8 +87,21 @@ catalog):
 - `content.version.create`
 - `content.migrate.import`
 
-Unknown capability → **DENY**. Stored `*` never implies all capabilities.
-No prefix wildcards (`content.*`, `*.publish`).
+Unknown capability → **DENY**.
+
+### Wildcard capability identifiers are invalid
+
+Any capability containing `*` is **never** valid authority — including `*`,
+`content.*`, `*.publish`, and `content.review.*`.
+
+Hardening:
+
+- DB CHECK on `security.capability_grants` rejects capability values containing `*`
+- `AuthorizationKernel` rejects known-capability catalogs that include `*`
+- `decide_capability` returns **DENY** before authority lookup when the
+  requested capability contains `*`
+
+No prefix/glob/wildcard semantics are implemented.
 
 ## Embedded kernel modules
 

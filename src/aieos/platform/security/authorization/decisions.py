@@ -1,4 +1,9 @@
-"""ADR-AIEOS-031 authorization decision vocabulary and status constants."""
+"""ADR-AIEOS-031 authorization decision vocabulary and status constants.
+
+Generic Authorization Kernel concepts only. Content capability strings are
+owned by ``aieos.domains.content.application.ports`` and must not be redefined
+here.
+"""
 
 from __future__ import annotations
 
@@ -33,21 +38,3 @@ class MembershipStatus(StrEnum):
 class GrantStatus(StrEnum):
     ACTIVE = "ACTIVE"
     REVOKED = "REVOKED"
-
-
-# Content capability vocabulary (code-governed; not DB catalog).
-CONTENT_REVIEW_SUBMIT = "content.review.submit"
-CONTENT_REVIEW_DECIDE = "content.review.decide"
-CONTENT_PUBLISH = "content.publish"
-CONTENT_VERSION_CREATE = "content.version.create"
-CONTENT_MIGRATE_IMPORT = "content.migrate.import"
-
-AIEOS_CONTENT_CAPABILITIES: frozenset[str] = frozenset(
-    {
-        CONTENT_REVIEW_SUBMIT,
-        CONTENT_REVIEW_DECIDE,
-        CONTENT_PUBLISH,
-        CONTENT_VERSION_CREATE,
-        CONTENT_MIGRATE_IMPORT,
-    }
-)

@@ -10,12 +10,12 @@ from alembic import command
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from aieos.domains.content.application.ports import CONTENT_PUBLISH
 from aieos.platform.security.authorization import (
     AIEOS_CONTENT_CAPABILITIES,
     AuthorizationKernel,
     AuthorityDecision,
 )
-from aieos.platform.security.authorization.decisions import CONTENT_PUBLISH
 from tests.conftest import alembic_config, provision_runtime_grants
 from tests.dbutil import set_tenant
 from tests.platform.security.authorization.helpers import (
@@ -344,19 +344,108 @@ class TestRls:
                 ).scalar_one()
                 assert found == principal
 
-    def test_wildcard_grant_is_not_authority(
-        self, bootstrap_engine, runtime_engine
-    ) -> None:
+    def test_db_rejects_wildcard_capabilities(self, bootstrap_engine) -> None:
         tenant = uuid.uuid7()
         principal = uuid.uuid7()
         seed_active_authority(
             bootstrap_engine, tenant_id=tenant, principal_id=principal
         )
-        seed_grant(
+        for capability in ("*", "content.*", "*.publish", "content.review.*"):
+            with bootstrap_engine.begin() as conn:
+                with pytest.raises((IntegrityError, DBAPIError)):
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO security.capability_grants (
+                                tenant_id, principal_id, capability, status,
+                                created_at, updated_at
+                            ) VALUES (
+                                :tenant_id, :principal_id, :capability, 'ACTIVE',
+                                clock_timestamp(), clock_timestamp()
+                            )
+                            """
+                        ),
+                        {
+                            "tenant_id": tenant,
+                            "principal_id": principal,
+                            "capability": capability,
+                        },
+                    )
+
+    def test_stored_wildcard_cannot_authorize_publish_even_if_constraint_bypassed(
+        self, bootstrap_engine, runtime_engine
+    ) -> None:
+        """Corrupt-state simulation: drop CHECK, insert '*', prove no authority."""
+        tenant = uuid.uuid7()
+        principal = uuid.uuid7()
+        seed_active_authority(
+            bootstrap_engine, tenant_id=tenant, principal_id=principal
+        )
+        with bootstrap_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE security.capability_grants DROP CONSTRAINT "
+                    "ck_security_capability_grants_capability_no_wildcard"
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO security.capability_grants (
+                        tenant_id, principal_id, capability, status,
+                        created_at, updated_at
+                    ) VALUES (
+                        :tenant_id, :principal_id, '*', 'ACTIVE',
+                        clock_timestamp(), clock_timestamp()
+                    )
+                    """
+                ),
+                {"tenant_id": tenant, "principal_id": principal},
+            )
+        try:
+            kernel = AuthorizationKernel(
+                runtime_engine, known_capabilities=AIEOS_CONTENT_CAPABILITIES
+            )
+            assert (
+                kernel.decide_capability(
+                    principal_id=principal,
+                    tenant_id=tenant,
+                    capability=CONTENT_PUBLISH,
+                )
+                is AuthorityDecision.DENY
+            )
+            assert (
+                kernel.decide_capability(
+                    principal_id=principal, tenant_id=tenant, capability="*"
+                )
+                is AuthorityDecision.DENY
+            )
+        finally:
+            with bootstrap_engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "DELETE FROM security.capability_grants "
+                        "WHERE capability LIKE '%*%'"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "ALTER TABLE security.capability_grants ADD CONSTRAINT "
+                        "ck_security_capability_grants_capability_no_wildcard "
+                        "CHECK (position('*' in capability) = 0)"
+                    )
+                )
+
+    def test_exact_publish_grant_still_allows(
+        self, bootstrap_engine, runtime_engine
+    ) -> None:
+        tenant = uuid.uuid7()
+        principal = uuid.uuid7()
+        seed_active_authority(
             bootstrap_engine,
             tenant_id=tenant,
             principal_id=principal,
-            capability="*",
+            capabilities=(CONTENT_PUBLISH,),
         )
         kernel = AuthorizationKernel(
             runtime_engine, known_capabilities=AIEOS_CONTENT_CAPABILITIES
@@ -366,24 +455,6 @@ class TestRls:
                 principal_id=principal,
                 tenant_id=tenant,
                 capability=CONTENT_PUBLISH,
-            )
-            is AuthorityDecision.DENY
-        )
-        # Even if "*" were somehow known, it must not authorize other capabilities.
-        widened = AuthorizationKernel(
-            runtime_engine, known_capabilities=AIEOS_CONTENT_CAPABILITIES | {"*"}
-        )
-        assert (
-            widened.decide_capability(
-                principal_id=principal,
-                tenant_id=tenant,
-                capability=CONTENT_PUBLISH,
-            )
-            is AuthorityDecision.DENY
-        )
-        assert (
-            widened.decide_capability(
-                principal_id=principal, tenant_id=tenant, capability="*"
             )
             is AuthorityDecision.ALLOW
         )

@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
+from aieos.domains.content.application.ports import (
+    CONTENT_MIGRATE_IMPORT,
+    CONTENT_PUBLISH,
+    CONTENT_REVIEW_DECIDE,
+    CONTENT_REVIEW_SUBMIT,
+    CONTENT_VERSION_CREATE,
+)
 from aieos.platform.security.authorization.content_adapters import (
+    AIEOS_CONTENT_CAPABILITIES,
     KernelAIGenerationAuthorization,
     KernelContentMigrationAuthorization,
     KernelPublicationAuthorization,
     KernelReviewAuthorization,
 )
 from aieos.platform.security.authorization.decisions import (
-    AIEOS_CONTENT_CAPABILITIES,
-    CONTENT_MIGRATE_IMPORT,
-    CONTENT_PUBLISH,
-    CONTENT_REVIEW_DECIDE,
-    CONTENT_REVIEW_SUBMIT,
-    CONTENT_VERSION_CREATE,
     AuthorityDecision,
     GrantStatus,
     MembershipStatus,

@@ -30,6 +30,10 @@ from aieos.platform.security.auth_config import (
     AuthRuntimeConfig,
 )
 from aieos.platform.security.authority import CurrentAuthoritySecurityContextResolver
+from aieos.domains.content.application.ports import (
+    CONTENT_PUBLISH,
+    CONTENT_REVIEW_SUBMIT,
+)
 from aieos.platform.security.authorization import (
     AIEOS_CONTENT_CAPABILITIES,
     AuthorizationKernel,
@@ -38,8 +42,6 @@ from aieos.platform.security.authorization import (
     KernelReviewAuthorization,
 )
 from aieos.platform.security.authorization.decisions import (
-    CONTENT_PUBLISH,
-    CONTENT_REVIEW_SUBMIT,
     PrincipalStatus,
     TenantStatus,
 )

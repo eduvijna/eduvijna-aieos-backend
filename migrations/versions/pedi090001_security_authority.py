@@ -106,7 +106,9 @@ UPGRADE_STATEMENTS: tuple[str, ...] = (
         CONSTRAINT ck_security_capability_grants_status
             CHECK (status IN ('ACTIVE', 'REVOKED')),
         CONSTRAINT ck_security_capability_grants_capability_nonempty
-            CHECK (btrim(capability) <> '')
+            CHECK (btrim(capability) <> ''),
+        CONSTRAINT ck_security_capability_grants_capability_no_wildcard
+            CHECK (position('*' in capability) = 0)
     )
     """,
     "CREATE INDEX ix_security_tenant_memberships_principal "
