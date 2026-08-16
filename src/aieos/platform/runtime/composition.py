@@ -25,6 +25,7 @@ from aieos.platform.runtime.activation import (
 from aieos.platform.runtime.health import register_operational_health_routes
 from aieos.platform.runtime.models import ApiRuntimeConfig, ReleaseIdentity
 from aieos.platform.runtime.readiness import ApiReadinessProbe
+from aieos.platform.security.authenticator import RequestIdentityAuthenticator
 from aieos.platform.security.context import SecurityContextResolver
 
 
@@ -36,6 +37,7 @@ class ApiRuntimeDependencies:
     """
 
     uow_factory: ContentUnitOfWorkFactory
+    request_identity_authenticator: RequestIdentityAuthenticator
     security_resolver: SecurityContextResolver
     content_types: ContentTypeCatalog
     schema_registry: ContentSchemaRegistry
@@ -61,6 +63,7 @@ def compose_api_application(
     """
     app = create_app(
         uow_factory=dependencies.uow_factory,
+        request_identity_authenticator=dependencies.request_identity_authenticator,
         security_resolver=dependencies.security_resolver,
         content_types=dependencies.content_types,
         cursor_signing_key=config.cursor_signing_key,

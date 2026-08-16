@@ -60,13 +60,18 @@ Do **not** install `uvicorn[standard]`, gunicorn, uvicorn-worker, or hypercorn.
 ## Why this is not the product image
 
 `compose_api_application(...)` still requires trusted production ports
-(SecurityContextResolver, authorization/governance ports, readiness, mutation
-gate, etc.). PED-I06 must **not** fill those gaps with test fakes, allow-all
-adapters, or header-trusting identity.
+(explicit request identity authenticator, SecurityContextResolver wired to a
+current tenant-access authority, authorization/governance ports, readiness,
+mutation gate, etc.). PED-I06 must **not** fill those gaps with test fakes,
+allow-all adapters, or header-trusting identity.
+
+PED-I07 establishes the request-identity / SecurityContext foundation ports and
+resolver, but the PED-I06 OCI runtime probe remains **NON_PRODUCTION** and must
+not become the product image.
 
 Therefore:
 
-- no production SecurityContextResolver
+- no production RequestIdentityAuthenticator implementation in the probe image
 - no permissive bootstrap application
 - no product API default CMD in the probe image
 - default CMD may only perform a non-serving probe (e.g. `uvicorn --version`)
@@ -129,4 +134,6 @@ decision. PED-I06 does not mutate branch protection.
 - production mutation remains **NOT AUTHORIZED**
 - production migration remains **NOT AUTHORIZED**
 
-PED-I07+ remains **NOT AUTHORIZED** until separately gated.
+PED-I07 establishes the trusted request-identity / current-tenant
+SecurityContext foundation, but this OCI probe remains NON_PRODUCTION.
+PED-I08+ remains **NOT AUTHORIZED** until separately gated.

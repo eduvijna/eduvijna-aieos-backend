@@ -57,4 +57,5 @@ markers = [
     "ped_i03: Fail-closed API mutation activation safety interlock",
     "ped_i04: CI quality gates and immutable verified build bundle foundation",
     "ped_i06: ASGI server and NON_PRODUCTION OCI runtime viability foundation",
+    "ped_i07: Trusted request identity and current-tenant SecurityContext foundation",
 ]

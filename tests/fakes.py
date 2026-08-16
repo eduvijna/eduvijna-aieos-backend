@@ -24,13 +24,45 @@ from aieos.platform.security.context import (
     UnauthenticatedError,
     UnauthorizedError,
 )
+from aieos.platform.security.identity import TrustedRequestIdentity
 from tests.domains.content.domain.fakes import TEST_GENERIC_V1, TestFixtureSchema
 
 IDEMPOTENCY_RETENTION = timedelta(hours=24)
 
 
+class FixedPrincipalAuthenticator:
+    """Test-only authenticator. Not a production IdP adapter."""
+
+    def __init__(
+        self,
+        principal_id: UUID,
+        *,
+        unauthenticated: bool = False,
+        unavailable: bool = False,
+        unavailable_secret: str | None = None,
+    ) -> None:
+        self.principal_id = principal_id
+        self.unauthenticated = unauthenticated
+        self.unavailable = unavailable
+        self.unavailable_secret = unavailable_secret
+
+    def authenticate(self, request) -> TrustedRequestIdentity:
+        if self.unavailable:
+            if self.unavailable_secret is not None:
+                raise RuntimeError(self.unavailable_secret)
+            from aieos.platform.security.context import AuthenticationUnavailableError
+
+            raise AuthenticationUnavailableError("authentication unavailable")
+        if self.unauthenticated:
+            raise UnauthenticatedError("not authenticated")
+        return TrustedRequestIdentity(principal_id=self.principal_id)
+
+
 class StubSecurityContextResolver:
-    """Authorized tenant is independent of the caller-supplied tenant header."""
+    """Authorized tenant is independent of the caller-supplied tenant header.
+
+    Consumes TrustedRequestIdentity explicitly. Does not read HTTP headers.
+    """
 
     def __init__(
         self,
@@ -43,7 +75,12 @@ class StubSecurityContextResolver:
         self.principal_id = principal_id
         self.unauthenticated = unauthenticated
 
-    def resolve(self, requested_tenant_id: UUID | None) -> TrustedSecurityContext:
+    def resolve(
+        self,
+        *,
+        identity: TrustedRequestIdentity,
+        requested_tenant_id: UUID | None,
+    ) -> TrustedSecurityContext:
         if self.unauthenticated:
             raise UnauthenticatedError("not authenticated")
         if requested_tenant_id is None:
@@ -52,8 +89,65 @@ class StubSecurityContextResolver:
             raise UnauthorizedError("not authorized for requested tenant")
         return TrustedSecurityContext(
             tenant_id=self.authorized_tenant_id,
-            principal_id=self.principal_id,
+            principal_id=identity.principal_id,
         )
+
+
+class MutableCurrentTenantAccessAuthority:
+    """Test-only current tenant-access authority. Supports revoke/suspend."""
+
+    def __init__(
+        self,
+        allowed: set[tuple[UUID, UUID]] | None = None,
+        *,
+        suspended_tenants: set[UUID] | None = None,
+        unavailable: bool = False,
+        unavailable_secret: str | None = None,
+    ) -> None:
+        self.allowed = allowed or set()
+        self.suspended_tenants = suspended_tenants or set()
+        self.unavailable = unavailable
+        self.unavailable_secret = unavailable_secret
+        self.calls: list[tuple[UUID, UUID]] = []
+
+    def grant(self, principal_id: UUID, tenant_id: UUID) -> None:
+        self.allowed.add((principal_id, tenant_id))
+        self.suspended_tenants.discard(tenant_id)
+
+    def revoke(self, principal_id: UUID, tenant_id: UUID) -> None:
+        self.allowed.discard((principal_id, tenant_id))
+
+    def suspend(self, tenant_id: UUID) -> None:
+        self.suspended_tenants.add(tenant_id)
+
+    def authorize_tenant(self, *, principal_id: UUID, tenant_id: UUID) -> None:
+        self.calls.append((principal_id, tenant_id))
+        if self.unavailable:
+            if self.unavailable_secret is not None:
+                raise RuntimeError(self.unavailable_secret)
+            from aieos.platform.security.context import AuthorizationUnavailableError
+
+            raise AuthorizationUnavailableError("tenant authority unavailable")
+        if tenant_id in self.suspended_tenants:
+            raise UnauthorizedError("tenant suspended")
+        if (principal_id, tenant_id) not in self.allowed:
+            raise UnauthorizedError("not authorized for requested tenant")
+
+
+class RecordingUowFactory:
+    """Counts UoW factory invocations for zero-persistence failure proofs."""
+
+    def __init__(self, inner=None) -> None:
+        self.inner = inner
+        self.calls = 0
+        self.tenants: list[UUID] = []
+
+    def __call__(self, execution_tenant_id):
+        self.calls += 1
+        self.tenants.append(execution_tenant_id)
+        if self.inner is None:
+            raise RuntimeError("recording-uow-stop")
+        return self.inner(execution_tenant_id)
 
 
 SENSITIVE_TEST_COMMENT = "SENSITIVE_TEST_COMMENT"

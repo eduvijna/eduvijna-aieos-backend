@@ -37,6 +37,7 @@ from tests.fakes import (
     AllowPublicationAuthorization,
     AllowPublicationGovernance,
     IDEMPOTENCY_RETENTION,
+    FixedPrincipalAuthenticator,
     StubSecurityContextResolver,
     make_test_schema_registry,
 )
@@ -56,6 +57,7 @@ APPEND_BODY = {"schema_id": "test.generic", "schema_version": 1, "payload": {"ma
 def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID):
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+        request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog({"test.generic"}),
         cursor_signing_key=CURSOR_KEY,
@@ -275,6 +277,7 @@ class TestAppendContract:
         principal_id = uuid.uuid7()
         app = create_app(
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
             security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
             content_types=StaticContentTypeCatalog({"test.generic"}),
             cursor_signing_key=CURSOR_KEY,
@@ -530,6 +533,7 @@ class TestIdempotencyHttp:
         drifted = TestClient(
             create_app(
                 uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+                request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
                 security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
                 content_types=StaticContentTypeCatalog({"other.type"}),
                 cursor_signing_key=CURSOR_KEY,

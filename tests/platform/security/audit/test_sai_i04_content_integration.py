@@ -71,6 +71,7 @@ from tests.fakes import (
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
     IDEMPOTENCY_RETENTION,
+    FixedPrincipalAuthenticator,
     StubSecurityContextResolver,
     make_test_schema_registry,
 )
@@ -121,6 +122,7 @@ def _client(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID) -> Test
     return TestClient(
         create_app(
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
             security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
             content_types=StaticContentTypeCatalog({"test.generic"}),
             cursor_signing_key=CURSOR_KEY,

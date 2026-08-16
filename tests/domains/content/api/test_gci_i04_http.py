@@ -28,6 +28,7 @@ from tests.fakes import (
     AllowPublicationAuthorization,
     AllowPublicationGovernance,
     IDEMPOTENCY_RETENTION,
+    FixedPrincipalAuthenticator,
     StubSecurityContextResolver,
     make_test_schema_registry,
 )
@@ -56,6 +57,7 @@ LEAK_NEEDLES = (
 def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID, **resolver_kw):
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+        request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(
             tenant_id, principal_id, **resolver_kw
         ),

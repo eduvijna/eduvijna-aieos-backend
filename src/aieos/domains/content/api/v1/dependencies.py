@@ -18,16 +18,39 @@ from aieos.domains.content.application.review_queue import (
 )
 from aieos.platform.api.context import TENANT_ID_HEADER, parse_requested_tenant_id
 from aieos.platform.api.pagination import CursorCodec
-from aieos.platform.security.context import SecurityContextResolver, TrustedSecurityContext
+from aieos.platform.security.authenticator import RequestIdentityAuthenticator
+from aieos.platform.security.context import (
+    AuthenticationUnavailableError,
+    SecurityContextResolver,
+    TrustedSecurityContext,
+    UnauthenticatedError,
+)
 
 
 def resolve_trusted_context(
     request: Request,
     x_aieos_tenant_id: Annotated[str | None, Header(alias=TENANT_ID_HEADER)] = None,
 ) -> TrustedSecurityContext:
-    resolver: SecurityContextResolver = request.app.state.security_resolver
+    """Authenticate then resolve current-tenant TrustedSecurityContext.
+
+    Order: (1) parse requested tenant header, (2) authenticate via the explicit
+    authenticator, (3) resolve with trusted identity + requested tenant.
+    Client tenant/principal/role headers are not authority.
+    """
     requested = parse_requested_tenant_id(x_aieos_tenant_id)
-    return resolver.resolve(requested_tenant_id=requested)
+    authenticator: RequestIdentityAuthenticator = (
+        request.app.state.request_identity_authenticator
+    )
+    resolver: SecurityContextResolver = request.app.state.security_resolver
+    try:
+        identity = authenticator.authenticate(request)
+    except UnauthenticatedError:
+        raise
+    except AuthenticationUnavailableError:
+        raise
+    except Exception as exc:
+        raise AuthenticationUnavailableError("authentication unavailable") from exc
+    return resolver.resolve(identity=identity, requested_tenant_id=requested)
 
 
 def create_content_service(request: Request) -> CreateContentService:

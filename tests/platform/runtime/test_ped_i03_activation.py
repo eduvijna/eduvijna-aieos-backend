@@ -61,6 +61,7 @@ from tests.fakes import (
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
     IDEMPOTENCY_RETENTION,
+    FixedPrincipalAuthenticator,
     StubSecurityContextResolver,
     make_test_schema_registry,
 )
@@ -133,6 +134,7 @@ def _compose(
     *,
     gate,
     uow_factory,
+    request_identity_authenticator=None,
     security_resolver=None,
     review_authorization=None,
     publication_authorization=None,
@@ -144,6 +146,8 @@ def _compose(
             config,
             ApiRuntimeDependencies(
                 uow_factory=uow_factory,
+                request_identity_authenticator=request_identity_authenticator
+                or FixedPrincipalAuthenticator(principal),
                 security_resolver=security_resolver
                 or StubSecurityContextResolver(tenant, principal),
                 content_types=StaticContentTypeCatalog({"test.generic"}),
@@ -168,6 +172,7 @@ def _compose(
 def _ungated_app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID):
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+        request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog({"test.generic"}),
         cursor_signing_key=SECRET_CURSOR,
@@ -492,6 +497,7 @@ class TestBlockedSideEffects:
             config,
             gate=_DisabledGate(),
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            request_identity_authenticator=FixedPrincipalAuthenticator(seed_principal),
             security_resolver=StubSecurityContextResolver(
                 seed_tenant, seed_principal
             ),
@@ -558,6 +564,7 @@ class TestReadsAndHealthIndependence:
             config,
             gate=_DisabledGate(),
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            request_identity_authenticator=FixedPrincipalAuthenticator(seed_principal),
             security_resolver=StubSecurityContextResolver(
                 seed_tenant, seed_principal
             ),
@@ -620,6 +627,7 @@ class TestEnabledRegression:
             config,
             gate=gate,
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            request_identity_authenticator=FixedPrincipalAuthenticator(principal),
             security_resolver=StubSecurityContextResolver(tenant, principal),
         )
         client = TestClient(app, raise_server_exceptions=False)
@@ -642,6 +650,7 @@ class TestEnabledRegression:
             config,
             gate=gate,
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            request_identity_authenticator=FixedPrincipalAuthenticator(principal),
             security_resolver=StubSecurityContextResolver(tenant, principal),
             review_authorization=AllowReviewAuthorization(allow_submit=False),
         )
