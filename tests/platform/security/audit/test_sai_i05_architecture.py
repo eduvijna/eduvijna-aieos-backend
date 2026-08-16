@@ -30,6 +30,7 @@ from tests.fakes import (
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
     IDEMPOTENCY_RETENTION,
+    FixedPrincipalAuthenticator,
     StubSecurityContextResolver,
 )
 
@@ -465,6 +466,7 @@ class TestMigrationChainAndOpenApi:
         def schema() -> dict:
             app = create_app(
                 uow_factory=_UnusedUowFactory(),
+                request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
                 security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
                 content_types=StaticContentTypeCatalog({"test.generic"}),
                 cursor_signing_key=b"gci-i04-openapi-export-key",

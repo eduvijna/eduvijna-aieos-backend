@@ -55,6 +55,7 @@ from tests.fakes import (
     AllowPublicationGovernance,
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
+    FixedPrincipalAuthenticator,
     StubSecurityContextResolver,
     make_test_schema_registry,
 )
@@ -119,6 +120,7 @@ def _compose(config, probe, uow_factory) -> Any:
         config,
         ApiRuntimeDependencies(
             uow_factory=uow_factory,
+            request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
             security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
             content_types=StaticContentTypeCatalog({"test.generic"}),
             schema_registry=make_test_schema_registry(),

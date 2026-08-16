@@ -37,6 +37,7 @@ from aieos.platform.api.context import RequestContextMiddleware
 from aieos.platform.api.openapi import build_openapi
 from aieos.platform.api.pagination import CursorCodec
 from aieos.platform.api.problems import install_exception_handlers
+from aieos.platform.security.authenticator import RequestIdentityAuthenticator
 from aieos.platform.security.context import SecurityContextResolver
 
 _APP_DESCRIPTION = (
@@ -51,6 +52,7 @@ _APP_DESCRIPTION = (
 def create_app(
     *,
     uow_factory: ContentUnitOfWorkFactory,
+    request_identity_authenticator: RequestIdentityAuthenticator,
     security_resolver: SecurityContextResolver,
     content_types: ContentTypeCatalog,
     cursor_signing_key: bytes,
@@ -74,6 +76,7 @@ def create_app(
     install_exception_handlers(app)
     app.add_middleware(RequestContextMiddleware)
     app.include_router(content_v1_router)
+    app.state.request_identity_authenticator = request_identity_authenticator
     app.state.security_resolver = security_resolver
     app.state.cursor_codec = codec
     app.state.create_content_service = CreateContentService(

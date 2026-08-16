@@ -29,6 +29,7 @@ from tests.fakes import (
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
     IDEMPOTENCY_RETENTION,
+    FixedPrincipalAuthenticator,
     StubSecurityContextResolver,
     make_test_schema_registry,
 )
@@ -68,6 +69,7 @@ class _UnusedUow:
 def _minimal_app() -> FastAPI:
     return create_app(
         uow_factory=_UnusedUow(),
+        request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),
         cursor_signing_key=b"ped-i03-arch",

@@ -27,6 +27,7 @@ from tests.fakes import (
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
     IDEMPOTENCY_RETENTION,
+    FixedPrincipalAuthenticator,
     StubSecurityContextResolver,
     make_test_schema_registry,
 )
@@ -173,6 +174,7 @@ class TestArchitectureAbuse:
         tenant_id = uuid.uuid7()
         app = create_app(
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            request_identity_authenticator=FixedPrincipalAuthenticator(tenant_id),
             security_resolver=StubSecurityContextResolver(tenant_id, tenant_id),
             content_types=StaticContentTypeCatalog({"test.generic"}),
             cursor_signing_key=b"gci-i14-openapi",

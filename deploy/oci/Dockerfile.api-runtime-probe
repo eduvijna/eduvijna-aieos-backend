@@ -44,5 +44,6 @@ RUN uv python install 3.14.7 \
     && /opt/venv/bin/uvicorn --version
 
 # Default command is a non-serving runtime identity probe only.
-# Product API composition is intentionally absent (no trusted SecurityContextResolver yet).
+# Product API composition remains intentionally absent (PED-I07 foundation
+# ports exist, but no production authenticator / product CMD here).
 CMD ["uvicorn", "--version"]

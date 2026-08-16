@@ -63,7 +63,12 @@ from aieos.platform.api.http_errors import (
     PreconditionRequiredError,
 )
 from aieos.platform.api.pagination import InvalidCursorError
-from aieos.platform.security.context import UnauthenticatedError, UnauthorizedError
+from aieos.platform.security.context import (
+    AuthenticationUnavailableError,
+    AuthorizationUnavailableError,
+    UnauthenticatedError,
+    UnauthorizedError,
+)
 
 PROBLEM_JSON = "application/problem+json"
 PROBLEM_TYPE_PREFIX = "urn:aieos:problem:"
@@ -492,6 +497,30 @@ def install_exception_handlers(app) -> None:
             detail="Not authorized for the requested tenant",
         )
 
+    @app.exception_handler(AuthenticationUnavailableError)
+    async def authentication_unavailable_handler(
+        request: Request, exc: AuthenticationUnavailableError
+    ) -> JSONResponse:
+        return problem_response(
+            request,
+            status=503,
+            code="authentication_unavailable",
+            title="Authentication unavailable",
+            detail="Authentication is temporarily unavailable",
+        )
+
+    @app.exception_handler(AuthorizationUnavailableError)
+    async def authorization_unavailable_handler(
+        request: Request, exc: AuthorizationUnavailableError
+    ) -> JSONResponse:
+        return problem_response(
+            request,
+            status=503,
+            code="authorization_unavailable",
+            title="Authorization unavailable",
+            detail="Authorization is temporarily unavailable",
+        )
+
     @app.exception_handler(InvalidTenantHeaderError)
     async def tenant_header_handler(
         request: Request, exc: InvalidTenantHeaderError
@@ -572,6 +601,8 @@ def install_exception_handlers(app) -> None:
                 ContentApplicationError,
                 UnauthenticatedError,
                 UnauthorizedError,
+                AuthenticationUnavailableError,
+                AuthorizationUnavailableError,
                 InvalidCursorError,
                 InvalidTenantHeaderError,
                 PreconditionRequiredError,

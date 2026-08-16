@@ -50,6 +50,7 @@ from tests.fakes import (
     AllowPublicationGovernance,
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
+    FixedPrincipalAuthenticator,
     StubSecurityContextResolver,
     make_test_schema_registry,
 )
@@ -344,6 +345,7 @@ class TestComposition:
     def _dependencies(self) -> ApiRuntimeDependencies:
         return ApiRuntimeDependencies(
             uow_factory=_UnusedUowFactory(),
+            request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
             security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
             content_types=StaticContentTypeCatalog({"test.generic"}),
             schema_registry=make_test_schema_registry(),
@@ -366,6 +368,7 @@ class TestComposition:
         ]
         assert "readiness_probe" in required
         assert "mutation_activation_gate" in required
+        assert "request_identity_authenticator" in required
         assert "security_resolver" in required
         assert "review_authorization" in required
         assert "publication_authorization" in required

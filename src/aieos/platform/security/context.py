@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from aieos.platform.security.identity import TrustedRequestIdentity
+
 
 class SecurityContextError(Exception):
     """Base error from a trusted security-context resolver."""
@@ -19,6 +21,18 @@ class UnauthorizedError(SecurityContextError):
     """The caller is not authorized for the requested tenant/context."""
 
 
+class AuthenticationUnavailableError(SecurityContextError):
+    """The authentication authority is temporarily unavailable."""
+
+
+class AuthorizationUnavailableError(SecurityContextError):
+    """The tenant-access authority is temporarily unavailable."""
+
+
+class TenantAuthorityUnavailableError(AuthorizationUnavailableError):
+    """Specialization: current tenant-access authority is unavailable."""
+
+
 @dataclass(frozen=True, slots=True)
 class TrustedSecurityContext:
     """Already-authorized tenant and actor. Header values are not authority."""
@@ -28,4 +42,9 @@ class TrustedSecurityContext:
 
 
 class SecurityContextResolver(Protocol):
-    def resolve(self, requested_tenant_id: UUID | None) -> TrustedSecurityContext: ...
+    def resolve(
+        self,
+        *,
+        identity: TrustedRequestIdentity,
+        requested_tenant_id: UUID | None,
+    ) -> TrustedSecurityContext: ...
