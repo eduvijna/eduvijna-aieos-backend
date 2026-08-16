@@ -19,7 +19,6 @@ CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 _FORBIDDEN_IMPORT_NEEDLES = (
     "tests.",
     "dotenv",
-    "uvicorn",
     "gunicorn",
     "hypercorn",
     "temporalio",
@@ -30,6 +29,9 @@ _FORBIDDEN_IMPORT_NEEDLES = (
     "google.cloud",
     "azure.",
 )
+
+# PED-I06 authorizes uvicorn ONLY in platform.runtime.asgi.
+_UVICORN_AUTHORIZED_RELATIVE = Path("asgi.py")
 
 
 def _py_files(root: Path) -> list[Path]:
@@ -56,6 +58,9 @@ def test_runtime_package_import_boundary() -> None:
         for needle in _FORBIDDEN_IMPORT_NEEDLES:
             assert needle not in text, f"{path}: {needle}"
             assert f"import {needle}" not in lower
+        # PED-I06: uvicorn allowed only in asgi.py; still forbidden elsewhere.
+        if path.name != _UVICORN_AUTHORIZED_RELATIVE.name:
+            assert "uvicorn" not in text, f"{path}: uvicorn only allowed in asgi.py"
         assert "StubSecurityContextResolver" not in text
         assert "AllowReviewAuthorization" not in text
         assert "AllowPublicationAuthorization" not in text
@@ -70,6 +75,19 @@ def test_runtime_package_import_boundary() -> None:
                 raise AssertionError(f"module-level app singleton in {path}: {line}")
 
 
+def test_uvicorn_confined_to_authorized_asgi_module() -> None:
+    asgi = RUNTIME_ROOT / "asgi.py"
+    assert asgi.is_file()
+    text = asgi.read_text(encoding="utf-8")
+    assert "import uvicorn" in text
+    assert "gunicorn" not in text
+    assert "hypercorn" not in text
+    for path in _py_files(RUNTIME_ROOT):
+        if path == asgi:
+            continue
+        other = path.read_text(encoding="utf-8")
+        assert "uvicorn" not in other, f"{path} must not import uvicorn"
+
 def test_no_mutation_activation_in_runtime_package() -> None:
     for path in _py_files(RUNTIME_ROOT):
         text = path.read_text(encoding="utf-8")
@@ -80,6 +98,8 @@ def test_no_mutation_activation_in_runtime_package() -> None:
 
 
 def test_no_ci_cd_or_container_artefacts_added() -> None:
+    # PED-I01 forbade root Dockerfile / prod compose / Helm / Terraform.
+    # PED-I06 adds only a governed NON_PRODUCTION probe under deploy/oci/.
     for name in ("Dockerfile", "docker-compose.prod.yml", "Chart.yaml", "main.tf"):
         assert not (REPO_ROOT / name).exists()
     # No PED-I01 CI workflows introduced

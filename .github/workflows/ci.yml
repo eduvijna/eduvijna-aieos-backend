@@ -38,6 +38,31 @@ jobs:
       - name: Full pytest suite
         run: uv run pytest -v
 
+  oci-runtime-probe:
+    name: oci-runtime-probe
+    needs:
+      - quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and smoke NON_PRODUCTION OCI runtime probe
+        run: |
+          set -euo pipefail
+          chmod +x tools/runtime/run_oci_runtime_probe.sh
+          tools/runtime/run_oci_runtime_probe.sh
+          {
+            echo "## PED-I06 OCI runtime probe"
+            echo ""
+            echo "- classification: NON_PRODUCTION_RUNTIME_PROBE"
+            echo "- result: PASSED (local build/smoke only; not published)"
+            echo "- deployable: false"
+            echo "- production_authorized: false"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   verified-build:
     name: verified-build
     needs:

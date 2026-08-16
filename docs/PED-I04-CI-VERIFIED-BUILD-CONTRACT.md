@@ -20,8 +20,8 @@ Path: `.github/workflows/ci.yml`
 
 | Trigger | Jobs |
 |---------|------|
-| `pull_request` | `quality-gate` only |
-| `push` to `main` | `quality-gate` → `verified-build` |
+| `pull_request` | `quality-gate` → `oci-runtime-probe` |
+| `push` to `main` | `quality-gate` → `oci-runtime-probe`; `quality-gate` → `verified-build` |
 
 Permissions: `contents: read` only. No secrets. No `pull_request_target`.
 Actions are pinned by full commit SHA. Checkout uses `persist-credentials: false`.
@@ -43,6 +43,13 @@ Gates:
 2. `uv sync --locked --group dev`
 3. `python -m compileall -q src tests migrations tools`
 4. full `pytest -v` (PostgreSQL 18 via existing ephemeral fixture strategy)
+
+## oci-runtime-probe
+
+Added by PED-I06. Runs after `quality-gate` on `pull_request` and `push` to
+`main`. Builds and smokes the governed NON_PRODUCTION OCI runtime probe locally
+in CI. Does not push to any registry. Branch-protection required-check status
+for this job is a later governance decision.
 
 ## verified-build
 
@@ -78,12 +85,17 @@ mutate repository branch-protection settings.
 
 ## Explicit non-goals
 
-- production deployment / OCI image / Dockerfile / GHCR / PyPI / GitHub Release
-- ASGI server / process entrypoint
+- production deployment / production OCI image / GHCR / PyPI / GitHub Release
+- production ASGI process entrypoint / product API composition
 - mutation activation changes (PED-I03 unchanged)
 - production migration
 - SBOM / attestation hard dependency
 - feature-flag platforms
+
+> **PED-I06 advancement:** PED-I06 supersedes the former "no ASGI / no OCI probe"
+> implementation boundary for a governed **NON_PRODUCTION** Uvicorn + OCI runtime
+> probe only. PED-I04 prohibitions on registry publication, deployment, production
+> artifact naming, mutation activation, and GitHub Release remain in force.
 
 ## Authorization status
 
@@ -91,4 +103,4 @@ mutate repository branch-protection settings.
 - production mutation remains **NOT AUTHORIZED**
 - production migration remains **NOT AUTHORIZED**
 
-PED-I05+ remains **NOT AUTHORIZED** until separately gated.
+PED-I07+ remains **NOT AUTHORIZED** until separately gated.
