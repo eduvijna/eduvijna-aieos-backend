@@ -16,7 +16,7 @@ from sqlalchemy.engine.url import make_url
 
 from aieos.platform.runtime.models import ApiRuntimeConfig
 
-EXPECTED_ALEMBIC_HEAD = "saii020001"
+EXPECTED_ALEMBIC_HEAD = "pedi090001"
 EXPECTED_POSTGRES_MAJOR = 18
 
 _CONTENT_OWNED_SCHEMAS = ("content", "api", "workflow", "integration")

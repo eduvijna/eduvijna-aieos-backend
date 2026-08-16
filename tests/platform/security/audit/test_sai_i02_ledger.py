@@ -202,7 +202,7 @@ class TestSaiI02SchemaAndRoles:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "saii020001"
+                == "pedi090001"
             )
             schema_owner = conn.execute(
                 text(
@@ -285,7 +285,7 @@ class TestSaiI02SchemaAndRoles:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "saii020001"
+                == "pedi090001"
             )
 
     def test_offline_sql_role_order(self) -> None:

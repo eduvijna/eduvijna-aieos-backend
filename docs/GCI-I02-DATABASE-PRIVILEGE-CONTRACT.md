@@ -37,13 +37,14 @@ AIEOS_SCHEMA_OWNER_ROLE=<content-schema-owner-role>
 AIEOS_SECURITY_SCHEMA_OWNER_ROLE=<security-schema-owner-role>
 ```
 
-The migration environment issues `SET LOCAL ROLE` to the content schema-owner role for the Generic Content chain. Revision `saii020001` switches to the security schema-owner for security DDL, then restores the content schema-owner before returning. Online migrations execute this on the migrator connection. Offline SQL generation emits the same role transitions. Named owner roles must already exist; Alembic does not `CREATE ROLE` for production.
+The migration environment issues `SET LOCAL ROLE` to the content schema-owner role for the Generic Content chain. Revisions `saii020001` and `pedi090001` switch to the security schema-owner for security DDL, then restore the content schema-owner before returning. Online migrations execute this on the migrator connection. Offline SQL generation emits the same role transitions. Named owner roles must already exist; Alembic does not `CREATE ROLE` for production.
 
 After upgrade:
 
 - `content` / `api` / `workflow` / `integration` schema owner == content schema-owner role
 - `security` schema owner == security schema-owner role (`AIEOS_SECURITY_SCHEMA_OWNER_ROLE`)
 - `security.audit_records` owner == security schema-owner role
+- `security.principals` / `tenants` / `tenant_memberships` / `capability_grants` owner == security schema-owner role (PED-I09)
 - `content.publications` owner == content schema-owner role
 - `content.version_asset_refs` owner == content schema-owner role
 - `integration.outbox_messages` owner == content schema-owner role
@@ -156,6 +157,25 @@ Runtime and content migration runtime:
 Privileged UPDATE/DELETE are blocked by an immutability trigger even for bootstrap/owner inspection paths used in tests.
 
 Production role creation/grants remain infrastructure/deployment work. Test fixtures may provision ephemeral identities; that does not complete production provisioning.
+
+### `security` current-authority tables (PED-I09)
+
+ADR-AIEOS-031 current authority SoR tables:
+
+- `security.principals`
+- `security.tenants`
+- `security.tenant_memberships`
+- `security.capability_grants`
+
+Ordinary API runtime may receive **read-only** grants for authorization evaluation:
+
+- `SELECT` on the four authority tables
+- `EXECUTE` on `security.current_tenant_id()`
+- **not** `INSERT` / `UPDATE` / `DELETE` / `TRUNCATE` (no runtime control-plane mutation)
+
+`security.tenants`, `security.tenant_memberships`, and `security.capability_grants` have ENABLE RLS and FORCE RLS scoped by `security.current_tenant_id()`. `security.principals` is global principal authority and does not use tenant RLS. Missing tenant context must fail closed on tenant-owned authority tables.
+
+These grants are **not** security administration APIs and do **not** authorize production migration execution.
 
 ### `public.alembic_version` (PED-I02 API readiness metadata)
 

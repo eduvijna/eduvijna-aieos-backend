@@ -103,10 +103,15 @@ these ports (see `docs/PED-I08-PRODUCTION-REQUEST-AUTHENTICATOR.md`).
 `/livez` and `/readyz` remain PED-I02 governed and must not require request
 authentication, tenant membership, or an authorization kernel.
 
+## Later slices
+
+PED-I08 adds the JWT Bearer production authenticator.
+PED-I09 adds the ADR-AIEOS-031 Authorization Kernel (see
+`docs/PED-I09-PRODUCTION-AUTHORIZATION-KERNEL.md`). This PED-I07 document is
+not rewritten as if PED-I09 existed at PED-I07 time.
+
 ## Authorization status
 
 - production deployment remains **NOT AUTHORIZED**
 - production mutation remains **NOT AUTHORIZED**
 - production migration remains **NOT AUTHORIZED**
-
-PED-I09+ remains **NOT AUTHORIZED** until separately gated.

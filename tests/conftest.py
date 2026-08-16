@@ -488,6 +488,22 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                     f"ON security.audit_records FROM {RUNTIME_USER}"
                 )
             )
+            # PED-I09: read-only current authority SoR (no grant/membership mutation).
+            conn.execute(
+                text(
+                    f"GRANT SELECT ON security.principals, security.tenants, "
+                    f"security.tenant_memberships, security.capability_grants "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER "
+                    f"ON security.principals, security.tenants, "
+                    f"security.tenant_memberships, security.capability_grants "
+                    f"FROM {RUNTIME_USER}"
+                )
+            )
             conn.execute(
                 text(
                     f"GRANT EXECUTE ON FUNCTION security.current_tenant_id() "
