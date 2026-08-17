@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import threading
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -581,6 +582,91 @@ class TestConcurrency:
         assert _version_count(bootstrap_engine, content_id) == 2
 
 
+@pytest.mark.gci_i05
+class TestGetHeadForUpdateLockThenRead:
+    def test_waiter_sees_coherent_head_after_committed_first_version(
+        self, runtime_engine, bootstrap_engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        content_id = _seed_content(bootstrap_engine, tenant_id=tenant_id)
+        v1 = _make_version(
+            tenant_id=tenant_id, content_id=content_id, version_number=1, parent_version_id=None
+        )
+        factory = SqlAlchemyContentUnitOfWorkFactory(runtime_engine)
+        locked = threading.Event()
+        may_commit = threading.Event()
+        observed: list = []
+        errors: list[BaseException] = []
+
+        def holder() -> None:
+            try:
+                with factory(tenant_id) as uow:
+                    head = uow.contents.get_head_for_update(content_id)
+                    assert head is not None
+                    assert head.current_version_id is None
+                    locked.set()
+                    assert may_commit.wait(timeout=10)
+                    uow.versions.insert(v1, None)
+                    resulting = uow.contents.advance_current_version(
+                        content_id=content_id,
+                        tenant_id=tenant_id,
+                        expected_revision=AggregateRevision(0),
+                        expected_current_version_id=None,
+                        expected_state="DRAFT",
+                        new_version_id=v1.version_id,
+                        updated_at=FIXED_NOW,
+                    )
+                    assert resulting == AggregateRevision(1)
+                    uow.commit()
+            except BaseException as exc:
+                errors.append(exc)
+                locked.set()
+                may_commit.set()
+
+        def waiter() -> None:
+            try:
+                assert locked.wait(timeout=10)
+                with factory(tenant_id) as uow:
+                    head = uow.contents.get_head_for_update(content_id)
+                    observed.append(head)
+            except BaseException as exc:
+                errors.append(exc)
+
+        holder_thread = threading.Thread(target=holder)
+        waiter_thread = threading.Thread(target=waiter)
+        holder_thread.start()
+        assert locked.wait(timeout=10)
+        waiter_thread.start()
+        _wait_until_lock_wait(runtime_engine)
+        may_commit.set()
+        holder_thread.join(timeout=20)
+        waiter_thread.join(timeout=20)
+        assert errors == []
+        assert len(observed) == 1
+        head = observed[0]
+        assert head is not None
+        assert int(head.aggregate_revision) == 1
+        assert head.current_version_id == v1.version_id
+        assert head.current_version_number is not None
+        assert int(head.current_version_number) == 1
+
+
+def _wait_until_lock_wait(engine: Engine, *, timeout_seconds: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        with engine.connect() as conn:
+            waiting = conn.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE wait_event_type = 'Lock' AND pid <> pg_backend_pid()"
+                )
+            ).scalar_one()
+        if int(waiting) >= 1:
+            return
+        time.sleep(0.02)
+    raise AssertionError("waiter did not block on the Content row lock")
+
+
 class TestArchitectureAndNoSchemaChange:
     def test_repositories_do_not_commit_or_rollback(self) -> None:
         path = (
@@ -600,6 +686,27 @@ class TestArchitectureAndNoSchemaChange:
             if isinstance(node, ast.Attribute) and node.attr in {"commit", "rollback"}
         ]
         assert calls == []
+
+    def test_get_head_for_update_locks_contents_then_reads_version(self) -> None:
+        path = (
+            REPO_ROOT
+            / "src"
+            / "aieos"
+            / "domains"
+            / "content"
+            / "infrastructure"
+            / "persistence"
+            / "repositories.py"
+        )
+        source = path.read_text(encoding="utf-8")
+        start = source.index("def get_head_for_update")
+        end = source.index("def advance_current_version")
+        body = source[start:end]
+        assert "outerjoin" not in body
+        assert "with_for_update(of=" not in body
+        assert ".with_for_update()" in body
+        assert "content_versions_table.c.version_number" in body
+        assert "current_version_id has no matching ContentVersion" in body
 
     def test_no_new_alembic_revision_or_tables(self) -> None:
         versions = sorted(

@@ -638,10 +638,47 @@ class TestConcurrency:
         for thread in threads:
             thread.join()
         codes = sorted(item.status_code for item in results)
-        assert codes[0] == 201, [item.text for item in results]
-        # Loser must be a conflict (revision/unique/lineage); durable history has one version.
-        assert codes[1] in {409, 412, 422}, [item.text for item in results]
+        assert codes == [201, 412], [item.text for item in results]
+        loser = next(item for item in results if item.status_code == 412)
+        assert loser.json()["code"] == "resource_revision_conflict"
         assert _count_versions(bootstrap_engine, UUID(content_id)) == 1
+
+    def test_different_keys_same_revision_repeats_deterministically(
+        self, runtime_engine, bootstrap_engine
+    ) -> None:
+        for _ in range(8):
+            tenant_id = uuid.uuid7()
+            principal_id = uuid.uuid7()
+            app = _app(runtime_engine, tenant_id, principal_id)
+            setup = TestClient(app, raise_server_exceptions=False)
+            content_id = _create(setup, tenant_id)["content_id"]
+            results: list = []
+
+            def worker(key: str) -> None:
+                client = TestClient(app, raise_server_exceptions=False)
+                results.append(
+                    _append(
+                        client,
+                        tenant_id,
+                        content_id,
+                        etag='"r0"',
+                        **{"Idempotency-Key": key},
+                    )
+                )
+
+            threads = [
+                threading.Thread(target=worker, args=(f"k1-{uuid.uuid7()}",)),
+                threading.Thread(target=worker, args=(f"k2-{uuid.uuid7()}",)),
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            codes = sorted(item.status_code for item in results)
+            assert codes == [201, 412], [item.text for item in results]
+            loser = next(item for item in results if item.status_code == 412)
+            assert loser.json()["code"] == "resource_revision_conflict"
+            assert _count_versions(bootstrap_engine, UUID(content_id)) == 1
 
     def test_same_key_same_body(self, runtime_engine, bootstrap_engine) -> None:
         tenant_id = uuid.uuid7()

@@ -18,6 +18,7 @@ from aieos.domains.content.application.audit import (
     insert_required_content_audit,
 )
 from aieos.domains.content.application.errors import (
+    AggregateRevisionConflict,
     ContentNotFound,
     ContentPayloadInvalid,
     ContentSchemaMismatch,
@@ -131,6 +132,10 @@ class HttpAppendContentVersionService:
             head = uow.contents.get_head_for_update(content_id)
             if head is None or head.tenant_id != execution_tenant_id:
                 raise ContentNotFound("Content is not visible in the execution tenant")
+            if head.aggregate_revision != expected_aggregate_revision:
+                raise AggregateRevisionConflict(
+                    "expected aggregate_revision does not match stored head"
+                )
             try:
                 registered = self._schema_registry.get(schema_id, schema_version)
             except SchemaNotFoundError as exc:
