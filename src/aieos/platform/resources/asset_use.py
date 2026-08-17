@@ -15,7 +15,7 @@ from aieos.platform.resources import ResourceRef
 
 
 class AssetUseRejectionReason(StrEnum):
-    """Closed V1 Asset use rejection vocabulary."""
+    """Frozen ADR-AIEOS-034 Asset current-use rejection vocabulary."""
 
     NOT_FOUND = "NOT_FOUND"
     TENANT_INACCESSIBLE = "TENANT_INACCESSIBLE"
@@ -25,6 +25,9 @@ class AssetUseRejectionReason(StrEnum):
     QUARANTINED = "QUARANTINED"
     SAFETY_PENDING = "SAFETY_PENDING"
     SAFETY_FAILED = "SAFETY_FAILED"
+    BYTES_PURGED = "BYTES_PURGED"
+    BYTES_MISSING = "BYTES_MISSING"
+    INTEGRITY_MISMATCH = "INTEGRITY_MISMATCH"
 
 
 class InvalidAssetUseAssessmentError(ValueError):
@@ -80,7 +83,7 @@ class AssetUseAssessment:
 
 
 class AssetUseAuthority(Protocol):
-    """Owning Asset/File boundary current-use authority. Contract only in PED-I10A."""
+    """Owning Asset/File boundary current-use authority (ADR-AIEOS-032 / ADR-AIEOS-034)."""
 
     def assess_use(
         self,

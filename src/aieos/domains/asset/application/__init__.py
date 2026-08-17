@@ -1,7 +1,7 @@
-"""Asset application ports: BlobStore boundary, ingest, reconciliation (PED-I10B3).
+"""Asset application ports: BlobStore, ingest, reconciliation, current-use (PED-I10B4).
 
 No SQLAlchemy, FastAPI, Temporal, NATS, Content services, or provider SDKs.
-No production BlobStore adapter. No AssetUseAuthority implementation.
+No production BlobStore adapter. AssetUseAuthority Protocol stays on the platform.
 """
 
 from aieos.domains.asset.application.blob_store import (
@@ -32,8 +32,19 @@ from aieos.domains.asset.application.reconciliation import (
     BlobReferenceStatus,
     OrphanBlobCandidate,
 )
+from aieos.domains.asset.application.use_authority import (
+    AssetCurrentUseAuthority,
+    AssetCurrentUseStore,
+    AssetIdentityFacts,
+    GoverningSnapshot,
+    RevisionFacts,
+    RevisionStateFacts,
+)
 
 __all__ = [
+    "AssetCurrentUseAuthority",
+    "AssetCurrentUseStore",
+    "AssetIdentityFacts",
     "AuthoritativeBlobReference",
     "AuthoritativeBlobReferenceSource",
     "BlobAlreadyExistsError",
@@ -49,12 +60,15 @@ __all__ = [
     "BlobStoreError",
     "BlobStoreUnavailableError",
     "ConflictingBlobReferenceError",
+    "GoverningSnapshot",
     "InvalidBlobInventoryError",
     "InvalidBlobObjectInfoError",
     "InvalidBlobReferenceError",
     "OrphanBlobCandidate",
     "PreparedBlob",
     "ReadableBinary",
+    "RevisionFacts",
+    "RevisionStateFacts",
     "StorageKeyFactory",
     "Uuid7StorageKeyFactory",
 ]
