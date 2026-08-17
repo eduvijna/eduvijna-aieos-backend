@@ -1,7 +1,8 @@
-"""Asset application ports: BlobStore, ingest, reconciliation, current-use (PED-I10B4).
+"""Asset application ports: BlobStore, ingest, reconciliation, current-use, mutations.
 
 No SQLAlchemy, FastAPI, Temporal, NATS, Content services, or provider SDKs.
 No production BlobStore adapter. AssetUseAuthority Protocol stays on the platform.
+Mutation services are NON_PRODUCTION foundations and are not runtime-composed.
 """
 
 from aieos.domains.asset.application.blob_store import (
@@ -23,6 +24,26 @@ from aieos.domains.asset.application.errors import (
     InvalidBlobReferenceError,
 )
 from aieos.domains.asset.application.ingest import BlobIngestPreparer, PreparedBlob
+from aieos.domains.asset.application.mutation_errors import (
+    AssetActivationRejected,
+    AssetApplicationError,
+    AssetConflict,
+    AssetIdentityConflict,
+    AssetNotFound,
+    AssetPersistenceFailed,
+    AssetTransitionRejected,
+)
+from aieos.domains.asset.application.mutations import (
+    AssetMutationService,
+    RegisteredRevision,
+)
+from aieos.domains.asset.application.ports import (
+    AssetRevisionStateWriteRepository,
+    AssetRevisionWriteRepository,
+    AssetUnitOfWork,
+    AssetUnitOfWorkFactory,
+    AssetWriteRepository,
+)
 from aieos.domains.asset.application.reconciliation import (
     AuthoritativeBlobReference,
     AuthoritativeBlobReferenceSource,
@@ -42,9 +63,22 @@ from aieos.domains.asset.application.use_authority import (
 )
 
 __all__ = [
+    "AssetActivationRejected",
+    "AssetApplicationError",
+    "AssetConflict",
     "AssetCurrentUseAuthority",
     "AssetCurrentUseStore",
+    "AssetIdentityConflict",
     "AssetIdentityFacts",
+    "AssetMutationService",
+    "AssetNotFound",
+    "AssetPersistenceFailed",
+    "AssetRevisionStateWriteRepository",
+    "AssetRevisionWriteRepository",
+    "AssetTransitionRejected",
+    "AssetUnitOfWork",
+    "AssetUnitOfWorkFactory",
+    "AssetWriteRepository",
     "AuthoritativeBlobReference",
     "AuthoritativeBlobReferenceSource",
     "BlobAlreadyExistsError",
@@ -66,6 +100,7 @@ __all__ = [
     "InvalidBlobReferenceError",
     "OrphanBlobCandidate",
     "PreparedBlob",
+    "RegisteredRevision",
     "ReadableBinary",
     "RevisionFacts",
     "RevisionStateFacts",
