@@ -99,9 +99,12 @@ assess_use(*, tenant_id, principal_id, resource_ref: ResourceRef) -> AssetUseAss
 ```
 
 - No SQLAlchemy, HTTP client, or Content persistence in the contract
-- Closed V1 rejection reasons: `NOT_FOUND`, `TENANT_INACCESSIBLE`,
-  `REVISION_NOT_FOUND`, `WITHDRAWN`, `DELETED`, `QUARANTINED`, `SAFETY_PENDING`,
-  `SAFETY_FAILED`
+- Closed V1 rejection reasons (PED-I10A contract baseline): `NOT_FOUND`,
+  `TENANT_INACCESSIBLE`, `REVISION_NOT_FOUND`, `WITHDRAWN`, `DELETED`,
+  `QUARANTINED`, `SAFETY_PENDING`, `SAFETY_FAILED`
+- ADR-AIEOS-034 (PED-I10B4) freezes the authoritative eleven-value current-use
+  vocabulary by adding `BYTES_PURGED`, `BYTES_MISSING`, and
+  `INTEGRITY_MISMATCH`. See `docs/PED-I10B4-ASSET-CURRENT-USE-AUTHORITY.md`.
 - Invariants: usable ⇒ `reason_code is None`; unusable ⇒ exact closed reason
 
 PED-I10A does **not** implement the owning Asset/File production provider.

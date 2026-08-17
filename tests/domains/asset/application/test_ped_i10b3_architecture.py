@@ -161,10 +161,13 @@ class TestArchitectureScope:
                 hits.append(f"{rel}:InMemoryBlobStore")
         assert hits == []
 
-    def test_no_asset_use_authority_implementation(self) -> None:
+    def test_no_asset_use_authority_protocol_in_asset_domain(self) -> None:
         for path in _py_files(ASSET_ROOT):
             source = path.read_text(encoding="utf-8")
             assert "class AssetUseAuthority" not in source
+            if path.name == "use_authority.py":
+                assert "def assess_use(" in source
+                continue
             assert "def assess_use(" not in source
 
     def test_no_repository_uow_api_events_or_workflow(self) -> None:
