@@ -215,7 +215,7 @@ class SqlAlchemyContentRepository:
             reraise_as_application_error(exc)
 
     def get_head_for_update(self, content_id: ContentId) -> LockedContentHead | None:
-        stmt = (
+        lock_stmt = (
             select(
                 contents_table.c.tenant_id,
                 contents_table.c.content_id,
@@ -224,38 +224,36 @@ class SqlAlchemyContentRepository:
                 contents_table.c.published_version_id,
                 contents_table.c.stewardship_state,
                 contents_table.c.content_type,
-                content_versions_table.c.version_number,
-            )
-            .select_from(
-                contents_table.outerjoin(
-                    content_versions_table,
-                    (
-                        content_versions_table.c.tenant_id == contents_table.c.tenant_id
-                    )
-                    & (
-                        content_versions_table.c.content_id
-                        == contents_table.c.content_id
-                    )
-                    & (
-                        content_versions_table.c.version_id
-                        == contents_table.c.current_version_id
-                    ),
-                )
             )
             .where(
                 contents_table.c.content_id == content_id.value,
                 contents_table.c.tenant_id == self._execution_tenant_id,
             )
-            .with_for_update(of=contents_table)
+            .with_for_update()
         )
         try:
-            row = self._connection.execute(stmt).one_or_none()
+            row = self._connection.execute(lock_stmt).one_or_none()
         except Exception as exc:
             reraise_as_application_error(exc)
         if row is None:
             return None
         current_id = row.current_version_id
-        current_number = row.version_number
+        current_number: int | None = None
+        if current_id is not None:
+            version_stmt = select(content_versions_table.c.version_number).where(
+                content_versions_table.c.tenant_id == self._execution_tenant_id,
+                content_versions_table.c.content_id == content_id.value,
+                content_versions_table.c.version_id == current_id,
+            )
+            try:
+                version_row = self._connection.execute(version_stmt).one_or_none()
+            except Exception as exc:
+                reraise_as_application_error(exc)
+            if version_row is None:
+                raise PersistenceInvariantViolation(
+                    "current_version_id has no matching ContentVersion"
+                )
+            current_number = int(version_row.version_number)
         published = row.published_version_id
         return LockedContentHead(
             tenant_id=row.tenant_id,
@@ -265,7 +263,7 @@ class SqlAlchemyContentRepository:
                 None if current_id is None else ContentVersionId(current_id)
             ),
             current_version_number=(
-                None if current_number is None else VersionNumber(int(current_number))
+                None if current_number is None else VersionNumber(current_number)
             ),
             published_version_id=(
                 None if published is None else ContentVersionId(published)

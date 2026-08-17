@@ -51,6 +51,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- GCI-I05R3: concurrent ContentVersion append with distinct Idempotency-Key and the same If-Match produces exactly one 201 and one 412 `resource_revision_conflict`; `get_head_for_update` locks `content.contents` then separately reads the current ContentVersion so READ COMMITTED cannot return a mixed `current_version_id`/`version_number` projection. No migration, OpenAPI, or dependency change.
 - PED-I09R2: corrupt / unrecognized authority status strings raise `AuthorizationUnavailableError` (503) rather than ordinary DENY (403); valid `SUSPENDED`/`DISABLED`/`REVOKED` remain DENY.
 - PED-I09R1: reject wildcard capability identifiers (`*` / `content.*` / etc.) at DB CHECK and AuthorizationKernel construction/decision; Content capability constants owned solely by `domains/content/application/ports.py` (no parallel definitions in generic `decisions.py`).
 - PED-I08R1: JWT header `typ` is mandatory and must be exactly `at+jwt` (reject absent/`JWT`/`ID`/other); no `application/at+jwt` media-type change. OpenAPI `AIEOSBearerAuth` unchanged.
