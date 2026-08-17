@@ -22,6 +22,7 @@ POSTGRES_IMAGE = "postgres:18"
 BOOTSTRAP_USER = "aieos_bootstrap"
 SCHEMA_OWNER_ROLE = "aieos_content_owner"
 SECURITY_SCHEMA_OWNER_ROLE = "aieos_security_owner"
+ASSET_SCHEMA_OWNER_ROLE = "aieos_asset_owner"
 MIGRATOR_USER = "aieos_migrator"
 RUNTIME_USER = "aieos_runtime"
 MIGRATION_RUNTIME_USER = "aieos_content_migration_runtime"
@@ -79,6 +80,7 @@ def alembic_config(url: str) -> Config:
     os.environ["AIEOS_DATABASE_URL"] = url
     os.environ["AIEOS_SCHEMA_OWNER_ROLE"] = SCHEMA_OWNER_ROLE
     os.environ["AIEOS_SECURITY_SCHEMA_OWNER_ROLE"] = SECURITY_SCHEMA_OWNER_ROLE
+    os.environ["AIEOS_ASSET_SCHEMA_OWNER_ROLE"] = ASSET_SCHEMA_OWNER_ROLE
     cfg.set_main_option("sqlalchemy.url", url)
     return cfg
 
@@ -145,6 +147,12 @@ def provision_identities(bootstrap: Engine) -> None:
                         CREATE ROLE {SECURITY_SCHEMA_OWNER_ROLE}
                             NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
                     END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_roles WHERE rolname = '{ASSET_SCHEMA_OWNER_ROLE}'
+                    ) THEN
+                        CREATE ROLE {ASSET_SCHEMA_OWNER_ROLE}
+                            NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+                    END IF;
                     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{MIGRATOR_USER}') THEN
                         CREATE ROLE {MIGRATOR_USER} LOGIN PASSWORD '{DB_PASSWORD}'
                             NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT;
@@ -178,11 +186,18 @@ def provision_identities(bootstrap: Engine) -> None:
         )
         conn.execute(text(f"GRANT {SCHEMA_OWNER_ROLE} TO {MIGRATOR_USER}"))
         conn.execute(text(f"GRANT {SECURITY_SCHEMA_OWNER_ROLE} TO {MIGRATOR_USER}"))
+        conn.execute(text(f"GRANT {ASSET_SCHEMA_OWNER_ROLE} TO {MIGRATOR_USER}"))
         conn.execute(text(f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} TO {SCHEMA_OWNER_ROLE}"))
         conn.execute(
             text(
                 f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} "
                 f"TO {SECURITY_SCHEMA_OWNER_ROLE}"
+            )
+        )
+        conn.execute(
+            text(
+                f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} "
+                f"TO {ASSET_SCHEMA_OWNER_ROLE}"
             )
         )
         conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {MIGRATOR_USER}"))
@@ -553,6 +568,51 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                     f"jsonb, text, uuid, bigint) TO {MIGRATION_RUNTIME_USER}"
                 )
             )
+            # PED-I10B2: test-only Asset SoR privileges (not a production grant).
+            conn.execute(text(f"GRANT USAGE ON SCHEMA asset TO {RUNTIME_USER}"))
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION asset.current_tenant_id() "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(f"GRANT SELECT, INSERT, UPDATE ON asset.assets TO {RUNTIME_USER}")
+            )
+            conn.execute(text(f"REVOKE DELETE ON asset.assets FROM {RUNTIME_USER}"))
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT ON asset.asset_revisions TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE UPDATE, DELETE ON asset.asset_revisions "
+                    f"FROM {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT, UPDATE ON asset.asset_revision_states "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE DELETE ON asset.asset_revision_states FROM {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT ON asset.deletion_evidence TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    f"REVOKE UPDATE, DELETE ON asset.deletion_evidence "
+                    f"FROM {RUNTIME_USER}"
+                )
+            )
 
 
 @pytest.fixture(scope="session")
@@ -586,6 +646,7 @@ def postgres18() -> Iterator[dict[str, str]]:
     os.environ["AIEOS_DATABASE_URL"] = m_url
     os.environ["AIEOS_SCHEMA_OWNER_ROLE"] = SCHEMA_OWNER_ROLE
     os.environ["AIEOS_SECURITY_SCHEMA_OWNER_ROLE"] = SECURITY_SCHEMA_OWNER_ROLE
+    os.environ["AIEOS_ASSET_SCHEMA_OWNER_ROLE"] = ASSET_SCHEMA_OWNER_ROLE
     cfg = alembic_config(m_url)
     command.upgrade(cfg, "head")
     command.downgrade(cfg, "base")
@@ -603,6 +664,7 @@ def postgres18() -> Iterator[dict[str, str]]:
             "port": port,
             "schema_owner_role": SCHEMA_OWNER_ROLE,
             "security_schema_owner_role": SECURITY_SCHEMA_OWNER_ROLE,
+            "asset_schema_owner_role": ASSET_SCHEMA_OWNER_ROLE,
             "migrator_user": MIGRATOR_USER,
             "runtime_user": RUNTIME_USER,
             "migration_runtime_user": MIGRATION_RUNTIME_USER,

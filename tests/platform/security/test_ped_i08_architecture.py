@@ -174,6 +174,7 @@ def test_authenticator_does_not_authorize_tenants() -> None:
 def test_no_principal_mapping_persistence_or_migration() -> None:
     versions = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
     assert "pedi090001_security_authority.py" in versions
+    assert "pedi10b2001_asset_authority_sor.py" in versions
     assert versions[-1] == "saii020001_security_audit_ledger.py"
     for path in MIGRATIONS.rglob("*.py"):
         body = path.read_text(encoding="utf-8")

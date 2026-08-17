@@ -163,6 +163,7 @@ def test_no_ai_or_migration_service_activation_wiring() -> None:
 def test_migration_head_unchanged() -> None:
     versions = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
     assert "pedi090001_security_authority.py" in versions
+    assert "pedi10b2001_asset_authority_sor.py" in versions
     assert versions[-1] == "saii020001_security_audit_ledger.py"
     for path in MIGRATIONS.rglob("*.py"):
         assert "pedi030001" not in path.read_text(encoding="utf-8")

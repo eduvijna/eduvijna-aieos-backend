@@ -118,6 +118,7 @@ def test_migration_chain_and_forbidden_tables() -> None:
         "gcii110001_ai_provenance.py",
         "gcii130001_migration_import.py",
         "pedi090001_security_authority.py",
+        "pedi10b2001_asset_authority_sor.py",
         "saii020001_security_audit_ledger.py",
     ]
 
