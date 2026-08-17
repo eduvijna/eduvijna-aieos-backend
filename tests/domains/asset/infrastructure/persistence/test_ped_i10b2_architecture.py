@@ -57,7 +57,6 @@ _CLOUD_NEEDLES = (
     "s3://",
 )
 _FORBIDDEN_ASSET_DIRS = (
-    "application",
     "api",
     "workflows",
     "blob",
@@ -178,7 +177,10 @@ class TestArchitectureScope:
             source = path.read_text(encoding="utf-8")
             assert "class SqlAlchemyAssetRepository" not in source
             assert "class AssetUnitOfWork" not in source
-            assert "class BlobStore" not in source
+            if path.name == "blob_store.py" and path.parent.name == "application":
+                assert "class BlobStore(Protocol)" in source
+            else:
+                assert "class BlobStore(" not in source
             assert "class AssetUseAuthority" not in source
             assert "APIRouter" not in source
             assert "outbox_messages" not in source

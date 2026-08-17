@@ -65,4 +65,5 @@ markers = [
     "ped_i10a: Production Governance Adapter Foundation (ADR-AIEOS-032)",
     "ped_i10b1: Asset/File domain contracts (ADR-AIEOS-033)",
     "ped_i10b2: Asset PostgreSQL System of Record / SQLAlchemy / Alembic / RLS",
+    "ped_i10b3: Asset BlobStore ingest and reconciliation foundation (ADR-AIEOS-033)",
 ]
