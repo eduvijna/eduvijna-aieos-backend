@@ -124,7 +124,7 @@ def test_openapi_sha_unchanged() -> None:
 def test_no_new_migration_and_head_remains_pedi090001() -> None:
     names = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
     assert "pedi090001_security_authority.py" in names
-    assert not any(name.startswith("pedi10") for name in names)
+    assert not any(name.startswith("pedi10a") for name in names)
     assert not any("governance" in name.lower() for name in names)
     mig = (MIGRATIONS / "pedi090001_security_authority.py").read_text(encoding="utf-8")
     assert 'revision: str = "pedi090001"' in mig

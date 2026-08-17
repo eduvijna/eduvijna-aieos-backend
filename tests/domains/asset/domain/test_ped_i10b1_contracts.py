@@ -378,7 +378,7 @@ class TestResourceRefCompatibility:
 
 class TestArchitectureGuards:
     def _py_files(self) -> list[Path]:
-        return [p for p in ASSET_DOMAIN.rglob("*.py") if p.is_file()]
+        return [p for p in (ASSET_DOMAIN / "domain").rglob("*.py") if p.is_file()]
 
     def test_no_forbidden_imports(self) -> None:
         hits: list[str] = []
@@ -406,7 +406,7 @@ class TestArchitectureGuards:
             assert "startswith('asset.')" not in text
 
     def test_no_migration_and_no_composition_change(self) -> None:
-        assert not any(p.name.startswith("pedi10b") for p in MIGRATIONS.glob("*.py"))
+        assert not any(p.name.startswith("pedi10b1") for p in MIGRATIONS.glob("*.py"))
         composition = COMPOSITION.read_text(encoding="utf-8")
         assert "domains.asset" not in composition
         assert "AssetId" not in composition

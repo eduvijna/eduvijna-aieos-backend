@@ -1,0 +1,1 @@
+"""Asset persistence test package."""
