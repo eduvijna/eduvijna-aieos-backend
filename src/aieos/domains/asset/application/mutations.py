@@ -232,6 +232,8 @@ class AssetMutationService:
             resource_type=parsed_type,
             revision_number=revision_number,
         )
+        if candidate.asset.aggregate_revision != expected_aggregate_revision:
+            raise AssetConflict("expected aggregate revision is stale")
         self._reject_unactivatable(candidate)
         try:
             observed = self._blob_store.inspect(
@@ -644,7 +646,8 @@ def _same_activation_facts(
     state: AssetRevisionState,
 ) -> bool:
     return (
-        locked.lifecycle == candidate.asset.lifecycle
+        locked.aggregate_revision == candidate.asset.aggregate_revision
+        and locked.lifecycle == candidate.asset.lifecycle
         and locked.quarantine_state == candidate.asset.quarantine_state
         and locked.current_revision == candidate.asset.current_revision
         and locked.resource_type == candidate.asset.resource_type

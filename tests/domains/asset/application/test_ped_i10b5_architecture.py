@@ -90,6 +90,7 @@ class TestDocsAndClassification:
         assert "readiness" in doc.lower()
         changelog = CHANGELOG.read_text(encoding="utf-8")
         assert "PED-I10B5" in changelog
+        assert "PED-I10B5R1" in changelog
         assert "ADR-AIEOS-035" in changelog
         assert "NON_PRODUCTION" in changelog
         pyproject = PYPROJECT.read_text(encoding="utf-8")
@@ -224,9 +225,16 @@ class TestBoundaries:
         start = source.index("def activate_revision")
         end = source.index("def withdraw_asset")
         body = source[start:end]
+        assert body.index("candidate.asset.aggregate_revision") < body.index(
+            "self._blob_store.inspect"
+        )
         assert body.index("self._blob_store.inspect") < body.index("get_for_update")
         assert "except Exception" not in body
         assert "except RuntimeError" not in body
+        facts = source[source.index("def _same_activation_facts") :]
+        assert (
+            "locked.aggregate_revision == candidate.asset.aggregate_revision" in facts
+        )
 
     def test_uow_installs_transaction_local_tenant_and_always_rolls_back(self) -> None:
         source = (PERSISTENCE / "uow.py").read_text(encoding="utf-8")

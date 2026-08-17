@@ -133,6 +133,9 @@ The write lock is **not** held across Blob I/O:
 ```text
 read authoritative candidate facts
     ↓
+require candidate.aggregate_revision == expected_aggregate_revision
+    (else AssetConflict; zero inspect; zero mutation)
+    ↓
 BlobStore.inspect(exact opaque storage_key)
     ↓
 verify physical size/hash
@@ -143,6 +146,7 @@ BEGIN write transaction
     re-read authoritative Asset/revision/state
     verify expected aggregate_revision
     verify candidate governing facts did not change
+    including locked.aggregate_revision == candidate.aggregate_revision
     update current_revision
     aggregate_revision = aggregate_revision + 1
 COMMIT
@@ -164,8 +168,12 @@ PostgreSQL and BlobStore are not one ACID transaction.
 - If bytes exist and revision registration does not commit, bytes remain;
   reconciliation may later classify an orphan. Never compensate with
   `BlobStore.delete`.
+- If the caller supplies an `expected_aggregate_revision` that does not match
+  the candidate Asset at read time, activation is an `AssetConflict` with zero
+  BlobStore inspection and zero mutation.
 - If `BlobStore.inspect` succeeds but governing facts change before the locked
-  reread, activation is a concurrency conflict with zero mutation.
+  reread, including any Asset `aggregate_revision` mutation, activation is a
+  concurrency conflict with zero mutation.
 - If BlobStore is unavailable, activation fails closed with zero mutation.
 - Physical TOCTOU after inspect and before commit is the accepted cross-store
   window; activation does not retain a DB write lock while inspecting.

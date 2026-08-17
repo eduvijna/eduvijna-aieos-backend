@@ -52,6 +52,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- PED-I10B5R1: activation requires `candidate.aggregate_revision == expected_aggregate_revision` before `BlobStore.inspect`, and post-inspect stability includes `locked.aggregate_revision == candidate.aggregate_revision`, so a future expected revision cannot become a successful activation if aggregate authority advances during inspect. No migration, OpenAPI, uv.lock, Content, API, purge, or composition change. Classification remains NON_PRODUCTION.
 - PED-I09R2: corrupt / unrecognized authority status strings raise `AuthorizationUnavailableError` (503) rather than ordinary DENY (403); valid `SUSPENDED`/`DISABLED`/`REVOKED` remain DENY.
 - PED-I09R1: reject wildcard capability identifiers (`*` / `content.*` / etc.) at DB CHECK and AuthorizationKernel construction/decision; Content capability constants owned solely by `domains/content/application/ports.py` (no parallel definitions in generic `decisions.py`).
 - PED-I08R1: JWT header `typ` is mandatory and must be exactly `at+jwt` (reject absent/`JWT`/`ID`/other); no `application/at+jwt` media-type change. OpenAPI `AIEOSBearerAuth` unchanged.

@@ -93,6 +93,65 @@ def _register(service, blobs, tenant, principal, asset_id):
     return registered, prepared
 
 
+class InspectProbe:
+    def __init__(self, inner: InMemoryBlobStore, on_inspect=None) -> None:
+        self.inner = inner
+        self.calls: list[str] = []
+        self.on_inspect = on_inspect
+
+    def inspect(self, *, storage_key: str) -> BlobObjectInfo | None:
+        self.calls.append(storage_key)
+        if self.on_inspect is not None:
+            self.on_inspect()
+        return self.inner.inspect(storage_key=storage_key)
+
+    def create(self, *, storage_key: str, source: object) -> BlobObjectInfo:
+        raise AssertionError("create must not be called")
+
+    def delete(self, *, storage_key: str) -> None:
+        raise AssertionError("delete must not be called")
+
+
+def _activatable_at_five(service: AssetMutationService, blobs: InMemoryBlobStore):
+    asset, tenant, principal = _create(service)
+    target, _ = _register(service, blobs, tenant, principal, asset.asset_id)
+    historical, _ = _register(service, blobs, tenant, principal, asset.asset_id)
+    service.mark_safety_passed(
+        tenant_id=tenant,
+        principal_id=principal,
+        asset_id=asset.asset_id,
+        asset_revision_id=target.revision.asset_revision_id,
+        expected_aggregate_revision=ZERO,
+    )
+    service.withdraw_asset(
+        tenant_id=tenant,
+        principal_id=principal,
+        asset_id=asset.asset_id,
+        expected_aggregate_revision=AssetAggregateRevision(1),
+    )
+    service.restore_asset(
+        tenant_id=tenant,
+        principal_id=principal,
+        asset_id=asset.asset_id,
+        expected_aggregate_revision=AssetAggregateRevision(2),
+    )
+    service.quarantine_asset(
+        tenant_id=tenant,
+        principal_id=principal,
+        asset_id=asset.asset_id,
+        expected_aggregate_revision=AssetAggregateRevision(3),
+    )
+    head = service.clear_quarantine(
+        tenant_id=tenant,
+        principal_id=principal,
+        asset_id=asset.asset_id,
+        expected_aggregate_revision=AssetAggregateRevision(4),
+    )
+    assert int(head.aggregate_revision) == 5
+    assert head.current_revision is None
+    return tenant, principal, asset.asset_id, target, historical, head
+
+
 class UnavailableBlobStore:
     def inspect(self, *, storage_key: str) -> BlobObjectInfo | None:
         raise BlobStoreUnavailableError("blob store unavailable")
@@ -412,6 +471,107 @@ class TestActivation:
                 expected_aggregate_revision=AssetAggregateRevision(1),
             )
         assert purged.value.reason == "bytes_purged"
+
+    def test_future_expected_revision_conflicts_without_inspect(self) -> None:
+        factory = InMemoryAssetUnitOfWorkFactory()
+        blobs = InMemoryBlobStore()
+        writer = AssetMutationService(factory, blobs, clock=_clock)
+        tenant, principal, asset_id, target, _, head = _activatable_at_five(
+            writer, blobs
+        )
+        probe = InspectProbe(blobs)
+        service = AssetMutationService(factory, probe, clock=_clock)
+        with pytest.raises(AssetConflict):
+            service.activate_revision(
+                tenant_id=tenant,
+                principal_id=principal,
+                asset_id=asset_id,
+                resource_type=AssetResourceType.IMAGE,
+                revision_number=target.revision.revision_number,
+                expected_aggregate_revision=AssetAggregateRevision(6),
+            )
+        assert probe.calls == []
+        with factory(tenant) as uow:
+            loaded = uow.assets.get(asset_id)
+        assert loaded is not None
+        assert loaded.current_revision is None
+        assert int(loaded.aggregate_revision) == 5
+        assert int(head.aggregate_revision) == 5
+
+    def test_future_expected_does_not_inspect_so_concurrent_bump_cannot_succeed(
+        self,
+    ) -> None:
+        factory = InMemoryAssetUnitOfWorkFactory()
+        blobs = InMemoryBlobStore()
+        writer = AssetMutationService(factory, blobs, clock=_clock)
+        tenant, principal, asset_id, target, historical, _ = _activatable_at_five(
+            writer, blobs
+        )
+
+        def bump_historical() -> None:
+            writer.mark_safety_failed(
+                tenant_id=tenant,
+                principal_id=principal,
+                asset_id=asset_id,
+                asset_revision_id=historical.revision.asset_revision_id,
+                expected_aggregate_revision=AssetAggregateRevision(5),
+            )
+
+        probe = InspectProbe(blobs, on_inspect=bump_historical)
+        service = AssetMutationService(factory, probe, clock=_clock)
+        with pytest.raises(AssetConflict):
+            service.activate_revision(
+                tenant_id=tenant,
+                principal_id=principal,
+                asset_id=asset_id,
+                resource_type=AssetResourceType.IMAGE,
+                revision_number=target.revision.revision_number,
+                expected_aggregate_revision=AssetAggregateRevision(6),
+            )
+        assert probe.calls == []
+        with factory(tenant) as uow:
+            loaded = uow.assets.get(asset_id)
+            state = uow.revision_states.get(historical.revision.asset_revision_id)
+        assert loaded is not None
+        assert loaded.current_revision is None
+        assert int(loaded.aggregate_revision) == 5
+        assert state is not None
+        assert state.safety_state is AssetRevisionSafetyState.PENDING
+
+    def test_aggregate_change_during_inspect_conflicts(self) -> None:
+        factory = InMemoryAssetUnitOfWorkFactory()
+        blobs = InMemoryBlobStore()
+        writer = AssetMutationService(factory, blobs, clock=_clock)
+        tenant, principal, asset_id, target, historical, head = _activatable_at_five(
+            writer, blobs
+        )
+
+        def bump_historical() -> None:
+            writer.mark_safety_failed(
+                tenant_id=tenant,
+                principal_id=principal,
+                asset_id=asset_id,
+                asset_revision_id=historical.revision.asset_revision_id,
+                expected_aggregate_revision=head.aggregate_revision,
+            )
+
+        probe = InspectProbe(blobs, on_inspect=bump_historical)
+        service = AssetMutationService(factory, probe, clock=_clock)
+        with pytest.raises(AssetConflict):
+            service.activate_revision(
+                tenant_id=tenant,
+                principal_id=principal,
+                asset_id=asset_id,
+                resource_type=AssetResourceType.IMAGE,
+                revision_number=target.revision.revision_number,
+                expected_aggregate_revision=head.aggregate_revision,
+            )
+        assert probe.calls == [target.revision.storage_key]
+        with factory(tenant) as uow:
+            loaded = uow.assets.get(asset_id)
+        assert loaded is not None
+        assert loaded.current_revision is None
+        assert int(loaded.aggregate_revision) == 6
 
 
 class TestLifecycleQuarantineSafety:
