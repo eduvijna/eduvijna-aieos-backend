@@ -5,6 +5,12 @@ No production BlobStore adapter. AssetUseAuthority Protocol stays on the platfor
 Mutation services are NON_PRODUCTION foundations and are not runtime-composed.
 """
 
+from aieos.domains.asset.application.audit import (
+    AssetMutationAuditProvenance,
+    asset_pinned_revision_ref,
+    asset_stable_primary_ref,
+    insert_required_asset_audit,
+)
 from aieos.domains.asset.application.blob_store import (
     BlobInventory,
     BlobObjectInfo,
@@ -28,6 +34,7 @@ from aieos.domains.asset.application.mutation_errors import (
     AssetActivationRejected,
     AssetApplicationError,
     AssetConflict,
+    AssetForbidden,
     AssetIdentityConflict,
     AssetNotFound,
     AssetPersistenceFailed,
@@ -38,6 +45,13 @@ from aieos.domains.asset.application.mutations import (
     RegisteredRevision,
 )
 from aieos.domains.asset.application.ports import (
+    ASSET_CREATE,
+    ASSET_LIFECYCLE_MANAGE,
+    ASSET_QUARANTINE_MANAGE,
+    ASSET_REVISION_ACTIVATE,
+    ASSET_REVISION_REGISTER,
+    ASSET_SAFETY_DECIDE,
+    AssetMutationAuthorizationPort,
     AssetRevisionStateWriteRepository,
     AssetRevisionWriteRepository,
     AssetUnitOfWork,
@@ -63,13 +77,22 @@ from aieos.domains.asset.application.use_authority import (
 )
 
 __all__ = [
+    "ASSET_CREATE",
+    "ASSET_LIFECYCLE_MANAGE",
+    "ASSET_QUARANTINE_MANAGE",
+    "ASSET_REVISION_ACTIVATE",
+    "ASSET_REVISION_REGISTER",
+    "ASSET_SAFETY_DECIDE",
     "AssetActivationRejected",
     "AssetApplicationError",
     "AssetConflict",
     "AssetCurrentUseAuthority",
     "AssetCurrentUseStore",
+    "AssetForbidden",
     "AssetIdentityConflict",
     "AssetIdentityFacts",
+    "AssetMutationAuditProvenance",
+    "AssetMutationAuthorizationPort",
     "AssetMutationService",
     "AssetNotFound",
     "AssetPersistenceFailed",
@@ -106,4 +129,7 @@ __all__ = [
     "RevisionStateFacts",
     "StorageKeyFactory",
     "Uuid7StorageKeyFactory",
+    "asset_pinned_revision_ref",
+    "asset_stable_primary_ref",
+    "insert_required_asset_audit",
 ]

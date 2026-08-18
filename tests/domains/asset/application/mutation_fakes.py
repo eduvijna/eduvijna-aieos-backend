@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid7
 
-from aieos.domains.asset.application.mutation_errors import AssetIdentityConflict
+from aieos.domains.asset.application.audit import AssetMutationAuditProvenance
+from aieos.domains.asset.application.mutation_errors import (
+    AssetForbidden,
+    AssetIdentityConflict,
+    AssetPersistenceFailed,
+)
 from aieos.domains.asset.domain.asset import Asset
 from aieos.domains.asset.domain.identities import (
     AssetAggregateRevision,
@@ -20,6 +25,10 @@ from aieos.domains.asset.domain.state import (
     AssetQuarantineState,
     AssetRevisionSafetyState,
 )
+from aieos.platform.events.models import MutationEventContext
+from aieos.platform.security.audit.actions import SecurityAuditExecutionChannel
+from aieos.platform.security.audit.models import SecurityMutationAuditRecord
+from aieos.platform.security.context import AuthorizationUnavailableError
 
 
 @dataclass
@@ -27,15 +36,21 @@ class MemoryAssetCatalog:
     assets: dict[tuple[UUID, UUID], Asset]
     revisions: dict[UUID, AssetRevision]
     states: dict[UUID, AssetRevisionState]
+    audit_records: list[SecurityMutationAuditRecord]
     commits: int = 0
     rollbacks: int = 0
+    opens: int = 0
+    audit_insert_error: Exception | None = None
 
     def __init__(self) -> None:
         self.assets = {}
         self.revisions = {}
         self.states = {}
+        self.audit_records = []
         self.commits = 0
         self.rollbacks = 0
+        self.opens = 0
+        self.audit_insert_error = None
 
 
 class InMemoryAssetWriteRepository:
@@ -209,22 +224,92 @@ class InMemoryAssetRevisionStateWriteRepository:
         return updated
 
 
+class InMemoryAssetAuditRepository:
+    def __init__(self, catalog: MemoryAssetCatalog) -> None:
+        self._catalog = catalog
+
+    def insert(self, record: SecurityMutationAuditRecord) -> None:
+        if self._catalog.audit_insert_error is not None:
+            raise self._catalog.audit_insert_error
+        self._catalog.audit_records.append(record)
+
+
+class AllowAssetMutationAuthorization:
+    """Test fake: permit every requested capability. Not a production adapter."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+        asset_id=None,
+    ) -> None:
+        _ = (tenant_id, principal_id, asset_id)
+        self.calls.append(capability)
+
+
+class DenyAssetMutationAuthorization:
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+        asset_id=None,
+    ) -> None:
+        _ = (tenant_id, principal_id, capability, asset_id)
+        raise AssetForbidden("asset capability denied")
+
+
+class UnavailableAssetMutationAuthorization:
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+        asset_id=None,
+    ) -> None:
+        _ = (tenant_id, principal_id, capability, asset_id)
+        raise AuthorizationUnavailableError("authorization unavailable")
+
+
+class ExplodingAssetMutationAuthorization:
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+        asset_id=None,
+    ) -> None:
+        _ = (tenant_id, principal_id, capability, asset_id)
+        raise RuntimeError("internal provider secret")
+
+
 class InMemoryAssetUnitOfWork:
     def __init__(self, catalog: MemoryAssetCatalog, tenant_id: UUID) -> None:
         self._catalog = catalog
         self._tenant_id = tenant_id
         self._committed = False
-        self._snapshot: tuple[dict, dict, dict] | None = None
+        self._snapshot: tuple[dict, dict, dict, list] | None = None
         self.assets: InMemoryAssetWriteRepository
         self.revisions: InMemoryAssetRevisionWriteRepository
         self.revision_states: InMemoryAssetRevisionStateWriteRepository
+        self.audit: InMemoryAssetAuditRepository
 
     def __enter__(self) -> InMemoryAssetUnitOfWork:
         self._committed = False
+        self._catalog.opens += 1
         self._snapshot = (
             dict(self._catalog.assets),
             dict(self._catalog.revisions),
             dict(self._catalog.states),
+            list(self._catalog.audit_records),
         )
         self.assets = InMemoryAssetWriteRepository(self._catalog, self._tenant_id)
         self.revisions = InMemoryAssetRevisionWriteRepository(
@@ -233,6 +318,7 @@ class InMemoryAssetUnitOfWork:
         self.revision_states = InMemoryAssetRevisionStateWriteRepository(
             self._catalog, self._tenant_id
         )
+        self.audit = InMemoryAssetAuditRepository(self._catalog)
         return self
 
     def commit(self) -> None:
@@ -260,6 +346,7 @@ class InMemoryAssetUnitOfWork:
         self._catalog.revisions.update(self._snapshot[1])
         self._catalog.states.clear()
         self._catalog.states.update(self._snapshot[2])
+        self._catalog.audit_records[:] = self._snapshot[3]
         self._catalog.rollbacks += 1
         self._snapshot = None
 
@@ -270,3 +357,19 @@ class InMemoryAssetUnitOfWorkFactory:
 
     def __call__(self, execution_tenant_id: UUID) -> InMemoryAssetUnitOfWork:
         return InMemoryAssetUnitOfWork(self.catalog, execution_tenant_id)
+
+
+def asset_audit_kwargs(principal_id: UUID) -> dict:
+    """Explicit NON_PRODUCTION audit provenance for tests. Not request-global."""
+    return {
+        "mutation_event_context": MutationEventContext(
+            correlation_id=uuid7(),
+            causation_id=uuid7(),
+            actor_principal_id=principal_id,
+            effective_actor_id=principal_id,
+        ),
+        "audit_provenance": AssetMutationAuditProvenance(
+            executing_principal_id=principal_id,
+            execution_channel=SecurityAuditExecutionChannel.API,
+        ),
+    }

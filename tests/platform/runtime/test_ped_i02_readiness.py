@@ -330,7 +330,7 @@ class TestRealReadiness:
         config = _config_for_runtime_url(postgres18["runtime_url"])
         probe = SqlAlchemyApiReadinessProbe(runtime_engine, config)
         assert probe.check().code is ReadinessCode.READY
-        assert EXPECTED_ALEMBIC_HEAD == "pedi10b2001"
+        assert EXPECTED_ALEMBIC_HEAD == "pedi10b6001"
         with bootstrap_engine.connect() as conn:
             with conn.begin():
                 original = conn.execute(

@@ -68,4 +68,5 @@ markers = [
     "ped_i10b3: Asset BlobStore ingest and reconciliation foundation (ADR-AIEOS-033)",
     "ped_i10b4: Asset current-use authority provider (ADR-AIEOS-034)",
     "ped_i10b5: Asset mutation and revision activation foundation (ADR-AIEOS-035)",
+    "ped_i10b6: Asset authorization and transactional security audit (ADR-AIEOS-036)",
 ]

@@ -1,4 +1,4 @@
-"""Asset write persistence ports (PED-I10B5). Infrastructure types are not part of this contract."""
+"""Asset write persistence ports (PED-I10B5/B6). Infrastructure types are not part of this contract."""
 
 from __future__ import annotations
 
@@ -19,6 +19,16 @@ from aieos.domains.asset.domain.state import (
     AssetQuarantineState,
     AssetRevisionSafetyState,
 )
+from aieos.platform.security.audit.ports import SecurityMutationAuditRepository
+
+# Frozen ADR-AIEOS-036 Asset capability vocabulary. Platform adapters import
+# these constants and must not redefine the string values.
+ASSET_CREATE = "asset.create"
+ASSET_REVISION_REGISTER = "asset.revision.register"
+ASSET_REVISION_ACTIVATE = "asset.revision.activate"
+ASSET_LIFECYCLE_MANAGE = "asset.lifecycle.manage"
+ASSET_QUARANTINE_MANAGE = "asset.quarantine.manage"
+ASSET_SAFETY_DECIDE = "asset.safety.decide"
 
 
 class AssetWriteRepository(Protocol):
@@ -95,12 +105,30 @@ class AssetRevisionStateWriteRepository(Protocol):
     ) -> AssetRevisionState | None: ...
 
 
+class AssetMutationAuthorizationPort(Protocol):
+    """Current-authority check for an exact Asset mutation capability.
+
+    Resource context is contextual only. ADR-AIEOS-036 does not authorize
+    resource-scoped grants, Asset ACLs, or owner bypass.
+    """
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+        asset_id: AssetId | None = None,
+    ) -> None: ...
+
+
 class AssetUnitOfWork(Protocol):
     """One Asset write transaction. Repositories do not commit or rollback."""
 
     assets: AssetWriteRepository
     revisions: AssetRevisionWriteRepository
     revision_states: AssetRevisionStateWriteRepository
+    audit: SecurityMutationAuditRepository
 
     def __enter__(self) -> AssetUnitOfWork: ...
 

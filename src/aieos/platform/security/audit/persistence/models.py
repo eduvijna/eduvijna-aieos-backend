@@ -27,7 +27,7 @@ audit_records_table = Table(
     Column("action", Text, nullable=False),
     Column("primary_resource_type", Text, nullable=False),
     Column("primary_resource_id", UUID(as_uuid=True), nullable=False),
-    Column("primary_resource_revision", BigInteger, nullable=False),
+    Column("primary_resource_revision", BigInteger, nullable=True),
     Column("resource_revision_before", BigInteger, nullable=True),
     Column("resource_revision_after", BigInteger, nullable=False),
     Column("related_resource_refs", JSONB, nullable=False),
@@ -55,7 +55,17 @@ audit_records_table = Table(
         "'content.review.reject', "
         "'content.publish', "
         "'content.ai.materialize', "
-        "'content.migration.import'"
+        "'content.migration.import', "
+        "'asset.create', "
+        "'asset.revision.register', "
+        "'asset.revision.activate', "
+        "'asset.lifecycle.withdraw', "
+        "'asset.lifecycle.restore', "
+        "'asset.lifecycle.delete', "
+        "'asset.quarantine.set', "
+        "'asset.quarantine.clear', "
+        "'asset.safety.pass', "
+        "'asset.safety.fail'"
         ")",
         name="ck_audit_records_action",
     ),
@@ -82,12 +92,40 @@ audit_records_table = Table(
         name="ck_audit_records_after_nonneg",
     ),
     CheckConstraint(
-        "primary_resource_revision >= 0",
+        "primary_resource_revision IS NULL OR primary_resource_revision >= 0",
         name="ck_audit_records_primary_rev_nonneg",
     ),
     CheckConstraint(
-        "primary_resource_revision = resource_revision_after",
-        name="ck_audit_records_primary_revision_matches_after",
+        "("
+        "action IN ("
+        "'content.create', "
+        "'content.version.create', "
+        "'content.review.submit', "
+        "'content.review.approve', "
+        "'content.review.request_changes', "
+        "'content.review.reject', "
+        "'content.publish', "
+        "'content.ai.materialize', "
+        "'content.migration.import'"
+        ") "
+        "AND primary_resource_revision IS NOT NULL "
+        "AND primary_resource_revision = resource_revision_after"
+        ") OR ("
+        "action IN ("
+        "'asset.create', "
+        "'asset.revision.register', "
+        "'asset.revision.activate', "
+        "'asset.lifecycle.withdraw', "
+        "'asset.lifecycle.restore', "
+        "'asset.lifecycle.delete', "
+        "'asset.quarantine.set', "
+        "'asset.quarantine.clear', "
+        "'asset.safety.pass', "
+        "'asset.safety.fail'"
+        ") "
+        "AND primary_resource_revision IS NULL"
+        ")",
+        name="ck_audit_records_primary_revision_family",
     ),
     CheckConstraint(
         "("
@@ -107,6 +145,27 @@ audit_records_table = Table(
         "'content.review.reject', "
         "'content.publish', "
         "'content.ai.materialize'"
+        ") "
+        "AND resource_revision_before IS NOT NULL "
+        "AND resource_revision_after = resource_revision_before + 1"
+        ") OR ("
+        "action = 'asset.create' "
+        "AND resource_revision_before IS NULL "
+        "AND resource_revision_after = 0"
+        ") OR ("
+        "action = 'asset.revision.register' "
+        "AND resource_revision_before IS NOT NULL "
+        "AND resource_revision_after = resource_revision_before"
+        ") OR ("
+        "action IN ("
+        "'asset.revision.activate', "
+        "'asset.lifecycle.withdraw', "
+        "'asset.lifecycle.restore', "
+        "'asset.lifecycle.delete', "
+        "'asset.quarantine.set', "
+        "'asset.quarantine.clear', "
+        "'asset.safety.pass', "
+        "'asset.safety.fail'"
         ") "
         "AND resource_revision_before IS NOT NULL "
         "AND resource_revision_after = resource_revision_before + 1"

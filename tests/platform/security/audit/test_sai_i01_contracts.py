@@ -120,8 +120,19 @@ class TestActionsAndChannels:
             "content.publish",
             "content.ai.materialize",
             "content.migration.import",
+            "asset.create",
+            "asset.revision.register",
+            "asset.revision.activate",
+            "asset.lifecycle.withdraw",
+            "asset.lifecycle.restore",
+            "asset.lifecycle.delete",
+            "asset.quarantine.set",
+            "asset.quarantine.clear",
+            "asset.safety.pass",
+            "asset.safety.fail",
         }
         assert "content.archive" not in {a.value for a in SecurityAuditAction}
+        assert "asset.purge" not in {a.value for a in SecurityAuditAction}
 
     def test_unknown_action_string_rejected_by_builder(self) -> None:
         with pytest.raises(InvalidSecurityAuditError):

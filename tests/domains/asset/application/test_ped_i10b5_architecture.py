@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 from aieos.platform.runtime.readiness import EXPECTED_ALEMBIC_HEAD, _ALL_APP_SCHEMAS
-from aieos.platform.security.audit.actions import SecurityAuditAction
 from tests.dbutil import REPO_ROOT
 
 pytestmark = pytest.mark.ped_i10b5
@@ -28,9 +27,6 @@ BOUNDARY_DOC = REPO_ROOT / "docs" / "PED-I10B5-ASSET-MUTATION-REVISION-ACTIVATIO
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 UV_LOCK = REPO_ROOT / "uv.lock"
-AUDIT_ACTIONS = (
-    REPO_ROOT / "src" / "aieos" / "platform" / "security" / "audit" / "actions.py"
-)
 EXPECTED_OPENAPI_SHA256 = (
     "D847C7BC21227072DC2627426A1B61774F33DEB78F65397C7C584BCC38C0BCAF"
 )
@@ -98,10 +94,11 @@ class TestDocsAndClassification:
 
 
 class TestContracts:
-    def test_no_new_migration_head_remains_pedi10b2001(self) -> None:
+    def test_no_pedi10b5_migration_b6_is_current_head(self) -> None:
         assert not any(p.name.startswith("pedi10b5") for p in MIGRATIONS.glob("*.py"))
         assert (MIGRATIONS / "pedi10b2001_asset_authority_sor.py").is_file()
-        assert EXPECTED_ALEMBIC_HEAD == "pedi10b2001"
+        assert (MIGRATIONS / "pedi10b6001_asset_security_audit.py").is_file()
+        assert EXPECTED_ALEMBIC_HEAD == "pedi10b6001"
 
     def test_openapi_and_lockfile_unchanged(self) -> None:
         digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest().upper()
@@ -184,7 +181,7 @@ class TestBoundaries:
             assert "nats" not in source
             assert "Idempotency-Key" not in source
 
-    def test_no_jwt_or_asset_capability_or_audit_actions(self) -> None:
+    def test_no_jwt_or_asset_acl_or_owner_bypass(self) -> None:
         for path in _MUTATION_IMPL:
             source = path.read_text(encoding="utf-8")
             assert "import jwt" not in source
@@ -196,10 +193,6 @@ class TestBoundaries:
             assert "BYPASSRLS" not in source or "No BYPASSRLS" in source
             assert "SET ROLE" not in source or "No SET ROLE" in source
             assert "DISABLE ROW LEVEL SECURITY" not in source
-        actions = AUDIT_ACTIONS.read_text(encoding="utf-8")
-        assert "asset." not in actions.lower() or "Asset/File" in actions
-        for member in SecurityAuditAction:
-            assert not member.value.startswith("asset.")
 
     def test_no_purge_bytes_purged_true_or_deletion_evidence_write(self) -> None:
         for path in _MUTATION_IMPL:

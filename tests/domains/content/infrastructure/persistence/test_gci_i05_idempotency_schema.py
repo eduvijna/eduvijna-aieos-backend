@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from tests.conftest import alembic_config, provision_runtime_grants
-from tests.dbutil import REPO_ROOT, set_tenant
+from tests.dbutil import REPO_ROOT, clear_asset_audit_rows_for_schema_downgrade, set_tenant
 
 pytestmark = pytest.mark.gci_i05
 
@@ -133,6 +133,7 @@ class TestAlembicCycle:
         self, postgres18, bootstrap_engine
     ) -> None:
         cfg = alembic_config(postgres18["migrator_url"])
+        clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
         command.downgrade(cfg, "gcii020001")
         with bootstrap_engine.connect() as conn:
             schemas = {
@@ -143,11 +144,12 @@ class TestAlembicCycle:
         assert "api" not in schemas
         assert revision == "gcii020001"
         command.upgrade(cfg, "head")
+        clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
         command.downgrade(cfg, "base")
         command.upgrade(cfg, "head")
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("pedi10b2001")
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("pedi10b6001")
             api_tables = {
                 row[0]
                 for row in conn.execute(
@@ -172,5 +174,6 @@ class TestAlembicCycle:
             "gcii130001_migration_import.py",
             "pedi090001_security_authority.py",
             "pedi10b2001_asset_authority_sor.py",
+    "pedi10b6001_asset_security_audit.py",
         "saii020001_security_audit_ledger.py",
         ]

@@ -18,7 +18,7 @@ from aieos.domains.content.domain.provenance import (
 )
 from aieos.platform.resources import ResourceRef
 from tests.conftest import SCHEMA_OWNER_ROLE, alembic_config, provision_runtime_grants
-from tests.dbutil import REPO_ROOT
+from tests.dbutil import REPO_ROOT, clear_asset_audit_rows_for_schema_downgrade
 
 pytestmark = pytest.mark.gci_i11
 
@@ -212,6 +212,7 @@ class TestMigrationCycle:
         self, postgres18, bootstrap_engine
     ) -> None:
         cfg = alembic_config(postgres18["migrator_url"])
+        clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
         command.downgrade(cfg, "gcii100001")
         with bootstrap_engine.connect() as conn:
             assert (
@@ -234,7 +235,7 @@ class TestMigrationCycle:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "pedi10b2001"
+                == "pedi10b6001"
             )
 
     def test_offline_sql_assumes_owner_before_i11_ddl(self) -> None:
