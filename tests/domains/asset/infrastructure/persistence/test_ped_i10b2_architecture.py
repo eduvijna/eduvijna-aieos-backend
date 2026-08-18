@@ -172,11 +172,15 @@ class TestArchitectureScope:
         persistence_files = {p.name for p in _py_files(ASSET_PERSISTENCE)}
         assert "repository.py" not in persistence_files
         assert "repositories.py" not in persistence_files
-        assert "uow.py" not in persistence_files
+        assert "write_repositories.py" in persistence_files
+        assert "uow.py" in persistence_files
         for path in _py_files(ASSET_ROOT):
             source = path.read_text(encoding="utf-8")
             assert "class SqlAlchemyAssetRepository" not in source
-            assert "class AssetUnitOfWork" not in source
+            if path.name == "ports.py":
+                assert "class AssetUnitOfWork(Protocol)" in source
+            else:
+                assert "class AssetUnitOfWork" not in source
             if path.name == "blob_store.py" and path.parent.name == "application":
                 assert "class BlobStore(Protocol)" in source
             else:

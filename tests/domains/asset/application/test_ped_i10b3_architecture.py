@@ -174,7 +174,10 @@ class TestArchitectureScope:
         for path in _py_files(APPLICATION):
             source = path.read_text(encoding="utf-8")
             assert "class SqlAlchemyAssetRepository" not in source
-            assert "class AssetUnitOfWork" not in source
+            if path.name == "ports.py":
+                assert "class AssetUnitOfWork(Protocol)" in source
+            else:
+                assert "class AssetUnitOfWork" not in source
             assert "APIRouter" not in source
             assert "outbox_messages" not in source
             assert "temporalio" not in source
@@ -184,7 +187,8 @@ class TestArchitectureScope:
         persistence = ASSET_ROOT / "infrastructure" / "persistence"
         names = {p.name for p in _py_files(persistence)}
         assert "repository.py" not in names
-        assert "uow.py" not in names
+        assert "uow.py" in names
+        assert "write_repositories.py" in names
 
     def test_no_migration_and_alembic_head_unchanged(self) -> None:
         assert not any(p.name.startswith("pedi10b3") for p in MIGRATIONS.glob("*.py"))
