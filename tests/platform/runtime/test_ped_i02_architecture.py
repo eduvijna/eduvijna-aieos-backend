@@ -41,7 +41,7 @@ def _py_files(root: Path) -> list[Path]:
 
 
 def test_expected_alembic_head_matches_script_directory() -> None:
-    assert EXPECTED_ALEMBIC_HEAD == "pedi10b2001"
+    assert EXPECTED_ALEMBIC_HEAD == "pedi10b6001"
     cfg = Config(str(REPO_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(cfg)
     heads = script.get_heads()

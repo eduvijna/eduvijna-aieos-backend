@@ -19,7 +19,7 @@ from tests.conftest import (
     alembic_config,
     provision_runtime_grants,
 )
-from tests.dbutil import REPO_ROOT, set_tenant
+from tests.dbutil import REPO_ROOT, clear_asset_audit_rows_for_schema_downgrade, set_tenant
 
 pytestmark = pytest.mark.ped_i10b2
 
@@ -311,7 +311,7 @@ class TestMigrationGraph:
     def test_script_directory_single_head_and_parent(self) -> None:
         cfg = Config(str(REPO_ROOT / "alembic.ini"))
         script = ScriptDirectory.from_config(cfg)
-        assert script.get_heads() == ["pedi10b2001"]
+        assert script.get_heads() == ["pedi10b6001"]
         revision = script.get_revision("pedi10b2001")
         assert revision is not None
         assert revision.down_revision == "pedi090001"
@@ -323,13 +323,14 @@ class TestMigrationGraph:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "pedi10b2001"
+                == "pedi10b6001"
             )
 
     def test_downgrade_removes_asset_keeps_content_security_then_reupgrade(
         self, postgres18, bootstrap_engine
     ) -> None:
         cfg = alembic_config(postgres18["migrator_url"])
+        clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
         command.downgrade(cfg, "pedi090001")
         insp = inspect(bootstrap_engine)
         schemas = set(insp.get_schema_names())
@@ -351,7 +352,7 @@ class TestMigrationGraph:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "pedi10b2001"
+                == "pedi10b6001"
             )
 
 

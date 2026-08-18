@@ -46,6 +46,10 @@ from aieos.domains.asset.infrastructure.persistence.write_repositories import (
 from aieos.platform.resources import ResourceRef
 from aieos.platform.resources.asset_use import AssetUseRejectionReason
 from tests.domains.asset.application.fakes import InMemoryBlobStore
+from tests.domains.asset.application.mutation_fakes import (
+    AllowAssetMutationAuthorization,
+    asset_audit_kwargs,
+)
 
 pytestmark = pytest.mark.ped_i10b5
 
@@ -67,6 +71,7 @@ def _service(
     service = AssetMutationService(
         SqlAlchemyAssetUnitOfWorkFactory(runtime_engine),
         store,
+        AllowAssetMutationAuthorization(),
         clock=_clock,
     )
     return service, store
@@ -88,7 +93,8 @@ def _create(service: AssetMutationService):
         principal_id=principal,
         asset_id=asset_id,
         resource_type=AssetResourceType.IMAGE,
-    )
+            **asset_audit_kwargs(principal),
+        )
     return asset, tenant, principal
 
 
@@ -101,7 +107,8 @@ def _register(service, blobs, tenant, principal, asset_id):
         asset_revision_id=AssetRevisionId.generate(),
         prepared=prepared,
         media_type="image/png",
-    )
+            **asset_audit_kwargs(principal),
+        )
     return registered, prepared
 
 
@@ -113,7 +120,8 @@ def _pass_first(service, blobs, tenant, principal, asset_id):
         asset_id=asset_id,
         asset_revision_id=registered.revision.asset_revision_id,
         expected_aggregate_revision=ZERO,
-    )
+            **asset_audit_kwargs(principal),
+        )
     return registered, prepared, asset
 
 
@@ -179,31 +187,36 @@ def _activatable_at_five(service: AssetMutationService, blobs: InMemoryBlobStore
         asset_id=asset.asset_id,
         asset_revision_id=target.revision.asset_revision_id,
         expected_aggregate_revision=ZERO,
-    )
+            **asset_audit_kwargs(principal),
+        )
     service.withdraw_asset(
         tenant_id=tenant,
         principal_id=principal,
         asset_id=asset.asset_id,
         expected_aggregate_revision=AssetAggregateRevision(1),
-    )
+            **asset_audit_kwargs(principal),
+        )
     service.restore_asset(
         tenant_id=tenant,
         principal_id=principal,
         asset_id=asset.asset_id,
         expected_aggregate_revision=AssetAggregateRevision(2),
-    )
+            **asset_audit_kwargs(principal),
+        )
     service.quarantine_asset(
         tenant_id=tenant,
         principal_id=principal,
         asset_id=asset.asset_id,
         expected_aggregate_revision=AssetAggregateRevision(3),
-    )
+            **asset_audit_kwargs(principal),
+        )
     head = service.clear_quarantine(
         tenant_id=tenant,
         principal_id=principal,
         asset_id=asset.asset_id,
         expected_aggregate_revision=AssetAggregateRevision(4),
-    )
+            **asset_audit_kwargs(principal),
+        )
     assert int(head.aggregate_revision) == 5
     assert head.current_revision is None
     return tenant, principal, asset.asset_id, target, historical, head
@@ -228,6 +241,7 @@ class TestPostgresCreateAndRegister:
             principal_id=principal,
             asset_id=asset.asset_id,
             resource_type=AssetResourceType.IMAGE,
+            **asset_audit_kwargs(principal),
         )
         assert int(replayed.aggregate_revision) == 0
 
@@ -243,7 +257,8 @@ class TestPostgresCreateAndRegister:
                 principal_id=principal,
                 asset_id=asset.asset_id,
                 resource_type=AssetResourceType.IMAGE,
-            )
+            **asset_audit_kwargs(principal),
+        )
         factory = SqlAlchemyAssetUnitOfWorkFactory(runtime_engine)
         with factory(other) as uow:
             assert uow.assets.get(asset.asset_id) is None
@@ -253,7 +268,8 @@ class TestPostgresCreateAndRegister:
                 principal_id=principal,
                 asset_id=asset.asset_id,
                 expected_aggregate_revision=ZERO,
-            )
+            **asset_audit_kwargs(principal),
+        )
 
     def test_concurrent_registrations_allocate_unique_numbers(
         self, runtime_engine
@@ -271,7 +287,8 @@ class TestPostgresCreateAndRegister:
                 asset_revision_id=AssetRevisionId.generate(),
                 prepared=prepared,
                 media_type="image/png",
-            )
+            **asset_audit_kwargs(principal),
+        )
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             first = pool.submit(_one, prepared_a)
@@ -298,6 +315,7 @@ class TestPostgresCreateAndRegister:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         prepared = _prepared(blobs)
         with pytest.raises(AssetTransitionRejected):
@@ -308,7 +326,8 @@ class TestPostgresCreateAndRegister:
                 asset_revision_id=AssetRevisionId.generate(),
                 prepared=prepared,
                 media_type="image/png",
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert blobs.delete_calls == []
         assert blobs.payload(prepared.storage_key) == PAYLOAD
 
@@ -327,6 +346,7 @@ class TestPostgresActivation:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=passed.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         activated = service.activate_revision(
             tenant_id=tenant,
@@ -335,6 +355,7 @@ class TestPostgresActivation:
             resource_type=AssetResourceType.IMAGE,
             revision_number=registered.revision.revision_number,
             expected_aggregate_revision=withdrawn.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         assert activated.current_revision == registered.revision.revision_number
         authority = PostgresAssetUseAuthority(runtime_engine, blobs, clock=_clock)
@@ -349,12 +370,14 @@ class TestPostgresActivation:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=activated.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         quarantined = service.quarantine_asset(
             tenant_id=tenant,
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=restored.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         second_key = _prepared(blobs)
         second = service.register_revision(
@@ -364,6 +387,7 @@ class TestPostgresActivation:
             asset_revision_id=AssetRevisionId.generate(),
             prepared=second_key,
             media_type="image/png",
+            **asset_audit_kwargs(principal),
         )
         passed_second, _ = service.mark_safety_passed(
             tenant_id=tenant,
@@ -371,6 +395,7 @@ class TestPostgresActivation:
             asset_id=asset.asset_id,
             asset_revision_id=second.revision.asset_revision_id,
             expected_aggregate_revision=quarantined.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         activated_q = service.activate_revision(
             tenant_id=tenant,
@@ -379,6 +404,7 @@ class TestPostgresActivation:
             resource_type=AssetResourceType.IMAGE,
             revision_number=second.revision.revision_number,
             expected_aggregate_revision=passed_second.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         assert activated_q.quarantine_state is AssetQuarantineState.QUARANTINED
         quarantined_use = authority.assess_use(
@@ -429,6 +455,7 @@ class TestPostgresActivation:
         probed = AssetMutationService(
             SqlAlchemyAssetUnitOfWorkFactory(runtime_engine),
             LockProbe(),
+            AllowAssetMutationAuthorization(),
             clock=_clock,
         )
         probed.activate_revision(
@@ -438,6 +465,7 @@ class TestPostgresActivation:
             resource_type=AssetResourceType.IMAGE,
             revision_number=registered.revision.revision_number,
             expected_aggregate_revision=passed.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         assert probe["acquired"] is True
         assert probe["error"] is None
@@ -476,6 +504,7 @@ class TestPostgresActivation:
         racing = AssetMutationService(
             SqlAlchemyAssetUnitOfWorkFactory(runtime_engine),
             MutatingInspect(),
+            AllowAssetMutationAuthorization(),
             clock=_clock,
         )
         with pytest.raises(AssetConflict):
@@ -486,7 +515,8 @@ class TestPostgresActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=passed.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
         factory = SqlAlchemyAssetUnitOfWorkFactory(runtime_engine)
         with factory(tenant) as uow:
             head = uow.assets.get(asset.asset_id)
@@ -520,7 +550,8 @@ class TestPostgresActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=passed.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert purged.value.reason == "bytes_purged"
         with bootstrap_engine.begin() as conn:
             conn.execute(
@@ -536,6 +567,7 @@ class TestPostgresActivation:
         down = AssetMutationService(
             SqlAlchemyAssetUnitOfWorkFactory(runtime_engine),
             UnavailableBlobStore(),
+            AllowAssetMutationAuthorization(),
             clock=_clock,
         )
         with pytest.raises(BlobStoreUnavailableError):
@@ -546,7 +578,8 @@ class TestPostgresActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=passed.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
         factory = SqlAlchemyAssetUnitOfWorkFactory(runtime_engine)
         with factory(tenant) as uow:
             head = uow.assets.get(asset.asset_id)
@@ -570,12 +603,14 @@ class TestPostgresLifecycleSafetyRls:
             resource_type=AssetResourceType.IMAGE,
             revision_number=registered.revision.revision_number,
             expected_aggregate_revision=passed.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         deleted = service.delete_asset(
             tenant_id=tenant,
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=activated.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         assert deleted.lifecycle is AssetLifecycle.DELETED
         assert deleted.current_revision == registered.revision.revision_number
@@ -599,6 +634,7 @@ class TestPostgresLifecycleSafetyRls:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         finalized, state = service.mark_safety_passed(
             tenant_id=tenant,
@@ -606,6 +642,7 @@ class TestPostgresLifecycleSafetyRls:
             asset_id=asset.asset_id,
             asset_revision_id=registered.revision.asset_revision_id,
             expected_aggregate_revision=deleted.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         assert state.safety_state is AssetRevisionSafetyState.PASSED
         assert finalized.lifecycle is AssetLifecycle.DELETED
@@ -653,7 +690,8 @@ class TestPostgresLifecycleSafetyRls:
                 asset_revision_id=AssetRevisionId.generate(),
                 prepared=prepared,
                 media_type="image/png",
-            )
+            **asset_audit_kwargs(principal),
+        )
         factory = SqlAlchemyAssetUnitOfWorkFactory(runtime_engine)
         with factory(tenant) as uow:
             assert uow.revisions.max_revision_number(asset.asset_id) == 0
@@ -675,6 +713,7 @@ class TestPostgresExpectedRevisionStability:
         service = AssetMutationService(
             SqlAlchemyAssetUnitOfWorkFactory(runtime_engine),
             probe,
+            AllowAssetMutationAuthorization(),
             clock=_clock,
         )
         with pytest.raises(AssetConflict):
@@ -685,7 +724,8 @@ class TestPostgresExpectedRevisionStability:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=target.revision.revision_number,
                 expected_aggregate_revision=AssetAggregateRevision(6),
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert probe.calls == []
         factory = SqlAlchemyAssetUnitOfWorkFactory(runtime_engine)
         with factory(tenant) as uow:
@@ -709,12 +749,14 @@ class TestPostgresExpectedRevisionStability:
                 asset_id=asset_id,
                 asset_revision_id=historical.revision.asset_revision_id,
                 expected_aggregate_revision=AssetAggregateRevision(5),
-            )
+            **asset_audit_kwargs(principal),
+        )
 
         probe = InspectProbe(blobs, on_inspect=bump_historical)
         service = AssetMutationService(
             SqlAlchemyAssetUnitOfWorkFactory(runtime_engine),
             probe,
+            AllowAssetMutationAuthorization(),
             clock=_clock,
         )
         with pytest.raises(AssetConflict):
@@ -725,7 +767,8 @@ class TestPostgresExpectedRevisionStability:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=target.revision.revision_number,
                 expected_aggregate_revision=AssetAggregateRevision(6),
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert probe.calls == []
         factory = SqlAlchemyAssetUnitOfWorkFactory(runtime_engine)
         with factory(tenant) as uow:
@@ -750,12 +793,14 @@ class TestPostgresExpectedRevisionStability:
                 asset_id=asset_id,
                 asset_revision_id=historical.revision.asset_revision_id,
                 expected_aggregate_revision=head.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
 
         probe = InspectProbe(blobs, on_inspect=bump_historical)
         service = AssetMutationService(
             SqlAlchemyAssetUnitOfWorkFactory(runtime_engine),
             probe,
+            AllowAssetMutationAuthorization(),
             clock=_clock,
         )
         with pytest.raises(AssetConflict):
@@ -766,7 +811,8 @@ class TestPostgresExpectedRevisionStability:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=target.revision.revision_number,
                 expected_aggregate_revision=head.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert probe.calls == [target.revision.storage_key]
         factory = SqlAlchemyAssetUnitOfWorkFactory(runtime_engine)
         with factory(tenant) as uow:

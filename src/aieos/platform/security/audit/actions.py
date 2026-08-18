@@ -17,6 +17,16 @@ class SecurityAuditAction(StrEnum):
     CONTENT_PUBLISH = "content.publish"
     CONTENT_AI_MATERIALIZE = "content.ai.materialize"
     CONTENT_MIGRATION_IMPORT = "content.migration.import"
+    ASSET_CREATE = "asset.create"
+    ASSET_REVISION_REGISTER = "asset.revision.register"
+    ASSET_REVISION_ACTIVATE = "asset.revision.activate"
+    ASSET_LIFECYCLE_WITHDRAW = "asset.lifecycle.withdraw"
+    ASSET_LIFECYCLE_RESTORE = "asset.lifecycle.restore"
+    ASSET_LIFECYCLE_DELETE = "asset.lifecycle.delete"
+    ASSET_QUARANTINE_SET = "asset.quarantine.set"
+    ASSET_QUARANTINE_CLEAR = "asset.quarantine.clear"
+    ASSET_SAFETY_PASS = "asset.safety.pass"
+    ASSET_SAFETY_FAIL = "asset.safety.fail"
 
 
 class SecurityAuditExecutionChannel(StrEnum):
@@ -29,9 +39,11 @@ class SecurityAuditExecutionChannel(StrEnum):
     SYSTEM = "SYSTEM"
 
 
-_CREATE_ACTIONS = frozenset({SecurityAuditAction.CONTENT_CREATE})
-_MIGRATION_IMPORT_ACTIONS = frozenset({SecurityAuditAction.CONTENT_MIGRATION_IMPORT})
-_INCREMENT_ACTIONS = frozenset(
+_CONTENT_CREATE_ACTIONS = frozenset({SecurityAuditAction.CONTENT_CREATE})
+_CONTENT_MIGRATION_IMPORT_ACTIONS = frozenset(
+    {SecurityAuditAction.CONTENT_MIGRATION_IMPORT}
+)
+_CONTENT_INCREMENT_ACTIONS = frozenset(
     {
         SecurityAuditAction.CONTENT_VERSION_CREATE,
         SecurityAuditAction.CONTENT_REVIEW_SUBMIT,
@@ -42,15 +54,74 @@ _INCREMENT_ACTIONS = frozenset(
         SecurityAuditAction.CONTENT_AI_MATERIALIZE,
     }
 )
+_ASSET_CREATE_ACTIONS = frozenset({SecurityAuditAction.ASSET_CREATE})
+_ASSET_STABLE_REGISTRATION_ACTIONS = frozenset(
+    {SecurityAuditAction.ASSET_REVISION_REGISTER}
+)
+_ASSET_INCREMENT_ACTIONS = frozenset(
+    {
+        SecurityAuditAction.ASSET_REVISION_ACTIVATE,
+        SecurityAuditAction.ASSET_LIFECYCLE_WITHDRAW,
+        SecurityAuditAction.ASSET_LIFECYCLE_RESTORE,
+        SecurityAuditAction.ASSET_LIFECYCLE_DELETE,
+        SecurityAuditAction.ASSET_QUARANTINE_SET,
+        SecurityAuditAction.ASSET_QUARANTINE_CLEAR,
+        SecurityAuditAction.ASSET_SAFETY_PASS,
+        SecurityAuditAction.ASSET_SAFETY_FAIL,
+    }
+)
+
+
+def is_content_create_action(action: SecurityAuditAction) -> bool:
+    return action in _CONTENT_CREATE_ACTIONS
+
+
+def is_content_migration_import_action(action: SecurityAuditAction) -> bool:
+    return action in _CONTENT_MIGRATION_IMPORT_ACTIONS
+
+
+def is_content_increment_action(action: SecurityAuditAction) -> bool:
+    return action in _CONTENT_INCREMENT_ACTIONS
+
+
+def is_asset_create_action(action: SecurityAuditAction) -> bool:
+    return action in _ASSET_CREATE_ACTIONS
+
+
+def is_asset_stable_registration_action(action: SecurityAuditAction) -> bool:
+    return action in _ASSET_STABLE_REGISTRATION_ACTIONS
+
+
+def is_asset_increment_action(action: SecurityAuditAction) -> bool:
+    return action in _ASSET_INCREMENT_ACTIONS
+
+
+def is_asset_audit_action(action: SecurityAuditAction) -> bool:
+    return (
+        is_asset_create_action(action)
+        or is_asset_stable_registration_action(action)
+        or is_asset_increment_action(action)
+    )
+
+
+def is_content_audit_action(action: SecurityAuditAction) -> bool:
+    return (
+        is_content_create_action(action)
+        or is_content_migration_import_action(action)
+        or is_content_increment_action(action)
+    )
 
 
 def is_create_action(action: SecurityAuditAction) -> bool:
-    return action in _CREATE_ACTIONS
+    """Content create family. Kept for existing Content callers."""
+    return is_content_create_action(action)
 
 
 def is_migration_import_action(action: SecurityAuditAction) -> bool:
-    return action in _MIGRATION_IMPORT_ACTIONS
+    """Content migration-import family. Kept for existing Content callers."""
+    return is_content_migration_import_action(action)
 
 
 def is_increment_action(action: SecurityAuditAction) -> bool:
-    return action in _INCREMENT_ACTIONS
+    """Content increment family. Kept for existing Content callers."""
+    return is_content_increment_action(action)

@@ -32,7 +32,11 @@ from aieos.domains.asset.domain.state import (
     AssetRevisionSafetyState,
 )
 from tests.domains.asset.application.fakes import InMemoryBlobStore
-from tests.domains.asset.application.mutation_fakes import InMemoryAssetUnitOfWorkFactory
+from tests.domains.asset.application.mutation_fakes import (
+    AllowAssetMutationAuthorization,
+    InMemoryAssetUnitOfWorkFactory,
+    asset_audit_kwargs,
+)
 
 pytestmark = pytest.mark.ped_i10b5
 
@@ -52,7 +56,9 @@ def _service(
 ) -> tuple[AssetMutationService, InMemoryAssetUnitOfWorkFactory, InMemoryBlobStore]:
     factory = InMemoryAssetUnitOfWorkFactory()
     store = blobs if blobs is not None else InMemoryBlobStore()
-    service = AssetMutationService(factory, store, clock=_clock)
+    service = AssetMutationService(
+        factory, store, AllowAssetMutationAuthorization(), clock=_clock
+    )
     return service, factory, store
 
 
@@ -75,6 +81,7 @@ def _create(service: AssetMutationService, tenant=None, principal=None, asset_id
         principal_id=principal,
         asset_id=asset_id,
         resource_type=AssetResourceType.IMAGE,
+        **asset_audit_kwargs(principal),
     )
     return asset, tenant, principal
 
@@ -89,6 +96,7 @@ def _register(service, blobs, tenant, principal, asset_id):
         asset_revision_id=revision_id,
         prepared=prepared,
         media_type="image/png",
+        **asset_audit_kwargs(principal),
     )
     return registered, prepared
 
@@ -122,31 +130,36 @@ def _activatable_at_five(service: AssetMutationService, blobs: InMemoryBlobStore
         asset_id=asset.asset_id,
         asset_revision_id=target.revision.asset_revision_id,
         expected_aggregate_revision=ZERO,
-    )
+            **asset_audit_kwargs(principal),
+        )
     service.withdraw_asset(
         tenant_id=tenant,
         principal_id=principal,
         asset_id=asset.asset_id,
         expected_aggregate_revision=AssetAggregateRevision(1),
-    )
+            **asset_audit_kwargs(principal),
+        )
     service.restore_asset(
         tenant_id=tenant,
         principal_id=principal,
         asset_id=asset.asset_id,
         expected_aggregate_revision=AssetAggregateRevision(2),
-    )
+            **asset_audit_kwargs(principal),
+        )
     service.quarantine_asset(
         tenant_id=tenant,
         principal_id=principal,
         asset_id=asset.asset_id,
         expected_aggregate_revision=AssetAggregateRevision(3),
-    )
+            **asset_audit_kwargs(principal),
+        )
     head = service.clear_quarantine(
         tenant_id=tenant,
         principal_id=principal,
         asset_id=asset.asset_id,
         expected_aggregate_revision=AssetAggregateRevision(4),
-    )
+            **asset_audit_kwargs(principal),
+        )
     assert int(head.aggregate_revision) == 5
     assert head.current_revision is None
     return tenant, principal, asset.asset_id, target, historical, head
@@ -185,6 +198,7 @@ class TestCreate:
             principal_id=principal,
             asset_id=first.asset_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         assert withdrawn.lifecycle is AssetLifecycle.WITHDRAWN
         replayed = service.create_asset(
@@ -192,6 +206,7 @@ class TestCreate:
             principal_id=uuid7(),
             asset_id=first.asset_id,
             resource_type=AssetResourceType.IMAGE,
+            **asset_audit_kwargs(principal),
         )
         assert replayed.asset_id == first.asset_id
         assert replayed.lifecycle is AssetLifecycle.WITHDRAWN
@@ -206,7 +221,8 @@ class TestCreate:
                 principal_id=principal,
                 asset_id=first.asset_id,
                 resource_type=AssetResourceType.DOCUMENT,
-            )
+            **asset_audit_kwargs(principal),
+        )
 
     def test_cross_tenant_same_id_is_conflict_not_a_probe(self) -> None:
         service, factory, _ = _service()
@@ -218,7 +234,8 @@ class TestCreate:
                 principal_id=principal,
                 asset_id=first.asset_id,
                 resource_type=AssetResourceType.IMAGE,
-            )
+            **asset_audit_kwargs(principal),
+        )
         with factory(other) as uow:
             assert uow.assets.get(first.asset_id) is None
 
@@ -255,6 +272,7 @@ class TestRevisionRegistration:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         registered, _ = _register(service, blobs, tenant, principal, asset.asset_id)
         assert int(registered.revision.revision_number) == 1
@@ -263,6 +281,7 @@ class TestRevisionRegistration:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=AssetAggregateRevision(1),
+            **asset_audit_kwargs(principal),
         )
         assert deleted.current_revision is None
         with pytest.raises(AssetTransitionRejected):
@@ -281,6 +300,7 @@ class TestRevisionRegistration:
             asset_revision_id=revision_id,
             prepared=prepared,
             media_type="image/png",
+            **asset_audit_kwargs(principal),
         )
         replayed = service.register_revision(
             tenant_id=tenant,
@@ -289,6 +309,7 @@ class TestRevisionRegistration:
             asset_revision_id=revision_id,
             prepared=prepared,
             media_type="image/png",
+            **asset_audit_kwargs(principal),
         )
         assert replayed.revision.asset_revision_id == first.revision.asset_revision_id
         assert int(replayed.revision.revision_number) == 1
@@ -305,7 +326,8 @@ class TestRevisionRegistration:
                 asset_revision_id=revision_id,
                 prepared=other,
                 media_type="image/png",
-            )
+            **asset_audit_kwargs(principal),
+        )
 
 
 class TestActivation:
@@ -317,6 +339,7 @@ class TestActivation:
             asset_id=asset_id,
             asset_revision_id=registered.revision.asset_revision_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         return registered, prepared, asset
 
@@ -333,6 +356,7 @@ class TestActivation:
             resource_type=AssetResourceType.IMAGE,
             revision_number=registered.revision.revision_number,
             expected_aggregate_revision=head.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         assert activated.current_revision == registered.revision.revision_number
         assert int(activated.aggregate_revision) == int(head.aggregate_revision) + 1
@@ -350,7 +374,8 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=ZERO,
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert pending.value.reason == "safety_pending"
         service.mark_safety_failed(
             tenant_id=tenant,
@@ -358,6 +383,7 @@ class TestActivation:
             asset_id=asset.asset_id,
             asset_revision_id=registered.revision.asset_revision_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         with pytest.raises(AssetActivationRejected) as failed:
             service.activate_revision(
@@ -367,7 +393,8 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=AssetAggregateRevision(1),
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert failed.value.reason == "safety_failed"
 
     def test_missing_size_and_sha_mismatch_reject(self) -> None:
@@ -385,7 +412,8 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=head.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert missing.value.reason == "bytes_missing"
         blobs.create(storage_key=prepared.storage_key, source=BytesIO(b"xx"))
         with pytest.raises(AssetActivationRejected) as size:
@@ -396,7 +424,8 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=head.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert size.value.reason == "integrity_mismatch"
         same_len = b"Q" * SIZE
         blobs._payloads[prepared.storage_key] = same_len
@@ -408,27 +437,31 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=head.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert sha.value.reason == "integrity_mismatch"
 
     def test_unavailable_and_stale_expected_and_purged(self) -> None:
         factory = InMemoryAssetUnitOfWorkFactory()
         blobs = InMemoryBlobStore()
-        service = AssetMutationService(factory, UnavailableBlobStore(), clock=_clock)
+        service = AssetMutationService(
+            factory, UnavailableBlobStore(), AllowAssetMutationAuthorization(), clock=_clock
+        )
         asset, tenant, principal = _create(service)
         registered, _ = _register(
-            AssetMutationService(factory, blobs, clock=_clock),
+            AssetMutationService(factory, blobs, AllowAssetMutationAuthorization(), clock=_clock),
             blobs,
             tenant,
             principal,
             asset.asset_id,
         )
-        AssetMutationService(factory, blobs, clock=_clock).mark_safety_passed(
+        AssetMutationService(factory, blobs, AllowAssetMutationAuthorization(), clock=_clock).mark_safety_passed(
             tenant_id=tenant,
             principal_id=principal,
             asset_id=asset.asset_id,
             asset_revision_id=registered.revision.asset_revision_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         with pytest.raises(BlobStoreUnavailableError):
             service.activate_revision(
@@ -438,8 +471,9 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=AssetAggregateRevision(1),
-            )
-        usable = AssetMutationService(factory, blobs, clock=_clock)
+            **asset_audit_kwargs(principal),
+        )
+        usable = AssetMutationService(factory, blobs, AllowAssetMutationAuthorization(), clock=_clock)
         with pytest.raises(AssetConflict):
             usable.activate_revision(
                 tenant_id=tenant,
@@ -448,7 +482,8 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=ZERO,
-            )
+            **asset_audit_kwargs(principal),
+        )
         state = factory.catalog.states[registered.revision.asset_revision_id.value]
         factory.catalog.states[registered.revision.asset_revision_id.value] = (
             AssetRevisionState(
@@ -469,18 +504,19 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=registered.revision.revision_number,
                 expected_aggregate_revision=AssetAggregateRevision(1),
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert purged.value.reason == "bytes_purged"
 
     def test_future_expected_revision_conflicts_without_inspect(self) -> None:
         factory = InMemoryAssetUnitOfWorkFactory()
         blobs = InMemoryBlobStore()
-        writer = AssetMutationService(factory, blobs, clock=_clock)
+        writer = AssetMutationService(factory, blobs, AllowAssetMutationAuthorization(), clock=_clock)
         tenant, principal, asset_id, target, _, head = _activatable_at_five(
             writer, blobs
         )
         probe = InspectProbe(blobs)
-        service = AssetMutationService(factory, probe, clock=_clock)
+        service = AssetMutationService(factory, probe, AllowAssetMutationAuthorization(), clock=_clock)
         with pytest.raises(AssetConflict):
             service.activate_revision(
                 tenant_id=tenant,
@@ -489,7 +525,8 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=target.revision.revision_number,
                 expected_aggregate_revision=AssetAggregateRevision(6),
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert probe.calls == []
         with factory(tenant) as uow:
             loaded = uow.assets.get(asset_id)
@@ -503,7 +540,7 @@ class TestActivation:
     ) -> None:
         factory = InMemoryAssetUnitOfWorkFactory()
         blobs = InMemoryBlobStore()
-        writer = AssetMutationService(factory, blobs, clock=_clock)
+        writer = AssetMutationService(factory, blobs, AllowAssetMutationAuthorization(), clock=_clock)
         tenant, principal, asset_id, target, historical, _ = _activatable_at_five(
             writer, blobs
         )
@@ -515,10 +552,11 @@ class TestActivation:
                 asset_id=asset_id,
                 asset_revision_id=historical.revision.asset_revision_id,
                 expected_aggregate_revision=AssetAggregateRevision(5),
-            )
+            **asset_audit_kwargs(principal),
+        )
 
         probe = InspectProbe(blobs, on_inspect=bump_historical)
-        service = AssetMutationService(factory, probe, clock=_clock)
+        service = AssetMutationService(factory, probe, AllowAssetMutationAuthorization(), clock=_clock)
         with pytest.raises(AssetConflict):
             service.activate_revision(
                 tenant_id=tenant,
@@ -527,7 +565,8 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=target.revision.revision_number,
                 expected_aggregate_revision=AssetAggregateRevision(6),
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert probe.calls == []
         with factory(tenant) as uow:
             loaded = uow.assets.get(asset_id)
@@ -541,7 +580,7 @@ class TestActivation:
     def test_aggregate_change_during_inspect_conflicts(self) -> None:
         factory = InMemoryAssetUnitOfWorkFactory()
         blobs = InMemoryBlobStore()
-        writer = AssetMutationService(factory, blobs, clock=_clock)
+        writer = AssetMutationService(factory, blobs, AllowAssetMutationAuthorization(), clock=_clock)
         tenant, principal, asset_id, target, historical, head = _activatable_at_five(
             writer, blobs
         )
@@ -553,10 +592,11 @@ class TestActivation:
                 asset_id=asset_id,
                 asset_revision_id=historical.revision.asset_revision_id,
                 expected_aggregate_revision=head.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
 
         probe = InspectProbe(blobs, on_inspect=bump_historical)
-        service = AssetMutationService(factory, probe, clock=_clock)
+        service = AssetMutationService(factory, probe, AllowAssetMutationAuthorization(), clock=_clock)
         with pytest.raises(AssetConflict):
             service.activate_revision(
                 tenant_id=tenant,
@@ -565,7 +605,8 @@ class TestActivation:
                 resource_type=AssetResourceType.IMAGE,
                 revision_number=target.revision.revision_number,
                 expected_aggregate_revision=head.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert probe.calls == [target.revision.storage_key]
         with factory(tenant) as uow:
             loaded = uow.assets.get(asset_id)
@@ -583,6 +624,7 @@ class TestLifecycleQuarantineSafety:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         assert withdrawn.lifecycle is AssetLifecycle.WITHDRAWN
         assert int(withdrawn.aggregate_revision) == 1
@@ -591,6 +633,7 @@ class TestLifecycleQuarantineSafety:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=AssetAggregateRevision(1),
+            **asset_audit_kwargs(principal),
         )
         assert restored.lifecycle is AssetLifecycle.ACTIVE
         deleted = service.delete_asset(
@@ -598,6 +641,7 @@ class TestLifecycleQuarantineSafety:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=AssetAggregateRevision(2),
+            **asset_audit_kwargs(principal),
         )
         assert deleted.lifecycle is AssetLifecycle.DELETED
         assert deleted.current_revision is None
@@ -607,21 +651,24 @@ class TestLifecycleQuarantineSafety:
                 principal_id=principal,
                 asset_id=asset.asset_id,
                 expected_aggregate_revision=AssetAggregateRevision(3),
-            )
+            **asset_audit_kwargs(principal),
+        )
         with pytest.raises(AssetTransitionRejected):
             service.withdraw_asset(
                 tenant_id=tenant,
                 principal_id=principal,
                 asset_id=asset.asset_id,
                 expected_aggregate_revision=AssetAggregateRevision(3),
-            )
+            **asset_audit_kwargs(principal),
+        )
         with pytest.raises(AssetTransitionRejected):
             service.delete_asset(
                 tenant_id=tenant,
                 principal_id=principal,
                 asset_id=asset.asset_id,
                 expected_aggregate_revision=AssetAggregateRevision(3),
-            )
+            **asset_audit_kwargs(principal),
+        )
         assert blobs.delete_calls == []
 
     def test_stale_expected_revision_and_retained_current_revision(self) -> None:
@@ -634,6 +681,7 @@ class TestLifecycleQuarantineSafety:
             asset_id=asset.asset_id,
             asset_revision_id=registered.revision.asset_revision_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         activated = service.activate_revision(
             tenant_id=tenant,
@@ -642,6 +690,7 @@ class TestLifecycleQuarantineSafety:
             resource_type=AssetResourceType.IMAGE,
             revision_number=registered.revision.revision_number,
             expected_aggregate_revision=passed.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         with pytest.raises(AssetConflict):
             service.withdraw_asset(
@@ -649,12 +698,14 @@ class TestLifecycleQuarantineSafety:
                 principal_id=principal,
                 asset_id=asset.asset_id,
                 expected_aggregate_revision=ZERO,
-            )
+            **asset_audit_kwargs(principal),
+        )
         withdrawn = service.withdraw_asset(
             tenant_id=tenant,
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=activated.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         assert withdrawn.current_revision == registered.revision.revision_number
         deleted = service.delete_asset(
@@ -662,6 +713,7 @@ class TestLifecycleQuarantineSafety:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=withdrawn.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         assert deleted.current_revision == registered.revision.revision_number
         assert blobs.delete_calls == []
@@ -674,6 +726,7 @@ class TestLifecycleQuarantineSafety:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         assert quarantined.quarantine_state is AssetQuarantineState.QUARANTINED
         assert quarantined.lifecycle is AssetLifecycle.ACTIVE
@@ -684,6 +737,7 @@ class TestLifecycleQuarantineSafety:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=AssetAggregateRevision(1),
+            **asset_audit_kwargs(principal),
         )
         assert cleared.quarantine_state is AssetQuarantineState.CLEAR
         deleted = service.delete_asset(
@@ -691,6 +745,7 @@ class TestLifecycleQuarantineSafety:
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=cleared.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         with pytest.raises(AssetTransitionRejected):
             service.quarantine_asset(
@@ -698,7 +753,8 @@ class TestLifecycleQuarantineSafety:
                 principal_id=principal,
                 asset_id=deleted.asset_id,
                 expected_aggregate_revision=deleted.aggregate_revision,
-            )
+            **asset_audit_kwargs(principal),
+        )
 
     def test_safety_transitions_historical_and_after_delete(self) -> None:
         service, factory, blobs = _service()
@@ -711,6 +767,7 @@ class TestLifecycleQuarantineSafety:
             asset_id=asset.asset_id,
             asset_revision_id=first.revision.asset_revision_id,
             expected_aggregate_revision=ZERO,
+            **asset_audit_kwargs(principal),
         )
         assert state.safety_state is AssetRevisionSafetyState.PASSED
         assert int(passed.aggregate_revision) == 1
@@ -720,6 +777,7 @@ class TestLifecycleQuarantineSafety:
             asset_id=asset.asset_id,
             asset_revision_id=first.revision.asset_revision_id,
             expected_aggregate_revision=AssetAggregateRevision(1),
+            **asset_audit_kwargs(principal),
         )
         assert failed_state.safety_state is AssetRevisionSafetyState.FAILED
         assert int(failed.aggregate_revision) == 2
@@ -730,12 +788,14 @@ class TestLifecycleQuarantineSafety:
                 asset_id=asset.asset_id,
                 asset_revision_id=first.revision.asset_revision_id,
                 expected_aggregate_revision=AssetAggregateRevision(2),
-            )
+            **asset_audit_kwargs(principal),
+        )
         deleted = service.delete_asset(
             tenant_id=tenant,
             principal_id=principal,
             asset_id=asset.asset_id,
             expected_aggregate_revision=AssetAggregateRevision(2),
+            **asset_audit_kwargs(principal),
         )
         finalized, terminal = service.mark_safety_failed(
             tenant_id=tenant,
@@ -743,6 +803,7 @@ class TestLifecycleQuarantineSafety:
             asset_id=asset.asset_id,
             asset_revision_id=second.revision.asset_revision_id,
             expected_aggregate_revision=deleted.aggregate_revision,
+            **asset_audit_kwargs(principal),
         )
         assert terminal.safety_state is AssetRevisionSafetyState.FAILED
         assert finalized.lifecycle is AssetLifecycle.DELETED
@@ -755,10 +816,12 @@ class TestLifecycleQuarantineSafety:
 
     def test_unknown_asset_is_not_found(self) -> None:
         service, _, _ = _service()
+        tenant, principal = uuid7(), uuid7()
         with pytest.raises(AssetNotFound):
             service.withdraw_asset(
-                tenant_id=uuid7(),
-                principal_id=uuid7(),
+                tenant_id=tenant,
+                principal_id=principal,
                 asset_id=AssetId.generate(),
                 expected_aggregate_revision=ZERO,
+                **asset_audit_kwargs(principal),
             )

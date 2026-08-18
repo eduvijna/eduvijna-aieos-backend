@@ -33,7 +33,7 @@ from tests.conftest import (
     alembic_config,
     provision_runtime_grants,
 )
-from tests.dbutil import REPO_ROOT, set_tenant
+from tests.dbutil import REPO_ROOT, clear_asset_audit_rows_for_schema_downgrade, set_tenant
 
 pytestmark = pytest.mark.sai_i02
 
@@ -202,7 +202,7 @@ class TestSaiI02SchemaAndRoles:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "pedi10b2001"
+                == "pedi10b6001"
             )
             schema_owner = conn.execute(
                 text(
@@ -264,6 +264,7 @@ class TestSaiI02SchemaAndRoles:
 
     def test_alembic_cycle_and_role_restore(self, postgres18, bootstrap_engine) -> None:
         cfg = alembic_config(postgres18["migrator_url"])
+        clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
         command.downgrade(cfg, "gcii130001")
         with bootstrap_engine.connect() as conn:
             assert (
@@ -279,13 +280,14 @@ class TestSaiI02SchemaAndRoles:
                 == 0
             )
         command.upgrade(cfg, "head")
+        clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
         command.downgrade(cfg, "base")
         command.upgrade(cfg, "head")
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "pedi10b2001"
+                == "pedi10b6001"
             )
 
     def test_offline_sql_role_order(self) -> None:

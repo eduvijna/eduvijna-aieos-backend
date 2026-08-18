@@ -1,5 +1,8 @@
 """Asset SQLAlchemy persistence mappings, current-use reads, and write UoW."""
 
+from aieos.domains.asset.infrastructure.persistence.audit_repository import (
+    AssetSecurityMutationAuditRepository,
+)
 from aieos.domains.asset.infrastructure.persistence.authority_reads import (
     PostgresAssetCurrentUseStore,
     fetch_revision,
@@ -34,6 +37,7 @@ from aieos.domains.asset.infrastructure.persistence.write_repositories import (
 
 __all__ = [
     "ASSET_SCHEMA",
+    "AssetSecurityMutationAuditRepository",
     "PostgresAssetCurrentUseStore",
     "PostgresAssetUseAuthority",
     "SqlAlchemyAssetRevisionStateWriteRepository",

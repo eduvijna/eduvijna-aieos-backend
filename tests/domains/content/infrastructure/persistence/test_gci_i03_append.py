@@ -726,6 +726,7 @@ class TestArchitectureAndNoSchemaChange:
             "gcii130001_migration_import.py",
             "pedi090001_security_authority.py",
             "pedi10b2001_asset_authority_sor.py",
+    "pedi10b6001_asset_security_audit.py",
             "saii020001_security_audit_ledger.py",
         ]
         assert not Path(

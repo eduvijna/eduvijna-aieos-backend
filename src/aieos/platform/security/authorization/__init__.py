@@ -9,6 +9,10 @@ from aieos.domains.content.application.ports import (
     CONTENT_REVIEW_SUBMIT,
     CONTENT_VERSION_CREATE,
 )
+from aieos.platform.security.authorization.asset_adapters import (
+    AIEOS_ASSET_CAPABILITIES,
+    KernelAssetMutationAuthorization,
+)
 from aieos.platform.security.authorization.content_adapters import (
     AIEOS_CONTENT_CAPABILITIES,
     KernelAIGenerationAuthorization,
@@ -32,6 +36,7 @@ from aieos.platform.security.authorization.tenant_authority import (
 )
 
 __all__ = [
+    "AIEOS_ASSET_CAPABILITIES",
     "AIEOS_CONTENT_CAPABILITIES",
     "CONTENT_MIGRATE_IMPORT",
     "CONTENT_PUBLISH",
@@ -42,6 +47,7 @@ __all__ = [
     "AuthorizationKernel",
     "GrantStatus",
     "KernelAIGenerationAuthorization",
+    "KernelAssetMutationAuthorization",
     "KernelContentMigrationAuthorization",
     "KernelCurrentTenantAccessAuthority",
     "KernelPublicationAuthorization",

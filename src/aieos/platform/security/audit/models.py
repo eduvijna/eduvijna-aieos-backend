@@ -11,9 +11,13 @@ from aieos.platform.resources import ResourceRef
 from aieos.platform.security.audit.actions import (
     SecurityAuditAction,
     SecurityAuditExecutionChannel,
-    is_create_action,
-    is_increment_action,
-    is_migration_import_action,
+    is_asset_create_action,
+    is_asset_increment_action,
+    is_asset_stable_registration_action,
+    is_content_audit_action,
+    is_content_create_action,
+    is_content_increment_action,
+    is_content_migration_import_action,
 )
 from aieos.platform.security.audit.errors import InvalidSecurityAuditError
 from aieos.platform.security.audit.identities import AuditRecordId
@@ -79,19 +83,45 @@ def _validate_revision_pair(
     before: int | None,
     after: int,
 ) -> None:
-    if is_create_action(action):
+    if is_content_create_action(action):
         if before is not None or after != 0:
             raise InvalidSecurityAuditError(
                 "content.create requires before=None and after=0"
             )
         return
-    if is_migration_import_action(action):
+    if is_content_migration_import_action(action):
         if before is not None or after != 1:
             raise InvalidSecurityAuditError(
                 "content.migration.import requires before=None and after=1"
             )
         return
-    if is_increment_action(action):
+    if is_content_increment_action(action):
+        if before is None:
+            raise InvalidSecurityAuditError(
+                f"{action.value} requires a non-null resource_revision_before"
+            )
+        if after != before + 1:
+            raise InvalidSecurityAuditError(
+                f"{action.value} requires resource_revision_after == before + 1"
+            )
+        return
+    if is_asset_create_action(action):
+        if before is not None or after != 0:
+            raise InvalidSecurityAuditError(
+                "asset.create requires before=None and after=0"
+            )
+        return
+    if is_asset_stable_registration_action(action):
+        if before is None:
+            raise InvalidSecurityAuditError(
+                "asset.revision.register requires a non-null resource_revision_before"
+            )
+        if after != before:
+            raise InvalidSecurityAuditError(
+                "asset.revision.register requires resource_revision_after == before"
+            )
+        return
+    if is_asset_increment_action(action):
         if before is None:
             raise InvalidSecurityAuditError(
                 f"{action.value} requires a non-null resource_revision_before"
@@ -102,6 +132,22 @@ def _validate_revision_pair(
             )
         return
     raise InvalidSecurityAuditError(f"unsupported audit action: {action!r}")
+
+
+def _validate_primary_resource_revision(
+    action: SecurityAuditAction, primary: ResourceRef, after: int
+) -> None:
+    if is_content_audit_action(action):
+        if primary.resource_revision != after:
+            raise InvalidSecurityAuditError(
+                "primary_resource_ref.resource_revision must equal "
+                "resource_revision_after"
+            )
+        return
+    if primary.resource_revision is not None:
+        raise InvalidSecurityAuditError(
+            "asset primary_resource_ref.resource_revision must be None"
+        )
 
 
 def _validate_related_refs(
@@ -230,11 +276,9 @@ class SecurityMutationAuditRecord:
         object.__setattr__(self, "resource_revision_before", before)
         object.__setattr__(self, "resource_revision_after", after)
         _validate_revision_pair(self.action, before, after)
-        if self.primary_resource_ref.resource_revision != after:
-            raise InvalidSecurityAuditError(
-                "primary_resource_ref.resource_revision must equal "
-                "resource_revision_after"
-            )
+        _validate_primary_resource_revision(
+            self.action, self.primary_resource_ref, after
+        )
         object.__setattr__(
             self,
             "related_resource_refs",

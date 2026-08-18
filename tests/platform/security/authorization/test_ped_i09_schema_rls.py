@@ -17,7 +17,7 @@ from aieos.platform.security.authorization import (
     AuthorityDecision,
 )
 from tests.conftest import alembic_config, provision_runtime_grants
-from tests.dbutil import set_tenant
+from tests.dbutil import clear_asset_audit_rows_for_schema_downgrade, set_tenant
 from tests.platform.security.authorization.helpers import (
     seed_active_authority,
     seed_grant,
@@ -42,7 +42,7 @@ class TestMigrationHeadAndSchema:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "pedi10b2001"
+                == "pedi10b6001"
             )
             assert (
                 conn.execute(
@@ -76,6 +76,7 @@ class TestMigrationHeadAndSchema:
         self, postgres18, bootstrap_engine
     ) -> None:
         cfg = alembic_config(postgres18["migrator_url"])
+        clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
         command.downgrade(cfg, "saii020001")
         with bootstrap_engine.connect() as conn:
             assert (
@@ -101,7 +102,7 @@ class TestMigrationHeadAndSchema:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "pedi10b2001"
+                == "pedi10b6001"
             )
 
 

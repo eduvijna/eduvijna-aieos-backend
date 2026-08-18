@@ -36,3 +36,7 @@ class AssetActivationRejected(AssetApplicationError):
 
 class AssetPersistenceFailed(AssetApplicationError):
     """Infrastructure/transaction/connection/driver failure, not a business conflict."""
+
+
+class AssetForbidden(AssetApplicationError):
+    """Current principal lacks the required exact Asset capability."""

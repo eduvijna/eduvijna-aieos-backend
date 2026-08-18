@@ -13,6 +13,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine, Transaction
 
 from aieos.domains.asset.application.mutation_errors import AssetPersistenceFailed
+from aieos.domains.asset.infrastructure.persistence.audit_repository import (
+    AssetSecurityMutationAuditRepository,
+)
 from aieos.domains.asset.infrastructure.persistence.errors import (
     reraise_as_application_error,
 )
@@ -32,6 +35,7 @@ class SqlAlchemyAssetUnitOfWork:
         self.assets: SqlAlchemyAssetWriteRepository
         self.revisions: SqlAlchemyAssetRevisionWriteRepository
         self.revision_states: SqlAlchemyAssetRevisionStateWriteRepository
+        self.audit: AssetSecurityMutationAuditRepository
 
     def __enter__(self) -> SqlAlchemyAssetUnitOfWork:
         try:
@@ -50,6 +54,7 @@ class SqlAlchemyAssetUnitOfWork:
             self.revision_states = SqlAlchemyAssetRevisionStateWriteRepository(
                 self._connection, self._execution_tenant_id
             )
+            self.audit = AssetSecurityMutationAuditRepository(self._connection)
             return self
         except Exception as exc:
             self._cleanup(suppress=True)

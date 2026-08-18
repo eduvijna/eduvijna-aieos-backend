@@ -13,7 +13,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from tests.conftest import SCHEMA_OWNER_ROLE, alembic_config, provision_runtime_grants
-from tests.dbutil import REPO_ROOT, set_tenant
+from tests.dbutil import REPO_ROOT, clear_asset_audit_rows_for_schema_downgrade, set_tenant
 
 pytestmark = pytest.mark.gci_i06
 
@@ -413,6 +413,7 @@ class TestReviewRlsAndImmutability:
 class TestAlembicCycleAndOfflineSql:
     def test_online_upgrade_downgrade_upgrade(self, postgres18, bootstrap_engine) -> None:
         cfg = alembic_config(postgres18["migrator_url"])
+        clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
         command.downgrade(cfg, "gcii050001")
         with bootstrap_engine.connect() as conn:
             tables = {
@@ -435,11 +436,12 @@ class TestAlembicCycleAndOfflineSql:
         assert "result_review_decision_id" not in idemp_cols
         assert revision == "gcii050001"
         command.upgrade(cfg, "head")
+        clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
         command.downgrade(cfg, "base")
         command.upgrade(cfg, "head")
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("pedi10b2001")
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("pedi10b6001")
             tables = {
                 row[0]
                 for row in conn.execute(
@@ -491,5 +493,6 @@ class TestAlembicCycleAndOfflineSql:
             "gcii130001_migration_import.py",
             "pedi090001_security_authority.py",
             "pedi10b2001_asset_authority_sor.py",
+    "pedi10b6001_asset_security_audit.py",
         "saii020001_security_audit_ledger.py",
         ]
