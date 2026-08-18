@@ -52,6 +52,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- GCI-I05R3: concurrent ContentVersion append with distinct Idempotency-Key and the same If-Match produces exactly one 201 and one 412 `resource_revision_conflict`; `get_head_for_update` locks `content.contents` then separately reads the current ContentVersion so READ COMMITTED cannot return a mixed `current_version_id`/`version_number` projection. No migration, OpenAPI, or dependency change.
 - PED-I10B5R1: activation requires `candidate.aggregate_revision == expected_aggregate_revision` before `BlobStore.inspect`, and post-inspect stability includes `locked.aggregate_revision == candidate.aggregate_revision`, so a future expected revision cannot become a successful activation if aggregate authority advances during inspect. No migration, OpenAPI, uv.lock, Content, API, purge, or composition change. Classification remains NON_PRODUCTION.
 - PED-I09R2: corrupt / unrecognized authority status strings raise `AuthorizationUnavailableError` (503) rather than ordinary DENY (403); valid `SUSPENDED`/`DISABLED`/`REVOKED` remain DENY.
 - PED-I09R1: reject wildcard capability identifiers (`*` / `content.*` / etc.) at DB CHECK and AuthorizationKernel construction/decision; Content capability constants owned solely by `domains/content/application/ports.py` (no parallel definitions in generic `decisions.py`).
