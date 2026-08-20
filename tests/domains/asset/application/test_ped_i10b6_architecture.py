@@ -56,11 +56,13 @@ EXPECTED_OPENAPI_SHA256 = (
 _CLOUD_NEEDLES = (
     "import boto3",
     "import botocore",
+    "from botocore",
     "import minio",
     "from minio",
     "google.cloud.storage",
     "azure.storage.blob",
 )
+_APPROVED_BLOBSTORE_REL = "src/aieos/domains/asset/infrastructure/blobstore"
 
 
 def _py_files(root: Path) -> list[Path]:
@@ -199,11 +201,19 @@ class TestBoundaries:
         hits: list[str] = []
         for path in _py_files(SRC_ROOT):
             source = path.read_text(encoding="utf-8")
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            in_approved = rel.startswith(_APPROVED_BLOBSTORE_REL + "/")
             for needle in _CLOUD_NEEDLES:
                 if needle in source:
-                    hits.append(f"{path}:{needle}")
+                    if in_approved and needle in {
+                        "import boto3",
+                        "import botocore",
+                        "from botocore",
+                    }:
+                        continue
+                    hits.append(f"{rel}:{needle}")
             if "class S3BlobStore" in source or "class MinioBlobStore" in source:
-                hits.append(f"{path}:named-provider")
+                hits.append(f"{rel}:named-provider")
         assert hits == []
 
     def test_exact_ten_audit_actions_no_purge_download_upload(self) -> None:

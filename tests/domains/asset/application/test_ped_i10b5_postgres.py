@@ -78,7 +78,7 @@ def _service(
 
 
 def _prepared(blobs: InMemoryBlobStore, payload: bytes = PAYLOAD) -> PreparedBlob:
-    info = blobs.create(storage_key=uuid7().hex, source=BytesIO(payload))
+    info = blobs.create(storage_key=uuid7().hex, source=BytesIO(payload), byte_size=len(payload))
     return PreparedBlob(
         storage_key=info.storage_key,
         byte_size=info.byte_size,
@@ -151,7 +151,7 @@ class UnavailableBlobStore:
     def inspect(self, *, storage_key: str):
         raise BlobStoreUnavailableError("blob store unavailable")
 
-    def create(self, *, storage_key: str, source: object):
+    def create(self, *, storage_key: str, source: object, byte_size: int):
         raise AssertionError("create must not be called")
 
     def delete(self, *, storage_key: str) -> None:
@@ -170,7 +170,7 @@ class InspectProbe:
             self.on_inspect()
         return self.inner.inspect(storage_key=storage_key)
 
-    def create(self, *, storage_key: str, source: object):
+    def create(self, *, storage_key: str, source: object, byte_size: int):
         raise AssertionError("create must not be called")
 
     def delete(self, *, storage_key: str) -> None:
@@ -446,7 +446,7 @@ class TestPostgresActivation:
                     raise
                 return blobs.inspect(storage_key=storage_key)
 
-            def create(self, *, storage_key: str, source: object):
+            def create(self, *, storage_key: str, source: object, byte_size: int):
                 raise AssertionError("create must not be called")
 
             def delete(self, *, storage_key: str) -> None:
@@ -495,7 +495,7 @@ class TestPostgresActivation:
                     )
                 return info
 
-            def create(self, *, storage_key: str, source: object):
+            def create(self, *, storage_key: str, source: object, byte_size: int):
                 raise AssertionError("create must not be called")
 
             def delete(self, *, storage_key: str) -> None:

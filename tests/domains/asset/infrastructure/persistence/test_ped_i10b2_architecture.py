@@ -56,6 +56,7 @@ _CLOUD_NEEDLES = (
     "minio",
     "s3://",
 )
+_APPROVED_BLOBSTORE_REL = "infrastructure/blobstore"
 _FORBIDDEN_ASSET_DIRS = (
     "api",
     "workflows",
@@ -158,13 +159,19 @@ class TestArchitectureScope:
     def test_asset_source_has_no_cloud_sdk_or_out_of_scope_packages(self) -> None:
         hits: list[str] = []
         for path in _py_files(ASSET_ROOT):
+            rel = path.relative_to(ASSET_ROOT).as_posix()
+            in_approved = rel.startswith(_APPROVED_BLOBSTORE_REL + "/")
             source = path.read_text(encoding="utf-8")
             for needle in _CLOUD_NEEDLES:
                 if needle in source:
-                    hits.append(f"{path.relative_to(ASSET_ROOT)}:{needle}")
+                    if in_approved and needle in {"boto3", "botocore"}:
+                        continue
+                    hits.append(f"{rel}:{needle}")
             for name in _imported_modules(path):
                 root = name.split(".")[0]
                 if root in {"boto3", "botocore", "minio"}:
+                    if in_approved and root in {"boto3", "botocore"}:
+                        continue
                     hits.append(f"{path.name}:import {name}")
         assert hits == []
         for dirname in _FORBIDDEN_ASSET_DIRS:

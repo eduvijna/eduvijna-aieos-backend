@@ -187,7 +187,7 @@ def _seed_revision(
     blobs = InMemoryBlobStore()
     if revisions is None:
         key = uuid7().hex
-        blobs.create(storage_key=key, source=BytesIO(PAYLOAD))
+        blobs.create(storage_key=key, source=BytesIO(PAYLOAD), byte_size=len(PAYLOAD))
         revisions = [
             {
                 "revision_number": 1,
@@ -214,7 +214,7 @@ def _seed_revision(
             number = int(spec["revision_number"])  # type: ignore[arg-type]
             storage_key = str(spec["storage_key"])
             if storage_key not in blobs._payloads:
-                blobs.create(storage_key=storage_key, source=BytesIO(PAYLOAD))
+                blobs.create(storage_key=storage_key, source=BytesIO(PAYLOAD), byte_size=len(PAYLOAD))
             _insert_revision(
                 conn,
                 tenant_id=tenant_id,

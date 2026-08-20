@@ -53,7 +53,7 @@ def _clock() -> datetime:
 
 
 def _prepared(blobs: InMemoryBlobStore) -> PreparedBlob:
-    info = blobs.create(storage_key=uuid7().hex, source=BytesIO(PAYLOAD))
+    info = blobs.create(storage_key=uuid7().hex, source=BytesIO(PAYLOAD), byte_size=len(PAYLOAD))
     return PreparedBlob(
         storage_key=info.storage_key,
         byte_size=info.byte_size,

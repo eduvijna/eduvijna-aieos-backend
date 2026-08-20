@@ -70,12 +70,14 @@ class BlobStore(Protocol):
     """Physical-byte store. PostgreSQL and BlobStore are not one ACID transaction."""
 
     def create(
-        self, *, storage_key: str, source: ReadableBinary
+        self, *, storage_key: str, source: ReadableBinary, byte_size: int
     ) -> BlobObjectInfo:
         """Create a NEW physical object. Existing key => BlobAlreadyExistsError.
 
+        byte_size is the exact declared transport length (not an observation).
         Must not overwrite. Returned storage_key must equal the requested key
-        exactly. byte_size/sha256 are observations of bytes actually written.
+        exactly. Returned byte_size/sha256 are observations of bytes actually
+        written / inspected after create.
         """
 
     def inspect(self, *, storage_key: str) -> BlobObjectInfo | None:

@@ -6,7 +6,10 @@ import hashlib
 from collections.abc import Iterable
 
 from aieos.domains.asset.application.blob_store import BlobObjectInfo, ReadableBinary
-from aieos.domains.asset.application.errors import BlobAlreadyExistsError
+from aieos.domains.asset.application.errors import (
+    BlobAlreadyExistsError,
+    InvalidBlobObjectInfoError,
+)
 
 
 class InMemoryBlobStore:
@@ -18,19 +21,29 @@ class InMemoryBlobStore:
         self.inspect_calls: list[str] = []
         self.delete_calls: list[str] = []
 
-    def create(self, *, storage_key: str, source: ReadableBinary) -> BlobObjectInfo:
+    def create(
+        self, *, storage_key: str, source: ReadableBinary, byte_size: int
+    ) -> BlobObjectInfo:
         self.create_calls.append(storage_key)
         if storage_key in self._payloads:
             raise BlobAlreadyExistsError(
                 "physical object already exists for this storage_key"
             )
+        if isinstance(byte_size, bool) or not isinstance(byte_size, int) or byte_size < 0:
+            raise InvalidBlobObjectInfoError("byte_size must be an integer >= 0")
         chunks: list[bytes] = []
-        while True:
-            chunk = source.read(1024 * 1024)
+        remaining = byte_size
+        while remaining > 0:
+            chunk = source.read(min(1024 * 1024, remaining))
             if not chunk:
                 break
             chunks.append(bytes(chunk))
+            remaining -= len(chunk)
         payload = b"".join(chunks)
+        if len(payload) != byte_size:
+            raise InvalidBlobObjectInfoError(
+                "declared byte_size does not match bytes read from source"
+            )
         self._payloads[storage_key] = payload
         return self._info(storage_key, payload)
 

@@ -70,13 +70,16 @@ class BlobIngestPreparer:
         self._blob_store = blob_store
         self._storage_key_factory = storage_key_factory
 
-    def prepare(self, source: ReadableBinary) -> PreparedBlob:
+    def prepare(self, source: ReadableBinary, *, byte_size: int) -> PreparedBlob:
+        declared = require_byte_size(byte_size, error=BlobStoreContractError)
         storage_key = self._storage_key_factory.generate()
         if not isinstance(storage_key, str) or not storage_key.strip():
             raise BlobStoreContractError(
                 "storage key factory must return a non-empty opaque key"
             )
-        observed = self._blob_store.create(storage_key=storage_key, source=source)
+        observed = self._blob_store.create(
+            storage_key=storage_key, source=source, byte_size=declared
+        )
         if observed.storage_key != storage_key:
             raise BlobStoreContractError(
                 "BlobStore.create returned a storage_key that does not equal "
