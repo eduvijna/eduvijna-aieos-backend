@@ -113,9 +113,11 @@ def _map_create_client_error(exc: ClientError) -> Exception:
 
 
 def _map_inspect_client_error(exc: ClientError) -> Exception | None:
-    """Return None for genuine object absence; otherwise an application error.
+    """Return None only for explicit NoSuchKey; otherwise an application error.
 
-    Missing bucket, access denied, and ambiguous 404 are unavailable — not None.
+    Generic NotFound + 404 and all other ambiguous HEAD 404 outcomes fail closed
+    as unavailable. NoSuchKey is the only currently accepted deterministic
+    missing-object signal in this local/stubbed implementation.
     """
     code = _error_code(exc)
     status = _http_status(exc)
@@ -123,10 +125,8 @@ def _map_inspect_client_error(exc: ClientError) -> Exception | None:
         return BlobStoreUnavailableError("BlobStore bucket is unavailable")
     if code == "NoSuchKey":
         return None
-    if code == "NotFound" and status == 404:
-        return None
     if status == 404:
-        # Ambiguous absence (no explicit NoSuchKey): fail closed.
+        # NotFound, bare/numeric 404, and other ambiguous absence: fail closed.
         return BlobStoreUnavailableError(
             "BlobStore inspect failed with ambiguous 404"
         )

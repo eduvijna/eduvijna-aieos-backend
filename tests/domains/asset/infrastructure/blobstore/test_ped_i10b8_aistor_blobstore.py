@@ -291,6 +291,14 @@ class TestInspect:
         )
         assert store.inspect(storage_key="missing") is None
 
+    def test_generic_notfound_404_unavailable(self) -> None:
+        store, client = _store()
+        client.head_error = _client_error(
+            code="NotFound", status=404, operation="HeadObject"
+        )
+        with pytest.raises(BlobStoreUnavailableError):
+            store.inspect(storage_key="k")
+
     def test_nosuchbucket_unavailable(self) -> None:
         store, client = _store()
         client.head_error = _client_error(

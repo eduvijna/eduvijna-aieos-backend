@@ -152,10 +152,13 @@ or caller-provided digests.
 ## Inspect
 
 `inspect` uses HEAD only. Returns `BlobObjectInfo` when complete and valid.
-Only genuine object-not-found may return `None`. Missing bucket, permission
-denial, TLS failure, timeout, ambiguous 404, and malformed responses fail
+In this local/stubbed implementation, explicit `NoSuchKey` is the only currently
+accepted deterministic missing-object signal that may return `None`. Generic
+`NotFound` + HTTP 404, bare/numeric/otherwise ambiguous HEAD 404, missing
+bucket, permission denial, TLS failure, timeout, and malformed responses fail
 closed (`BlobStoreUnavailableError` or `BlobStoreContractError`). ETag-only
-responses are not sufficient.
+responses are not sufficient. Live AIStor missing-object signal proof remains a
+later conformance gate.
 
 ## Error mapping
 
@@ -164,7 +167,8 @@ responses are not sufficient.
 | HTTP 412 / PreconditionFailed | `BlobAlreadyExistsError` |
 | Permission / TLS / network / timeout / 5xx / unknown | `BlobStoreUnavailableError` |
 | Malformed response / missing/invalid checksum / size contradiction | `BlobStoreContractError` |
-| Genuine object absence (inspect) | `None` |
+| Explicit `NoSuchKey` (inspect) | `None` |
+| Generic `NotFound` / ambiguous HEAD 404 (inspect) | `BlobStoreUnavailableError` |
 
 No boto/botocore exception types escape above the infrastructure boundary.
 
