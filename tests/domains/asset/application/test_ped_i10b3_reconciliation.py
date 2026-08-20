@@ -117,7 +117,7 @@ class TestAuthoritativeBlobReference:
 class TestBlobReconciler:
     def test_referenced_present_exact_is_match(self) -> None:
         store = InMemoryBlobStore()
-        store.create(storage_key="k", source=BytesIO(b"abcd"))
+        store.create(storage_key="k", source=BytesIO(b"abcd"), byte_size=len(b"abcd"))
         observed = store.inspect(storage_key="k")
         assert observed is not None
         ref = _ref(
@@ -178,7 +178,7 @@ class TestBlobReconciler:
 
     def test_inventory_only_key_is_orphan_candidate_and_not_deleted(self) -> None:
         store = InMemoryBlobStore()
-        store.create(storage_key="orphan", source=BytesIO(b"xyz"))
+        store.create(storage_key="orphan", source=BytesIO(b"xyz"), byte_size=len(b"xyz"))
         report = BlobReconciler(
             inventory=store, references=_ReferenceSource([])
         ).reconcile()
@@ -190,7 +190,7 @@ class TestBlobReconciler:
 
     def test_every_referenced_key_is_reconciled(self) -> None:
         store = InMemoryBlobStore()
-        store.create(storage_key="one", source=BytesIO(b"aa"))
+        store.create(storage_key="one", source=BytesIO(b"aa"), byte_size=len(b"aa"))
         first = store.inspect(storage_key="one")
         assert first is not None
         refs = [
@@ -261,7 +261,7 @@ class TestBlobReconciler:
 
     def test_reconcile_performs_zero_mutation(self) -> None:
         store = InMemoryBlobStore()
-        store.create(storage_key="keep", source=BytesIO(b"data"))
+        store.create(storage_key="keep", source=BytesIO(b"data"), byte_size=len(b"data"))
         BlobReconciler(
             inventory=store, references=_ReferenceSource([])
         ).reconcile()

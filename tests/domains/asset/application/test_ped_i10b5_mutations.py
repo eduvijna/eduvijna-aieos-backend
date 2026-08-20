@@ -64,7 +64,7 @@ def _service(
 
 def _prepared(blobs: InMemoryBlobStore, payload: bytes = PAYLOAD) -> PreparedBlob:
     key = uuid7().hex
-    info = blobs.create(storage_key=key, source=BytesIO(payload))
+    info = blobs.create(storage_key=key, source=BytesIO(payload), byte_size=len(payload))
     return PreparedBlob(
         storage_key=info.storage_key,
         byte_size=info.byte_size,
@@ -113,7 +113,7 @@ class InspectProbe:
             self.on_inspect()
         return self.inner.inspect(storage_key=storage_key)
 
-    def create(self, *, storage_key: str, source: object) -> BlobObjectInfo:
+    def create(self, *, storage_key: str, source: object, byte_size: int) -> BlobObjectInfo:
         raise AssertionError("create must not be called")
 
     def delete(self, *, storage_key: str) -> None:
@@ -169,7 +169,7 @@ class UnavailableBlobStore:
     def inspect(self, *, storage_key: str) -> BlobObjectInfo | None:
         raise BlobStoreUnavailableError("blob store unavailable")
 
-    def create(self, *, storage_key: str, source: object) -> BlobObjectInfo:
+    def create(self, *, storage_key: str, source: object, byte_size: int) -> BlobObjectInfo:
         raise AssertionError("create must not be called")
 
     def delete(self, *, storage_key: str) -> None:
@@ -415,7 +415,7 @@ class TestActivation:
             **asset_audit_kwargs(principal),
         )
         assert missing.value.reason == "bytes_missing"
-        blobs.create(storage_key=prepared.storage_key, source=BytesIO(b"xx"))
+        blobs.create(storage_key=prepared.storage_key, source=BytesIO(b"xx"), byte_size=len(b"xx"))
         with pytest.raises(AssetActivationRejected) as size:
             service.activate_revision(
                 tenant_id=tenant,

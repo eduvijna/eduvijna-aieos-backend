@@ -22,10 +22,12 @@ pytestmark = pytest.mark.ped_i10b3
 
 ASSET_ROOT = REPO_ROOT / "src" / "aieos" / "domains" / "asset"
 APPLICATION = ASSET_ROOT / "application"
+BLOBSTORE_INFRA = ASSET_ROOT / "infrastructure" / "blobstore"
 SRC_ROOT = REPO_ROOT / "src"
 MIGRATIONS = REPO_ROOT / "migrations" / "versions"
 COMPOSITION = REPO_ROOT / "src" / "aieos" / "platform" / "runtime" / "composition.py"
 OPENAPI = REPO_ROOT / "contracts" / "openapi" / "aieos-v1.json"
+_APPROVED_BLOBSTORE_REL = "src/aieos/domains/asset/infrastructure/blobstore"
 EXPECTED_OPENAPI_SHA256 = (
     "D847C7BC21227072DC2627426A1B61774F33DEB78F65397C7C584BCC38C0BCAF"
 )
@@ -94,9 +96,15 @@ def _imported_modules(path: Path) -> list[str]:
 
 class TestArchitectureScope:
     def test_no_production_blobstore_implementation(self) -> None:
+        """Concrete BlobStore may exist only under approved AIStor infrastructure."""
         protocol_found = False
         concrete: list[str] = []
+        allowed = {"AiStorBlobStore"}
         for path in _py_files(SRC_ROOT):
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            in_approved = rel.startswith(_APPROVED_BLOBSTORE_REL + "/") or rel == (
+                _APPROVED_BLOBSTORE_REL + "/__init__.py"
+            )
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
                 if not isinstance(node, ast.ClassDef):
@@ -109,7 +117,9 @@ class TestArchitectureScope:
                     assert "Protocol" in " ".join(bases), path
                     protocol_found = True
                 if node.name.endswith("BlobStore") and node.name != "BlobStore":
-                    concrete.append(f"{path}:{node.name}")
+                    if node.name in allowed and in_approved:
+                        continue
+                    concrete.append(f"{rel}:{node.name}")
                 if node.name in {
                     "InMemoryBlobStore",
                     "FilesystemBlobStore",
@@ -118,9 +128,10 @@ class TestArchitectureScope:
                     "AzureBlobStore",
                     "GcsBlobStore",
                 }:
-                    concrete.append(f"{path}:{node.name}")
+                    concrete.append(f"{rel}:{node.name}")
         assert protocol_found
         assert concrete == []
+        assert (BLOBSTORE_INFRA / "aistor.py").is_file()
 
     def test_application_has_no_forbidden_imports_or_provider_needles(self) -> None:
         hits: list[str] = []
@@ -141,13 +152,16 @@ class TestArchitectureScope:
         assert hits == []
 
     def test_src_has_no_cloud_sdk_or_in_memory_fake(self) -> None:
+        """Provider SDK imports allowed only under Asset infrastructure/blobstore."""
         hits: list[str] = []
         for path in _py_files(SRC_ROOT):
             source = path.read_text(encoding="utf-8")
-            rel = str(path.relative_to(REPO_ROOT))
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            in_approved = rel.startswith(_APPROVED_BLOBSTORE_REL + "/")
             for needle in (
                 "import boto3",
                 "import botocore",
+                "from botocore",
                 "import minio",
                 "from minio",
                 "google.cloud.storage",
@@ -156,6 +170,12 @@ class TestArchitectureScope:
                 "import fsspec",
             ):
                 if needle in source:
+                    if in_approved and needle in {
+                        "import boto3",
+                        "import botocore",
+                        "from botocore",
+                    }:
+                        continue
                     hits.append(f"{rel}:{needle}")
             if "InMemoryBlobStore" in source:
                 hits.append(f"{rel}:InMemoryBlobStore")
@@ -225,7 +245,8 @@ class TestArchitectureScope:
         assert "MUST NOT implement" in source
         assert "delete_blob()" in source
         signature = inspect.signature(BlobIngestPreparer.prepare)
-        assert list(signature.parameters) == ["self", "source"]
+        assert list(signature.parameters) == ["self", "source", "byte_size"]
+        assert signature.parameters["byte_size"].kind is inspect.Parameter.KEYWORD_ONLY
         assert {f.name for f in PreparedBlob.__dataclass_fields__.values()} == {
             "storage_key",
             "byte_size",
@@ -285,10 +306,11 @@ class TestArchitectureScope:
         assert "def public_url" not in source
         assert "def signed_url" not in source
         assert "def presign" not in source
-        assert inspect.signature(BlobStore.create).parameters.keys() >= {
-            "storage_key",
-            "source",
-        }
+        create_params = inspect.signature(BlobStore.create).parameters
+        assert create_params.keys() >= {"storage_key", "source", "byte_size"}
+        assert create_params["byte_size"].kind is inspect.Parameter.KEYWORD_ONLY
+        assert create_params["storage_key"].kind is inspect.Parameter.KEYWORD_ONLY
+        assert create_params["source"].kind is inspect.Parameter.KEYWORD_ONLY
 
     def test_fake_lives_only_under_tests(self) -> None:
         fake = (

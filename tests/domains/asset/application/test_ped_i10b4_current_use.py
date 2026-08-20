@@ -157,7 +157,7 @@ class ChurnStore:
 
 def _matching_blobs() -> InMemoryBlobStore:
     blobs = InMemoryBlobStore()
-    blobs.create(storage_key=KEY, source=BytesIO(PAYLOAD))
+    blobs.create(storage_key=KEY, source=BytesIO(PAYLOAD), byte_size=len(PAYLOAD))
     blobs.inspect_calls.clear()
     return blobs
 
@@ -581,7 +581,7 @@ class TestCrossStoreStability:
             state=_state(safety_state=AssetRevisionSafetyState.PENDING),
         )
         blobs = _matching_blobs()
-        blobs.create(storage_key=key2, source=BytesIO(PAYLOAD))
+        blobs.create(storage_key=key2, source=BytesIO(PAYLOAD), byte_size=len(PAYLOAD))
         blobs.inspect_calls.clear()
         store = QueueStore([rev1, rev2_pending, rev2_pending])
         result = _assess(_authority(store, blobs), _ref(revision=None))

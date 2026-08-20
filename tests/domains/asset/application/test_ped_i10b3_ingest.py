@@ -37,7 +37,9 @@ class _MismatchingBlobStore:
         self.create_calls = 0
         self.delete_calls = 0
 
-    def create(self, *, storage_key: str, source: object) -> BlobObjectInfo:
+    def create(
+        self, *, storage_key: str, source: object, byte_size: int
+    ) -> BlobObjectInfo:
         self.create_calls += 1
         payload = source.read()  # type: ignore[union-attr]
         return BlobObjectInfo(
@@ -67,7 +69,7 @@ class TestBlobIngestPreparer:
         factory = Uuid7StorageKeyFactory()
         preparer = BlobIngestPreparer(blob_store=store, storage_key_factory=factory)
         payload = b"ingest-bytes"
-        prepared = preparer.prepare(BytesIO(payload))
+        prepared = preparer.prepare(BytesIO(payload), byte_size=len(payload))
         assert store.create_calls == [prepared.storage_key]
         assert len(store.create_calls) == 1
         assert store.delete_calls == []
@@ -81,7 +83,9 @@ class TestBlobIngestPreparer:
 
     def test_prepare_has_no_caller_storage_key_parameter(self) -> None:
         signature = inspect.signature(BlobIngestPreparer.prepare)
-        assert list(signature.parameters) == ["self", "source"]
+        assert list(signature.parameters) == ["self", "source", "byte_size"]
+        assert "storage_key" not in signature.parameters
+        assert signature.parameters["byte_size"].kind is inspect.Parameter.KEYWORD_ONLY
 
     def test_returned_key_mismatch_is_contract_error(self) -> None:
         store = _MismatchingBlobStore()
@@ -89,18 +93,18 @@ class TestBlobIngestPreparer:
             blob_store=store, storage_key_factory=_FixedKeyFactory("generated")
         )
         with pytest.raises(BlobStoreContractError):
-            preparer.prepare(BytesIO(b"x"))
+            preparer.prepare(BytesIO(b"x"), byte_size=len(b"x"))
         assert store.create_calls == 1
         assert store.delete_calls == 0
 
     def test_duplicate_key_does_not_overwrite_or_delete(self) -> None:
         store = InMemoryBlobStore()
-        store.create(storage_key="fixed-key", source=BytesIO(b"original"))
+        store.create(storage_key="fixed-key", source=BytesIO(b"original"), byte_size=len(b"original"))
         preparer = BlobIngestPreparer(
             blob_store=store, storage_key_factory=_FixedKeyFactory("fixed-key")
         )
         with pytest.raises(BlobAlreadyExistsError):
-            preparer.prepare(BytesIO(b"replacement"))
+            preparer.prepare(BytesIO(b"replacement"), byte_size=len(b"replacement"))
         assert store.payload("fixed-key") == b"original"
         assert store.delete_calls == []
 
@@ -109,7 +113,7 @@ class TestBlobIngestPreparer:
         preparer = BlobIngestPreparer(
             blob_store=store, storage_key_factory=Uuid7StorageKeyFactory()
         )
-        prepared = preparer.prepare(BytesIO(b"keep-me"))
+        prepared = preparer.prepare(BytesIO(b"keep-me"), byte_size=len(b"keep-me"))
         # Simulated later DB failure / uncertain commit: ingest must not delete.
         assert store.delete_calls == []
         assert store.inspect(storage_key=prepared.storage_key) is not None
@@ -120,6 +124,6 @@ class TestBlobIngestPreparer:
             blob_store=store, storage_key_factory=_FixedKeyFactory("   ")
         )
         with pytest.raises(BlobStoreContractError):
-            preparer.prepare(BytesIO(b"x"))
+            preparer.prepare(BytesIO(b"x"), byte_size=len(b"x"))
         assert store.create_calls == []
         assert store.delete_calls == []

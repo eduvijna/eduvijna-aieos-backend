@@ -39,9 +39,11 @@ _MUTATION_IMPL = (
     PERSISTENCE / "errors.py",
 )
 _CLOUD_SDK_ROOTS = frozenset({"boto3", "botocore", "minio", "azure", "google"})
+_APPROVED_BLOBSTORE_REL = "src/aieos/domains/asset/infrastructure/blobstore"
 _CLOUD_NEEDLES = (
     "import boto3",
     "import botocore",
+    "from botocore",
     "import minio",
     "from minio",
     "google.cloud.storage",
@@ -105,7 +107,8 @@ class TestContracts:
         assert digest == EXPECTED_OPENAPI_SHA256
         assert UV_LOCK.is_file()
         pyproject = PYPROJECT.read_text(encoding="utf-8")
-        assert "boto3" not in pyproject
+        assert "boto3==1.40.21" in pyproject
+        assert "botocore==1.40.76" in pyproject
         assert "minio" not in pyproject
         assert "google-cloud-storage" not in pyproject
         assert "azure-storage" not in pyproject
@@ -152,9 +155,16 @@ class TestBoundaries:
         hits: list[str] = []
         for path in _py_files(SRC_ROOT):
             source = path.read_text(encoding="utf-8")
-            rel = str(path.relative_to(REPO_ROOT))
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            in_approved = rel.startswith(_APPROVED_BLOBSTORE_REL + "/")
             for needle in _CLOUD_NEEDLES:
                 if needle in source:
+                    if in_approved and needle in {
+                        "import boto3",
+                        "import botocore",
+                        "from botocore",
+                    }:
+                        continue
                     hits.append(f"{rel}:{needle}")
             if "InMemoryBlobStore" in source:
                 hits.append(f"{rel}:InMemoryBlobStore")

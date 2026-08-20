@@ -54,6 +54,7 @@ _FORBIDDEN_REASONS = (
     "BLOB_ERROR",
 )
 _CLOUD_SDK_ROOTS = frozenset({"boto3", "botocore", "minio", "azure", "google"})
+_APPROVED_BLOBSTORE_REL = "src/aieos/domains/asset/infrastructure/blobstore"
 _CURRENT_USE_FILES = (
     APPLICATION / "use_authority.py",
     PERSISTENCE / "authority_reads.py",
@@ -185,20 +186,28 @@ class TestBoundaries:
         hits: list[str] = []
         for path in _py_files(SRC_ROOT):
             source = path.read_text(encoding="utf-8")
-            rel = str(path.relative_to(REPO_ROOT))
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            in_approved = rel.startswith(_APPROVED_BLOBSTORE_REL + "/")
             for needle in (
                 "import boto3",
                 "import botocore",
+                "from botocore",
                 "import minio",
                 "from minio",
                 "google.cloud.storage",
                 "azure.storage.blob",
             ):
                 if needle in source:
+                    if in_approved and needle in {
+                        "import boto3",
+                        "import botocore",
+                        "from botocore",
+                    }:
+                        continue
                     hits.append(f"{rel}:{needle}")
             if "InMemoryBlobStore" in source:
                 hits.append(f"{rel}:InMemoryBlobStore")
-            if path.name.endswith("BlobStore.py") or "class S3BlobStore" in source:
+            if "class S3BlobStore" in source or "class MinioBlobStore" in source:
                 hits.append(f"{rel}:named-provider")
         assert hits == []
         for path in _py_files(APPLICATION):
@@ -267,7 +276,8 @@ class TestBoundaries:
         assert digest == EXPECTED_OPENAPI_SHA256
         assert UV_LOCK.is_file()
         pyproject = PYPROJECT.read_text(encoding="utf-8")
-        assert "boto3" not in pyproject
+        assert "boto3==1.40.21" in pyproject
+        assert "botocore==1.40.76" in pyproject
         assert "minio" not in pyproject
         assert "google-cloud-storage" not in pyproject
 

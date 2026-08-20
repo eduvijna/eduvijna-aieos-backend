@@ -119,16 +119,16 @@ class TestBlobStoreContract:
     def test_create_uses_opaque_key_and_returns_actual_metadata(self) -> None:
         store = InMemoryBlobStore()
         payload = b"hello-bytes"
-        info = store.create(storage_key="opaque-key", source=BytesIO(payload))
+        info = store.create(storage_key="opaque-key", source=BytesIO(payload), byte_size=len(payload))
         assert info.storage_key == "opaque-key"
         assert info.byte_size == len(payload)
         assert info.sha256 == __import__("hashlib").sha256(payload).hexdigest()
 
     def test_duplicate_create_rejects_and_never_overwrites(self) -> None:
         store = InMemoryBlobStore()
-        store.create(storage_key="k", source=BytesIO(b"original"))
+        store.create(storage_key="k", source=BytesIO(b"original"), byte_size=len(b"original"))
         with pytest.raises(BlobAlreadyExistsError):
-            store.create(storage_key="k", source=BytesIO(b"replacement"))
+            store.create(storage_key="k", source=BytesIO(b"replacement"), byte_size=len(b"replacement"))
         assert store.payload("k") == b"original"
         inspected = store.inspect(storage_key="k")
         assert inspected is not None
@@ -136,7 +136,7 @@ class TestBlobStoreContract:
 
     def test_inspect_existing_succeeds_and_absent_returns_none(self) -> None:
         store = InMemoryBlobStore()
-        store.create(storage_key="present", source=BytesIO(b"x"))
+        store.create(storage_key="present", source=BytesIO(b"x"), byte_size=len(b"x"))
         found = store.inspect(storage_key="present")
         assert found is not None
         assert found.storage_key == "present"
@@ -144,7 +144,7 @@ class TestBlobStoreContract:
 
     def test_delete_is_physical_only(self) -> None:
         store = InMemoryBlobStore()
-        store.create(storage_key="k", source=BytesIO(b"x"))
+        store.create(storage_key="k", source=BytesIO(b"x"), byte_size=len(b"x"))
         store.delete(storage_key="k")
         assert store.inspect(storage_key="k") is None
         assert store.delete_calls == ["k"]
@@ -153,7 +153,7 @@ class TestBlobStoreContract:
 
     def test_empty_payload_is_valid(self) -> None:
         store = InMemoryBlobStore()
-        info = store.create(storage_key="empty", source=BytesIO(b""))
+        info = store.create(storage_key="empty", source=BytesIO(b""), byte_size=len(b""))
         assert info.byte_size == 0
         assert info.sha256 == _SHA256_EMPTY
 
