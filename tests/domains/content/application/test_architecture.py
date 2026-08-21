@@ -71,7 +71,7 @@ def test_no_ai_provider_dependencies_in_lockfile() -> None:
         assert f'name = "{needle}"' not in lock
     # PED-I10B8 authorizes exact boto3/botocore for Asset BlobStore only;
     # Content must still not import them (FORBIDDEN above).
-    assert "boto3==1.40.21" in text
-    assert "botocore==1.40.76" in text
+    assert "boto3==1.43.57" in text
+    assert "botocore==1.43.57" in text
     assert 'name = "boto3"' in lock
     assert 'name = "botocore"' in lock

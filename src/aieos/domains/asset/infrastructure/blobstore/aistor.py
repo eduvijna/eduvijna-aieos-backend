@@ -1,7 +1,8 @@
 """AIStor BlobStore adapter (infrastructure only).
 
 NON_PRODUCTION. Implements the provider-neutral BlobStore Protocol against
-AIStor via boto3/botocore low-level PutObject / HeadObject only.
+AIStor via boto3/botocore low-level PutObject / HeadObject / GetBucketLocation
+only.
 
 Governing ADRs: ADR-AIEOS-033, 039, 040R1, 042, 043.
 """
@@ -35,6 +36,30 @@ _MISSING_BUCKET_CODES = frozenset({"NoSuchBucket", "404 NoSuchBucket"})
 _PRECONDITION_CODES = frozenset(
     {"412", "PreconditionFailed", "412 PreconditionFailed"}
 )
+_AMBIGUOUS_404_CODES = frozenset(
+    {
+        "",
+        "404",
+        "NotFound",
+        "404 Not Found",
+    }
+)
+
+
+class _ReadOnlyStreamingBody:
+    """Infrastructure-private facade: expose read() only to Botocore.
+
+    Enforces the provider-neutral ReadableBinary boundary against SDK
+    introspection. Does not fake seekability, buffer, spool, or prehash.
+    """
+
+    __slots__ = ("_source",)
+
+    def __init__(self, source: ReadableBinary) -> None:
+        self._source = source
+
+    def read(self, size: int = -1) -> bytes:
+        return self._source.read(size)
 
 
 def _botocore_config(*, connect_timeout: float, read_timeout: float) -> Config:
@@ -112,25 +137,47 @@ def _map_create_client_error(exc: ClientError) -> Exception:
     return BlobStoreUnavailableError("BlobStore create failed")
 
 
-def _map_inspect_client_error(exc: ClientError) -> Exception | None:
-    """Return None only for explicit NoSuchKey; otherwise an application error.
+def _is_explicit_nosuchkey(exc: ClientError) -> bool:
+    return _error_code(exc) == "NoSuchKey"
 
-    Generic NotFound + 404 and all other ambiguous HEAD 404 outcomes fail closed
-    as unavailable. NoSuchKey is the only currently accepted deterministic
-    missing-object signal in this local/stubbed implementation.
+
+def _is_ambiguous_head_404(exc: ClientError) -> bool:
+    """True only for AIStor-style generic HeadObject 404 candidates.
+
+    Explicit NoSuchKey is deterministic missing and is not ambiguous.
+    NoSuchBucket and other 404-class bucket failures are unavailable, not
+    ambiguous object absence.
     """
+    if _is_explicit_nosuchkey(exc):
+        return False
     code = _error_code(exc)
     status = _http_status(exc)
     if code in _MISSING_BUCKET_CODES:
+        return False
+    if status != 404:
+        return False
+    return code in _AMBIGUOUS_404_CODES
+
+
+def _map_inspect_unavailable(exc: ClientError) -> BlobStoreUnavailableError:
+    code = _error_code(exc)
+    if code in _MISSING_BUCKET_CODES:
         return BlobStoreUnavailableError("BlobStore bucket is unavailable")
-    if code == "NoSuchKey":
-        return None
+    status = _http_status(exc)
     if status == 404:
-        # NotFound, bare/numeric 404, and other ambiguous absence: fail closed.
         return BlobStoreUnavailableError(
             "BlobStore inspect failed with ambiguous 404"
         )
     return BlobStoreUnavailableError("BlobStore inspect failed")
+
+
+def _map_post_put_inspect_client_error(exc: ClientError) -> Exception:
+    """Post-write HEAD must never treat absence as success."""
+    if _is_explicit_nosuchkey(exc):
+        return BlobStoreUnavailableError(
+            "BlobStore post-write inspect reported object absence"
+        )
+    return _map_inspect_unavailable(exc)
 
 
 def _head_observation(
@@ -143,12 +190,7 @@ def _head_observation(
             ChecksumMode="ENABLED",
         )
     except ClientError as exc:
-        mapped = _map_inspect_client_error(exc)
-        if mapped is None:
-            raise BlobStoreUnavailableError(
-                "BlobStore post-write inspect reported object absence"
-            ) from exc
-        raise mapped from exc
+        raise _map_post_put_inspect_client_error(exc) from exc
     except BotoCoreError as exc:
         raise BlobStoreUnavailableError("BlobStore inspect transport failed") from exc
 
@@ -170,6 +212,24 @@ def _blob_info_from_head(*, storage_key: str, response: dict[str, Any]) -> BlobO
         byte_size=content_length,
         sha256=sha256,
     )
+
+
+def _confirm_bucket_accessible(*, client: BaseClient, bucket: str) -> None:
+    """Positive bucket observation via GetBucketLocation only.
+
+    LocationConstraint value is not used as business data. API success alone
+    proves the configured bucket is accessible/existing for discrimination.
+    """
+    try:
+        client.get_bucket_location(Bucket=bucket)
+    except ClientError as exc:
+        raise BlobStoreUnavailableError(
+            "BlobStore bucket location observation failed"
+        ) from exc
+    except BotoCoreError as exc:
+        raise BlobStoreUnavailableError(
+            "BlobStore bucket location transport failed"
+        ) from exc
 
 
 class AiStorBlobStore:
@@ -194,9 +254,10 @@ class AiStorBlobStore:
             self._client.put_object(
                 Bucket=self._bucket,
                 Key=key,
-                Body=source,
+                Body=_ReadOnlyStreamingBody(source),
                 ContentLength=declared,
                 IfNoneMatch="*",
+                ChecksumAlgorithm="SHA256",
             )
         except ClientError as exc:
             raise _map_create_client_error(exc) from exc
@@ -225,11 +286,33 @@ class AiStorBlobStore:
                 Key=key,
                 ChecksumMode="ENABLED",
             )
-        except ClientError as exc:
-            mapped = _map_inspect_client_error(exc)
-            if mapped is None:
+        except ClientError as first_exc:
+            if _is_explicit_nosuchkey(first_exc):
                 return None
-            raise mapped from exc
+            if not _is_ambiguous_head_404(first_exc):
+                raise _map_inspect_unavailable(first_exc) from first_exc
+
+            # Ambiguous HEAD 404: discriminate via GetBucketLocation, then
+            # one bounded stability HEAD. Not a general retry policy.
+            _confirm_bucket_accessible(client=self._client, bucket=self._bucket)
+
+            try:
+                response = self._client.head_object(
+                    Bucket=self._bucket,
+                    Key=key,
+                    ChecksumMode="ENABLED",
+                )
+            except ClientError as second_exc:
+                if _is_explicit_nosuchkey(second_exc):
+                    return None
+                if _is_ambiguous_head_404(second_exc):
+                    return None
+                raise _map_inspect_unavailable(second_exc) from second_exc
+            except BotoCoreError as exc:
+                raise BlobStoreUnavailableError(
+                    "BlobStore inspect transport failed"
+                ) from exc
+            return _blob_info_from_head(storage_key=key, response=response)
         except BotoCoreError as exc:
             raise BlobStoreUnavailableError("BlobStore inspect transport failed") from exc
         return _blob_info_from_head(storage_key=key, response=response)
