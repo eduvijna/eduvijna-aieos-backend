@@ -7,6 +7,17 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- PED-I10B8 AIStor live-conformance correction (NON_PRODUCTION): upgrade
+  boto3/botocore to `1.43.57`/`1.43.57`; wrap PutObject Body in a read-only
+  infrastructure streaming facade; require `ChecksumAlgorithm="SHA256"` on the
+  single PutObject; discriminate ambiguous AIStor HeadObject 404 via
+  `GetBucketLocation` plus one stability HEAD (no ListBucket/ListObjects).
+  Documents future runtime `s3:GetBucketLocation` permission and ListBuckets
+  residual. No ADR change, Asset HTTP, OpenAPI, migration, production
+  composition, credentials, or cloud resources.
+
 ### Added
 
 - GCI-I01 Generic Content pure-domain contracts under `src/aieos/domains/content/domain/` (identity, stewardship, origin, aggregate, version, schema registry, review decision, publication, domain errors) with focused unit tests. No persistence, HTTP, NATS, Temporal, or AI-provider behavior.

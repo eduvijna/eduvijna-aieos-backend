@@ -107,8 +107,8 @@ class TestContracts:
         assert digest == EXPECTED_OPENAPI_SHA256
         assert UV_LOCK.is_file()
         pyproject = PYPROJECT.read_text(encoding="utf-8")
-        assert "boto3==1.40.21" in pyproject
-        assert "botocore==1.40.76" in pyproject
+        assert "boto3==1.43.57" in pyproject
+        assert "botocore==1.43.57" in pyproject
         assert "minio" not in pyproject
         assert "google-cloud-storage" not in pyproject
         assert "azure-storage" not in pyproject
