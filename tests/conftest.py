@@ -225,29 +225,32 @@ def provision_identities(bootstrap: Engine) -> None:
                 f"WITH ADMIN FALSE, INHERIT FALSE, SET TRUE"
             )
         )
-        conn.execute(text(f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} TO {SCHEMA_OWNER_ROLE}"))
+        db_name = conn.execute(text("SELECT current_database()")).scalar_one()
+        conn.execute(
+            text(f"GRANT CONNECT, CREATE ON DATABASE {db_name} TO {SCHEMA_OWNER_ROLE}")
+        )
         conn.execute(
             text(
-                f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} "
+                f"GRANT CONNECT, CREATE ON DATABASE {db_name} "
                 f"TO {SECURITY_SCHEMA_OWNER_ROLE}"
             )
         )
         conn.execute(
             text(
-                f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} "
+                f"GRANT CONNECT, CREATE ON DATABASE {db_name} "
                 f"TO {ASSET_SCHEMA_OWNER_ROLE}"
             )
         )
-        conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {MIGRATOR_USER}"))
-        conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {RUNTIME_USER}"))
+        conn.execute(text(f"GRANT CONNECT ON DATABASE {db_name} TO {MIGRATOR_USER}"))
+        conn.execute(text(f"GRANT CONNECT ON DATABASE {db_name} TO {RUNTIME_USER}"))
         conn.execute(
-            text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {MIGRATION_RUNTIME_USER}")
+            text(f"GRANT CONNECT ON DATABASE {db_name} TO {MIGRATION_RUNTIME_USER}")
         )
         conn.execute(
-            text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {WORKFLOW_DISPATCHER_USER}")
+            text(f"GRANT CONNECT ON DATABASE {db_name} TO {WORKFLOW_DISPATCHER_USER}")
         )
         conn.execute(
-            text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {EVENT_DISPATCHER_USER}")
+            text(f"GRANT CONNECT ON DATABASE {db_name} TO {EVENT_DISPATCHER_USER}")
         )
         conn.execute(text(f"GRANT USAGE, CREATE ON SCHEMA public TO {SCHEMA_OWNER_ROLE}"))
         conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {MIGRATOR_USER}"))
