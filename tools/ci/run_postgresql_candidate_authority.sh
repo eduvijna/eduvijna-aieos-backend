@@ -354,7 +354,8 @@ export AIEOS_TEST_WORKFLOW_DISPATCHER_DATABASE_URL="postgresql+psycopg://${AIEOS
 export AIEOS_TEST_EVENT_DISPATCHER_DATABASE_URL="postgresql+psycopg://${AIEOS_EVENT_DISPATCHER_ROLE}:${CI_PASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}"
 
 cd "$ROOT"
-uv run pytest -v -m postgres_candidate_authority
+# -s keeps EXPLAIN (ANALYZE, BUFFERS) plan lines in CI logs (section 15).
+uv run pytest -v -s -m postgres_candidate_authority
 
 # Hard-gated final cleanup — Infrastructure revoke + baseline must pass.
 # Superuser helper is diagnostic only and must not convert failure into green CI.
