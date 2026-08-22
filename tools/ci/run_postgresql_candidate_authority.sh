@@ -300,37 +300,43 @@ offline_sql="$(
   AIEOS_DATABASE_URL="postgresql+psycopg://offline-check/unused" \
     uv run alembic upgrade head --sql
 )"
-echo "$offline_sql" | grep -q 'list_outbox_dispatch_candidates' \
-  || fail "offline SQL missing event candidate function"
-echo "$offline_sql" | grep -q 'list_start_intent_candidates' \
-  || fail "offline SQL missing workflow start candidate function"
-echo "$offline_sql" | grep -q 'list_command_intent_candidates' \
-  || fail "offline SQL missing workflow command candidate function"
-echo "$offline_sql" | grep -qi 'SECURITY DEFINER' \
+offline_assert() {
+  local needle="$1"
+  local message="$2"
+  # Prefer here-string over echo|grep to avoid pipefail/SIGPIPE false failures.
+  grep -Fq -- "$needle" <<<"$offline_sql" || fail "$message"
+}
+offline_assert 'list_outbox_dispatch_candidates' \
+  "offline SQL missing event candidate function"
+offline_assert 'list_start_intent_candidates' \
+  "offline SQL missing workflow start candidate function"
+offline_assert 'list_command_intent_candidates' \
+  "offline SQL missing workflow command candidate function"
+grep -Fiq -- 'SECURITY DEFINER' <<<"$offline_sql" \
   || fail "offline SQL missing SECURITY DEFINER"
-echo "$offline_sql" | grep -q 'SET search_path TO pg_catalog, pg_temp' \
-  || fail "offline SQL missing approved search_path"
-echo "$offline_sql" | grep -q 'SET LOCAL ROLE' \
-  || fail "offline SQL missing SET LOCAL ROLE transitions"
-echo "$offline_sql" | grep -qi 'REVOKE ALL ON FUNCTION' \
+offline_assert 'SET search_path TO pg_catalog, pg_temp' \
+  "offline SQL missing approved search_path"
+offline_assert 'SET LOCAL ROLE' \
+  "offline SQL missing SET LOCAL ROLE transitions"
+grep -Fiq -- 'REVOKE ALL ON FUNCTION' <<<"$offline_sql" \
   || fail "offline SQL missing PUBLIC EXECUTE revoke"
-echo "$offline_sql" | grep -qi 'GRANT CREATE ON SCHEMA' \
+grep -Fiq -- 'GRANT CREATE ON SCHEMA' <<<"$offline_sql" \
   || fail "offline SQL missing candidate CREATE grant choreography"
-echo "$offline_sql" | grep -qi 'REVOKE CREATE ON SCHEMA' \
+grep -Fiq -- 'REVOKE CREATE ON SCHEMA' <<<"$offline_sql" \
   || fail "offline SQL missing candidate CREATE revoke choreography"
-if echo "$offline_sql" | grep -qiE 'CREATE[[:space:]]+ROLE'; then
+if grep -Eiq -- 'CREATE[[:space:]]+ROLE' <<<"$offline_sql"; then
   fail "offline SQL contains CREATE ROLE"
 fi
-if echo "$offline_sql" | grep -qiE 'ALTER[[:space:]]+ROLE'; then
+if grep -Eiq -- 'ALTER[[:space:]]+ROLE' <<<"$offline_sql"; then
   fail "offline SQL contains ALTER ROLE"
 fi
-if echo "$offline_sql" | grep -qiE 'GRANT[[:space:]]+aieos_(event|workflow)_candidate_reader[[:space:]]+TO'; then
+if grep -Eiq -- 'GRANT[[:space:]]+aieos_(event|workflow)_candidate_reader[[:space:]]+TO' <<<"$offline_sql"; then
   fail "offline SQL grants candidate-reader membership to migrator"
 fi
-if echo "$offline_sql" | grep -qiE 'password|digitalocean|doctl|api\.digitalocean'; then
+if grep -Eiq -- 'password|digitalocean|doctl|api\.digitalocean' <<<"$offline_sql"; then
   fail "offline SQL contains forbidden credential/token material"
 fi
-if echo "$offline_sql" | grep -qiE 'postgresql(\+[a-z]+)?://[^[:space:]]+:[^[:space:]]+@'; then
+if grep -Eiq -- 'postgresql(\+[a-z]+)?://[^[:space:]]+:[^[:space:]]+@' <<<"$offline_sql"; then
   fail "offline SQL contains production-like connection URI"
 fi
 
