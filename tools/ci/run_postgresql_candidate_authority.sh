@@ -143,12 +143,32 @@ run_alembic_as_migrator() {
 }
 
 revoke_jit_as_superuser() {
-  # Disposable CI cleanup: Infrastructure revoke is authoritative in production
-  # administration, but the GitHub postgres service superuser is used here to
-  # guarantee catalogue cleanup after Alembic exits.
-  psql_exec -c "REVOKE ${AIEOS_EVENT_CANDIDATE_READER_ROLE} FROM ${AIEOS_MIGRATOR_ROLE}"
-  psql_exec -c "REVOKE ${AIEOS_WORKFLOW_CANDIDATE_READER_ROLE} FROM ${AIEOS_MIGRATOR_ROLE}"
-  assert_no_migrator_jit
+  # Disposable CI cleanup. Explicit postgres identity + hardcoded CI role names
+  # avoid grantor/env mismatches after the pytest fixture re-grants JIT as the
+  # service superuser.
+  PGUSER=postgres PGPASSWORD="${PGPASSWORD}" psql_exec <<'SQL'
+REVOKE aieos_event_candidate_reader FROM aieos_migrator;
+REVOKE aieos_workflow_candidate_reader FROM aieos_migrator;
+SQL
+  local event_edge workflow_edge
+  event_edge="$(PGUSER=postgres PGPASSWORD="${PGPASSWORD}" psql_query -c "
+    SELECT COUNT(*)
+    FROM pg_auth_members am
+    JOIN pg_roles granted ON granted.oid = am.roleid
+    JOIN pg_roles member ON member.oid = am.member
+    WHERE granted.rolname = 'aieos_event_candidate_reader'
+      AND member.rolname = 'aieos_migrator'
+  ")"
+  workflow_edge="$(PGUSER=postgres PGPASSWORD="${PGPASSWORD}" psql_query -c "
+    SELECT COUNT(*)
+    FROM pg_auth_members am
+    JOIN pg_roles granted ON granted.oid = am.roleid
+    JOIN pg_roles member ON member.oid = am.member
+    WHERE granted.rolname = 'aieos_workflow_candidate_reader'
+      AND member.rolname = 'aieos_migrator'
+  ")"
+  [[ "$event_edge" == "0" && "$workflow_edge" == "0" ]] \
+    || fail "superuser JIT cleanup left migrator candidate-reader membership (event=${event_edge}, workflow=${workflow_edge})"
 }
 
 run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/grant-candidate-migration-access.sh"
@@ -200,7 +220,8 @@ export AIEOS_TEST_EVENT_DISPATCHER_DATABASE_URL="postgresql+psycopg://${AIEOS_EV
 cd "$ROOT"
 uv run pytest -v -m postgres_candidate_authority
 
-run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/revoke-candidate-migration-access.sh" || true
+# Pytest fixture may re-grant JIT as the bootstrap/superuser identity; skip the
+# deployment-admin revoke here and clean up directly as postgres.
 revoke_jit_as_superuser
 
 info "postgresql candidate-authority CI proof complete"
