@@ -16,6 +16,7 @@ API_FORBIDDEN = ("sqlalchemy", "alembic", "psycopg", "psycopg2", "asyncpg")
 APP_DOMAIN_FORBIDDEN = API_FORBIDDEN + ("fastapi", "starlette", "pydantic", "nats", "temporalio")
 
 _EXPECTED_MIGRATIONS = [
+    "adra045001_dispatcher_candidate_authority.py",
     "gcii020001_content_schema.py",
     "gcii050001_api_idempotency.py",
     "gcii060001_review_decisions.py",

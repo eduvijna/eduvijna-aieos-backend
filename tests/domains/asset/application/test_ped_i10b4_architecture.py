@@ -254,7 +254,7 @@ class TestBoundaries:
     def test_no_new_migration_head_remains_pedi10b2001(self) -> None:
         assert not any(p.name.startswith("pedi10b4") for p in MIGRATIONS.glob("*.py"))
         assert (MIGRATIONS / "pedi10b2001_asset_authority_sor.py").is_file()
-        assert EXPECTED_ALEMBIC_HEAD == "pedi10b6001"
+        assert EXPECTED_ALEMBIC_HEAD == "adra045001"
 
     def test_no_test_blobstore_fake_in_production_source(self) -> None:
         fake = (

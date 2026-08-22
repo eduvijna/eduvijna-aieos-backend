@@ -28,6 +28,8 @@ RUNTIME_USER = "aieos_runtime"
 MIGRATION_RUNTIME_USER = "aieos_content_migration_runtime"
 WORKFLOW_DISPATCHER_USER = "aieos_workflow_dispatcher"
 EVENT_DISPATCHER_USER = "aieos_event_dispatcher"
+EVENT_CANDIDATE_READER_ROLE = "aieos_event_candidate_reader"
+WORKFLOW_CANDIDATE_READER_ROLE = "aieos_workflow_candidate_reader"
 DB_NAME = "aieos"
 DB_PASSWORD = "aieos_test"
 HOST_PORT = os.environ.get("AIEOS_TEST_PG_PORT", "55432")
@@ -81,6 +83,12 @@ def alembic_config(url: str) -> Config:
     os.environ["AIEOS_SCHEMA_OWNER_ROLE"] = SCHEMA_OWNER_ROLE
     os.environ["AIEOS_SECURITY_SCHEMA_OWNER_ROLE"] = SECURITY_SCHEMA_OWNER_ROLE
     os.environ["AIEOS_ASSET_SCHEMA_OWNER_ROLE"] = ASSET_SCHEMA_OWNER_ROLE
+    os.environ["AIEOS_RUNTIME_ROLE"] = RUNTIME_USER
+    os.environ["AIEOS_CONTENT_MIGRATION_RUNTIME_ROLE"] = MIGRATION_RUNTIME_USER
+    os.environ["AIEOS_EVENT_DISPATCHER_ROLE"] = EVENT_DISPATCHER_USER
+    os.environ["AIEOS_WORKFLOW_DISPATCHER_ROLE"] = WORKFLOW_DISPATCHER_USER
+    os.environ["AIEOS_EVENT_CANDIDATE_READER_ROLE"] = EVENT_CANDIDATE_READER_ROLE
+    os.environ["AIEOS_WORKFLOW_CANDIDATE_READER_ROLE"] = WORKFLOW_CANDIDATE_READER_ROLE
     cfg.set_main_option("sqlalchemy.url", url)
     return cfg
 
@@ -179,6 +187,22 @@ def provision_identities(bootstrap: Engine) -> None:
                         CREATE ROLE {EVENT_DISPATCHER_USER} LOGIN PASSWORD '{DB_PASSWORD}'
                             NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
                     END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_roles
+                        WHERE rolname = '{EVENT_CANDIDATE_READER_ROLE}'
+                    ) THEN
+                        CREATE ROLE {EVENT_CANDIDATE_READER_ROLE}
+                            NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+                            NOREPLICATION NOBYPASSRLS;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_roles
+                        WHERE rolname = '{WORKFLOW_CANDIDATE_READER_ROLE}'
+                    ) THEN
+                        CREATE ROLE {WORKFLOW_CANDIDATE_READER_ROLE}
+                            NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+                            NOREPLICATION NOBYPASSRLS;
+                    END IF;
                 END
                 $$
                 """
@@ -187,29 +211,49 @@ def provision_identities(bootstrap: Engine) -> None:
         conn.execute(text(f"GRANT {SCHEMA_OWNER_ROLE} TO {MIGRATOR_USER}"))
         conn.execute(text(f"GRANT {SECURITY_SCHEMA_OWNER_ROLE} TO {MIGRATOR_USER}"))
         conn.execute(text(f"GRANT {ASSET_SCHEMA_OWNER_ROLE} TO {MIGRATOR_USER}"))
-        conn.execute(text(f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} TO {SCHEMA_OWNER_ROLE}"))
+        # Ephemeral JIT SET membership for ADR-AIEOS-045 function ownership choreography.
+        # Production JIT grant/revoke remains Infrastructure-owned; Alembic never GRANTs this.
+        # Dedicated postgresql-candidate-authority CI sets AIEOS_TEST_CANDIDATE_JIT_EXTERNAL=1
+        # so Infrastructure scripts alone own the migrator->candidate JIT edge.
+        if os.environ.get("AIEOS_TEST_CANDIDATE_JIT_EXTERNAL", "").strip() != "1":
+            conn.execute(
+                text(
+                    f"GRANT {EVENT_CANDIDATE_READER_ROLE} TO {MIGRATOR_USER} "
+                    f"WITH ADMIN FALSE, INHERIT FALSE, SET TRUE"
+                )
+            )
+            conn.execute(
+                text(
+                    f"GRANT {WORKFLOW_CANDIDATE_READER_ROLE} TO {MIGRATOR_USER} "
+                    f"WITH ADMIN FALSE, INHERIT FALSE, SET TRUE"
+                )
+            )
+        db_name = conn.execute(text("SELECT current_database()")).scalar_one()
+        conn.execute(
+            text(f"GRANT CONNECT, CREATE ON DATABASE {db_name} TO {SCHEMA_OWNER_ROLE}")
+        )
         conn.execute(
             text(
-                f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} "
+                f"GRANT CONNECT, CREATE ON DATABASE {db_name} "
                 f"TO {SECURITY_SCHEMA_OWNER_ROLE}"
             )
         )
         conn.execute(
             text(
-                f"GRANT CONNECT, CREATE ON DATABASE {DB_NAME} "
+                f"GRANT CONNECT, CREATE ON DATABASE {db_name} "
                 f"TO {ASSET_SCHEMA_OWNER_ROLE}"
             )
         )
-        conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {MIGRATOR_USER}"))
-        conn.execute(text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {RUNTIME_USER}"))
+        conn.execute(text(f"GRANT CONNECT ON DATABASE {db_name} TO {MIGRATOR_USER}"))
+        conn.execute(text(f"GRANT CONNECT ON DATABASE {db_name} TO {RUNTIME_USER}"))
         conn.execute(
-            text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {MIGRATION_RUNTIME_USER}")
+            text(f"GRANT CONNECT ON DATABASE {db_name} TO {MIGRATION_RUNTIME_USER}")
         )
         conn.execute(
-            text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {WORKFLOW_DISPATCHER_USER}")
+            text(f"GRANT CONNECT ON DATABASE {db_name} TO {WORKFLOW_DISPATCHER_USER}")
         )
         conn.execute(
-            text(f"GRANT CONNECT ON DATABASE {DB_NAME} TO {EVENT_DISPATCHER_USER}")
+            text(f"GRANT CONNECT ON DATABASE {db_name} TO {EVENT_DISPATCHER_USER}")
         )
         conn.execute(text(f"GRANT USAGE, CREATE ON SCHEMA public TO {SCHEMA_OWNER_ROLE}"))
         conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {MIGRATOR_USER}"))
@@ -492,6 +536,29 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                     f"TO {EVENT_DISPATCHER_USER}"
                 )
             )
+            # ADR-AIEOS-045: belt-and-suspenders EXECUTE on candidate discovery functions
+            # (migration already grants matching dispatcher EXECUTE; PUBLIC remains revoked).
+            conn.execute(
+                text(
+                    "GRANT EXECUTE ON FUNCTION "
+                    "integration.list_outbox_dispatch_candidates(integer, timestamptz) "
+                    f"TO {EVENT_DISPATCHER_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    "GRANT EXECUTE ON FUNCTION "
+                    "workflow.list_start_intent_candidates(integer, timestamptz) "
+                    f"TO {WORKFLOW_DISPATCHER_USER}"
+                )
+            )
+            conn.execute(
+                text(
+                    "GRANT EXECUTE ON FUNCTION "
+                    "workflow.list_command_intent_candidates(integer, timestamptz) "
+                    f"TO {WORKFLOW_DISPATCHER_USER}"
+                )
+            )
             # SAI-I02: INSERT-only security audit ledger (no SELECT/UPDATE/DELETE).
             conn.execute(text(f"GRANT USAGE ON SCHEMA security TO {RUNTIME_USER}"))
             conn.execute(
@@ -644,9 +711,6 @@ def postgres18() -> Iterator[dict[str, str]]:
             raise RuntimeError(f"PostgreSQL 18 required; got {version}")
     provision_identities(bootstrap)
     os.environ["AIEOS_DATABASE_URL"] = m_url
-    os.environ["AIEOS_SCHEMA_OWNER_ROLE"] = SCHEMA_OWNER_ROLE
-    os.environ["AIEOS_SECURITY_SCHEMA_OWNER_ROLE"] = SECURITY_SCHEMA_OWNER_ROLE
-    os.environ["AIEOS_ASSET_SCHEMA_OWNER_ROLE"] = ASSET_SCHEMA_OWNER_ROLE
     cfg = alembic_config(m_url)
     command.upgrade(cfg, "head")
     command.downgrade(cfg, "base")

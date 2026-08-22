@@ -51,6 +51,7 @@ EXPECTED_OPENAPI_SHA256 = (
 )
 
 _EXPECTED_MIGRATIONS = [
+    "adra045001_dispatcher_candidate_authority.py",
     "gcii020001_content_schema.py",
     "gcii050001_api_idempotency.py",
     "gcii060001_review_decisions.py",
