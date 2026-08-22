@@ -36,7 +36,66 @@ jobs:
         run: uv run python -m compileall -q src tests migrations tools
 
       - name: Full pytest suite
-        run: uv run pytest -v
+        run: uv run pytest -v -m "not postgres_candidate_authority"
+
+  postgresql-candidate-authority:
+    name: postgresql-candidate-authority
+    needs:
+      - quality-gate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_candidate_authority_only
+          POSTGRES_DB: aieos_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aieos_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGDATABASE: aieos_ci
+      PGUSER: postgres
+      PGPASSWORD: ci_candidate_authority_only
+      AIEOS_INFRA_ROOT: ${{ github.workspace }}/_infra
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Checkout infrastructure pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: eduvijna/eduvijna-aieos-infrastructure
+          ref: 1249634403cacd9caec4ba48b72821e629b222f5
+          path: _infra
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.4"
+          python-version: "3.14.7"
+          enable-cache: true
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
+
+      - name: Run candidate-authority PostgreSQL handshake
+        run: |
+          set -euo pipefail
+          chmod +x tools/ci/run_postgresql_candidate_authority.sh
+          tools/ci/run_postgresql_candidate_authority.sh
 
   oci-runtime-probe:
     name: oci-runtime-probe

@@ -9,7 +9,7 @@ version: 1.0.0
 
 This document describes the required production privilege separation. It does **not** provision cloud or production identities.
 
-ADR-AIEOS-024: runtime identity ≠ migration identity ≠ schema owner ≠ backup/restore authority ≠ workflow dispatcher ≠ event dispatcher ≠ content migration workload.
+ADR-AIEOS-024: runtime identity ≠ migration identity ≠ schema owner ≠ backup/restore authority ≠ workflow dispatcher ≠ event dispatcher ≠ content migration workload ≠ event candidate-reader ≠ workflow candidate-reader.
 
 Production role creation remains infrastructure/deployment work, not application migration work. Alembic must not `CREATE ROLE` or store production credentials.
 
@@ -24,9 +24,39 @@ Production role creation remains infrastructure/deployment work, not application
 | Content migration runtime (`aieos_content_migration_runtime` conceptually) | Controlled ImportMigratedContentService DML only | LOGIN | Superuser, `BYPASSRLS`, schema ownership, ReviewDecision/Publication INSERT, DELETE on migration records, UPDATE/DELETE on versions |
 | Workflow dispatcher (`aieos_workflow_dispatcher` conceptually) | Claim/retry/deliver/quarantine workflow intents only | LOGIN | Superuser, `BYPASSRLS`, schema ownership, Content/ReviewDecision/Publication/VersionAssetRef mutation, workflow-intent INSERT/DELETE |
 | Event dispatcher (`aieos_event_dispatcher` conceptually) | Claim/retry/publish/quarantine outbox delivery metadata only | LOGIN | Superuser, `BYPASSRLS`, schema ownership, outbox INSERT/DELETE, Content/ReviewDecision/Publication/VersionAssetRef/workflow-intent mutation |
+| Event candidate-reader (`aieos_event_candidate_reader` conceptually) | Owns `integration.list_outbox_dispatch_candidates`; minimum outbox scheduling-column SELECT under role-scoped RLS | **NOLOGIN** | Superuser, `BYPASSRLS`, schema/table ownership, application credentials, outbound role membership, payload/envelope SELECT, dispatcher membership |
+| Workflow candidate-reader (`aieos_workflow_candidate_reader` conceptually) | Owns `workflow.list_start_intent_candidates` / `workflow.list_command_intent_candidates`; minimum intent scheduling-column SELECT under role-scoped RLS | **NOLOGIN** | Superuser, `BYPASSRLS`, schema/table ownership, application credentials, outbound role membership, payload SELECT, dispatcher membership |
 | Backup/restore | Backup and restore | deployment-defined | Ordinary product DML |
 
-A runtime, migration workload, or dispatcher identity must **not** require `BYPASSRLS`, superuser, or schema ownership.
+A runtime, migration workload, dispatcher, or candidate-reader identity must **not** require `BYPASSRLS`, superuser, or schema ownership.
+
+### Candidate-reader identities (ADR-AIEOS-045)
+
+Each EVENT / WORKFLOW candidate-reader identity is:
+
+- **NOLOGIN**, **NOSUPERUSER**, **NOBYPASSRLS** (also NOCREATEDB / NOCREATEROLE / NOREPLICATION)
+- **not** schema owner and **not** queue table owner
+- **no** application login credential / password
+- **no** outbound role membership (`pg_auth_members.member` must not be the candidate-reader)
+- **minimum scheduling-column SELECT only** — `tenant_id`, `status`, `available_at`, `claimed_until` (no payload / envelope / workflow input SELECT)
+- **function ownership** of the matching SECURITY DEFINER candidate function(s); schema owner is not the runtime candidate-reader authority
+- **no** dispatcher role membership; dispatcher LOGIN receives **EXECUTE** only
+
+Role creation for candidate-readers is **external to Alembic** (Infrastructure bootstrap). Alembic consumes validated env inputs:
+
+- `AIEOS_EVENT_CANDIDATE_READER_ROLE`
+- `AIEOS_WORKFLOW_CANDIDATE_READER_ROLE`
+
+(plus existing owner / runtime / dispatcher role inputs).
+
+Temporary migrator → candidate-reader membership for function-ownership choreography is:
+
+```text
+GRANT <candidate-reader> TO <migrator>
+  WITH ADMIN FALSE, INHERIT FALSE, SET TRUE
+```
+
+That JIT membership is **granted and revoked by Infrastructure**, never by Alembic. Final persistent state after an authorized migration window: **no** migrator → candidate-reader membership.
 
 ## Alembic role assumption
 

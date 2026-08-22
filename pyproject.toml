@@ -72,4 +72,5 @@ markers = [
     "ped_i10b5: Asset mutation and revision activation foundation (ADR-AIEOS-035)",
     "ped_i10b6: Asset authorization and transactional security audit (ADR-AIEOS-036)",
     "ped_i10b8: Asset AIStor BlobStore adapter and exact-length streaming contract",
+    "postgres_candidate_authority: disposable PostgreSQL 18 candidate-authority acceptance",
 ]
