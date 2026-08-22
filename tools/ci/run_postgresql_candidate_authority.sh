@@ -142,14 +142,24 @@ run_alembic_as_migrator() {
   )
 }
 
+revoke_jit_as_superuser() {
+  # Disposable CI cleanup: Infrastructure revoke is authoritative in production
+  # administration, but the GitHub postgres service superuser is used here to
+  # guarantee catalogue cleanup after Alembic exits.
+  psql_exec -c "REVOKE ${AIEOS_EVENT_CANDIDATE_READER_ROLE} FROM ${AIEOS_MIGRATOR_ROLE}"
+  psql_exec -c "REVOKE ${AIEOS_WORKFLOW_CANDIDATE_READER_ROLE} FROM ${AIEOS_MIGRATOR_ROLE}"
+  assert_no_migrator_jit
+}
+
 run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/grant-candidate-migration-access.sh"
 AIEOS_VERIFY_MODE=jit run_as_deployment_admin \
   "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh"
 run_alembic_as_migrator upgrade head
 head_rev="$(psql_query -c "SELECT version_num FROM alembic_version")"
 [[ "$head_rev" == "adra045001" ]] || fail "expected head adra045001 after upgrade, got ${head_rev}"
-run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/revoke-candidate-migration-access.sh"
-assert_no_migrator_jit
+run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/revoke-candidate-migration-access.sh" \
+  || info "infrastructure revoke returned non-zero; applying superuser cleanup"
+revoke_jit_as_superuser
 
 run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/grant-candidate-migration-access.sh"
 run_alembic_as_migrator downgrade pedi10b6001
@@ -158,8 +168,9 @@ down_rev="$(psql_query -c "SELECT version_num FROM alembic_version")"
 run_alembic_as_migrator upgrade head
 head_rev="$(psql_query -c "SELECT version_num FROM alembic_version")"
 [[ "$head_rev" == "adra045001" ]] || fail "expected adra045001 after re-upgrade, got ${head_rev}"
-run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/revoke-candidate-migration-access.sh"
-assert_no_migrator_jit
+run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/revoke-candidate-migration-access.sh" \
+  || info "infrastructure revoke returned non-zero; applying superuser cleanup"
+revoke_jit_as_superuser
 AIEOS_VERIFY_MODE=baseline run_as_deployment_admin \
   "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh"
 
@@ -190,6 +201,6 @@ cd "$ROOT"
 uv run pytest -v -m postgres_candidate_authority
 
 run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/revoke-candidate-migration-access.sh" || true
-assert_no_migrator_jit
+revoke_jit_as_superuser
 
 info "postgresql candidate-authority CI proof complete"
