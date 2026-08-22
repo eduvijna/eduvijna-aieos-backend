@@ -329,28 +329,43 @@ def _seed_eligibility_matrix(conn: Connection) -> dict[str, list[uuid.UUID]]:
 
 
 def _cleanup_synthetic_tenants(conn: Connection) -> None:
+    """TEST-ONLY cleanup. Outbox deletes are blocked by an immutability trigger."""
     _as_content_owner(conn)
-    for tenant_id in (TENANT_A, TENANT_B, TENANT_C):
-        set_tenant(conn, tenant_id)
-        conn.execute(
-            text(
-                "DELETE FROM workflow.workflow_command_intents "
-                "WHERE tenant_id = :tenant"
-            ),
-            {"tenant": tenant_id},
+    conn.execute(
+        text(
+            "ALTER TABLE integration.outbox_messages "
+            "DISABLE TRIGGER outbox_messages_no_delete"
         )
+    )
+    try:
+        for tenant_id in (TENANT_A, TENANT_B, TENANT_C):
+            set_tenant(conn, tenant_id)
+            conn.execute(
+                text(
+                    "DELETE FROM workflow.workflow_command_intents "
+                    "WHERE tenant_id = :tenant"
+                ),
+                {"tenant": tenant_id},
+            )
+            conn.execute(
+                text(
+                    "DELETE FROM workflow.workflow_start_intents "
+                    "WHERE tenant_id = :tenant"
+                ),
+                {"tenant": tenant_id},
+            )
+            conn.execute(
+                text(
+                    "DELETE FROM integration.outbox_messages WHERE tenant_id = :tenant"
+                ),
+                {"tenant": tenant_id},
+            )
+    finally:
         conn.execute(
             text(
-                "DELETE FROM workflow.workflow_start_intents "
-                "WHERE tenant_id = :tenant"
-            ),
-            {"tenant": tenant_id},
-        )
-        conn.execute(
-            text(
-                "DELETE FROM integration.outbox_messages WHERE tenant_id = :tenant"
-            ),
-            {"tenant": tenant_id},
+                "ALTER TABLE integration.outbox_messages "
+                "ENABLE TRIGGER outbox_messages_no_delete"
+            )
         )
 
 
@@ -1184,8 +1199,22 @@ def test_event_candidate_indexes_used_under_volume(
                 set_tenant(conn, bulk_tenant)
                 conn.execute(
                     text(
-                        "DELETE FROM integration.outbox_messages "
-                        "WHERE tenant_id = :tenant"
-                    ),
-                    {"tenant": bulk_tenant},
+                        "ALTER TABLE integration.outbox_messages "
+                        "DISABLE TRIGGER outbox_messages_no_delete"
+                    )
                 )
+                try:
+                    conn.execute(
+                        text(
+                            "DELETE FROM integration.outbox_messages "
+                            "WHERE tenant_id = :tenant"
+                        ),
+                        {"tenant": bulk_tenant},
+                    )
+                finally:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE integration.outbox_messages "
+                            "ENABLE TRIGGER outbox_messages_no_delete"
+                        )
+                    )
