@@ -32,6 +32,12 @@ _FORBIDDEN_IMPORT_NEEDLES = (
 
 # PED-I06 authorizes uvicorn ONLY in platform.runtime.asgi.
 _UVICORN_AUTHORIZED_RELATIVE = Path("asgi.py")
+# Production Temporal worker entrypoint authorizes temporalio ONLY here.
+_TEMPORALIO_AUTHORIZED_RELATIVES = frozenset(
+    {
+        Path("entrypoints") / "temporal_worker_main.py",
+    }
+)
 
 
 def _py_files(root: Path) -> list[Path]:
@@ -54,8 +60,11 @@ def test_runtime_db_driver_is_exact_psycopg3() -> None:
 def test_runtime_package_import_boundary() -> None:
     for path in _py_files(RUNTIME_ROOT):
         text = path.read_text(encoding="utf-8")
+        rel = path.relative_to(RUNTIME_ROOT)
         lower = text.lower()
         for needle in _FORBIDDEN_IMPORT_NEEDLES:
+            if needle == "temporalio" and rel in _TEMPORALIO_AUTHORIZED_RELATIVES:
+                continue
             assert needle not in text, f"{path}: {needle}"
             assert f"import {needle}" not in lower
         # PED-I06: uvicorn allowed only in asgi.py; still forbidden elsewhere.
