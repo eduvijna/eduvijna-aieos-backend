@@ -927,6 +927,7 @@ def test_dispatcher_login_tenant_rls_fail_closed_and_local(
                 conn.execute(
                     text("SELECT count(*) FROM integration.outbox_messages")
                 ).scalar_one()
+            conn.rollback()
 
             with conn.begin():
                 set_tenant(conn, TENANT_A)
@@ -946,6 +947,7 @@ def test_dispatcher_login_tenant_rls_fail_closed_and_local(
                 conn.execute(
                     text("SELECT count(*) FROM integration.outbox_messages")
                 ).scalar_one()
+            conn.rollback()
 
         for table in (
             "workflow.workflow_start_intents",
@@ -954,6 +956,7 @@ def test_dispatcher_login_tenant_rls_fail_closed_and_local(
             with workflow_dispatcher_engine.connect() as conn:
                 with pytest.raises((ProgrammingError, DBAPIError)):
                     conn.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()
+                conn.rollback()
 
                 with conn.begin():
                     set_tenant(conn, TENANT_A)
@@ -968,6 +971,7 @@ def test_dispatcher_login_tenant_rls_fail_closed_and_local(
 
                 with pytest.raises((ProgrammingError, DBAPIError)):
                     conn.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()
+                conn.rollback()
     finally:
         if seeded is not None:
             with bootstrap_engine.connect() as conn:
