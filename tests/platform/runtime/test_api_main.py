@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -158,3 +160,42 @@ def test_api_main_uses_serve_api_application_only(monkeypatch: pytest.MonkeyPatc
 
     api_main.main([])
     assert len(served) == 1
+
+
+def test_api_main_logging_does_not_require_custom_record_fields(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from aieos.platform.runtime.entrypoints import api_main
+    from aieos.platform.runtime.models import ApiRuntimeConfig, DeploymentEnvironment, ReleaseIdentity
+
+    config = ApiRuntimeConfig(
+        environment=DeploymentEnvironment.PRODUCTION,
+        release_identity=ReleaseIdentity(
+            application_version="0.1.0",
+            git_sha="a" * 40,
+            build_id="build-logging",
+            artifact_digest="sha256:" + ("b" * 64),
+        ),
+        runtime_database_url="postgresql+psycopg://aieos_runtime:x@127.0.0.1:5432/aieos",
+        runtime_database_role="aieos_runtime",
+        content_schema_owner_role="aieos_content_owner",
+        security_schema_owner_role="aieos_security_owner",
+        migrator_role="aieos_migrator",
+        cursor_signing_key=b"test-key",
+        idempotency_retention=__import__("datetime").timedelta(hours=24),
+        runtime_database_connect_timeout_seconds=5,
+        auth_issuer="https://issuer.example.test/",
+        auth_audience="aieos-api",
+        auth_jwks_uri="https://issuer.example.test/.well-known/jwks.json",
+    )
+
+    caplog.set_level("INFO")
+    api_main._configure_logging(config)
+    logging.getLogger("uvicorn.error").info("library logger record")
+    api_main._log_startup_failure("configuration", RuntimeConfigurationError("bad"))
+
+    assert "workload=API" in caplog.text
+    assert "environment=PRODUCTION" in caplog.text
+    assert "library logger record" in caplog.text
+    assert "startup failed category=configuration" in caplog.text
+    assert "SUPER_SECRET" not in caplog.text

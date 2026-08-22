@@ -24,18 +24,13 @@ logger = logging.getLogger(__name__)
 def _configure_logging(config: TemporalWorkerRuntimeConfig) -> None:
     logging.basicConfig(
         level=logging.INFO,
-        format=(
-            "%(levelname)s workload=%(workload)s environment=%(environment)s "
-            "git_sha=%(git_sha)s %(message)s"
-        ),
+        format="%(levelname)s %(name)s %(message)s",
     )
     logging.getLogger(__name__).info(
-        "temporal worker startup",
-        extra={
-            "workload": WorkloadKind.TEMPORAL_WORKER.value,
-            "environment": config.environment.value,
-            "git_sha": config.release_identity.git_sha,
-        },
+        "temporal worker startup workload=%s environment=%s git_sha=%s",
+        WorkloadKind.TEMPORAL_WORKER.value,
+        config.environment.value,
+        config.release_identity.git_sha,
     )
 
 
@@ -84,8 +79,18 @@ async def run_worker(config: TemporalWorkerRuntimeConfig) -> None:
             signal.signal(sig, lambda _signum, _frame: _request_shutdown())
 
     run_task = asyncio.create_task(worker.run())
+    shutdown_waiter = asyncio.create_task(shutdown_event.wait())
     try:
-        await shutdown_event.wait()
+        done, _pending = await asyncio.wait(
+            {run_task, shutdown_waiter},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if run_task in done:
+            shutdown_waiter.cancel()
+            await asyncio.gather(shutdown_waiter, return_exceptions=True)
+            await run_task
+            return
+
         logger.info("temporal worker shutdown requested")
         try:
             await asyncio.wait_for(
@@ -98,6 +103,9 @@ async def run_worker(config: TemporalWorkerRuntimeConfig) -> None:
             raise
         await run_task
     finally:
+        if not shutdown_waiter.done():
+            shutdown_waiter.cancel()
+        await asyncio.gather(shutdown_waiter, return_exceptions=True)
         if not run_task.done():
             run_task.cancel()
             await asyncio.gather(run_task, return_exceptions=True)

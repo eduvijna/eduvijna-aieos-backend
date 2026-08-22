@@ -41,6 +41,14 @@ connections occur only when `main()` executes.
 3. `create_content_review_worker(client)` on task queue `aieos.content.review`
 4. `worker.run()` until SIGTERM/SIGINT → `worker.shutdown()` within grace
 
+## Production Content catalog/registry posture
+
+Phase-1 production runtime composition uses an **intentionally empty** Content-type
+catalog and schema registry. No educational production Content type is registered
+yet. Test fixtures and event contract samples are **not** production registry
+authority. Future production Content mutation activation requires separately
+governed production Content-type/schema registration.
+
 ## Configuration categories
 
 ### Shared release / environment

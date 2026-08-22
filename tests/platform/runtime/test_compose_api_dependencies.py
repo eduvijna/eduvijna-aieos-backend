@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from aieos.domains.content.domain.errors import SchemaNotFoundError
 from aieos.platform.runtime.compose_api_dependencies import (
     ENV_AISTOR_ACCESS_KEY_ID,
     ENV_AISTOR_BUCKET,
@@ -94,6 +95,25 @@ def test_compose_returns_complete_api_runtime_dependencies() -> None:
     sig = inspect.signature(ApiRuntimeDependencies)
     for name in sig.parameters:
         assert getattr(dependencies, name) is not None
+    assert not dependencies.content_types.contains("test.generic")
+    with pytest.raises(SchemaNotFoundError):
+        dependencies.schema_registry.get("test.generic", 1)
+
+
+def test_production_compose_rejects_test_prefix_content_types() -> None:
+    config = load_api_runtime_config(_api_environ())
+    engine = MagicMock()
+    with patch(
+        "aieos.platform.runtime.compose_api_dependencies.AiStorBlobStore.from_config"
+    ) as from_config:
+        from_config.return_value = MagicMock()
+        dependencies = compose_api_runtime_dependencies(
+            engine=engine,
+            config=config,
+            environ=_api_environ(),
+        )
+    for content_type in ("test.generic", "test.other"):
+        assert not dependencies.content_types.contains(content_type)
 
 
 def test_compose_uses_jwt_bearer_authenticator_without_eager_jwks() -> None:

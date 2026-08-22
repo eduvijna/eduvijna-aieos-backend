@@ -21,18 +21,13 @@ logger = logging.getLogger(__name__)
 def _configure_logging(config) -> None:
     logging.basicConfig(
         level=logging.INFO,
-        format=(
-            "%(levelname)s workload=%(workload)s environment=%(environment)s "
-            "git_sha=%(git_sha)s %(message)s"
-        ),
+        format="%(levelname)s %(name)s %(message)s",
     )
     logging.getLogger(__name__).info(
-        "api startup",
-        extra={
-            "workload": WorkloadKind.API.value,
-            "environment": config.environment.value,
-            "git_sha": config.release_identity.git_sha,
-        },
+        "api startup workload=%s environment=%s git_sha=%s",
+        WorkloadKind.API.value,
+        config.environment.value,
+        config.release_identity.git_sha,
     )
 
 
