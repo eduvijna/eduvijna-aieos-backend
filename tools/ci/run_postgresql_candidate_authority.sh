@@ -171,7 +171,8 @@ revoke_jit_as_superuser() {
         AND member.rolname = 'aieos_migrator'
     ")"
   [[ "$event_edge" == "0" && "$workflow_edge" == "0" ]] \
-    || fail "superuser JIT cleanup left migrator candidate-reader membership (event=${event_edge}, workflow=${workflow_edge})"
+    || return 1
+  return 0
 }
 
 run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/grant-candidate-migration-access.sh"
