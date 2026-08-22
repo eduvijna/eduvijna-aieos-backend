@@ -133,8 +133,157 @@ def test_migration_never_creates_or_alters_roles_or_grants_candidate_to_migrator
         r"GRANT\s+\{(?:event|workflow)_candidate\}\s+TO",
         source,
     )
+    assert not re.search(
+        r"GRANT\s+[a-z_]*candidate[a-z_]*\s+TO\s+",
+        sql,
+        flags=re.IGNORECASE,
+    )
     assert "GRANT candidate-reader membership" in source  # documentary denial only
     assert "must not GRANT candidate-reader membership" in source
+    assert "must not CREATE ROLE" in source
+    assert "Alembic must not GRANT candidate-reader membership" in source
+
+
+def _preflight_source_body(source: str) -> str:
+    match = re.search(
+        r"def _preflight\(roles: dict\[str, str\]\) -> None:([\s\S]*?)\n\n"
+        r"_EVENT_FORBIDDEN_SELECT_COLUMNS",
+        source,
+    )
+    assert match is not None
+    return match.group(1)
+
+
+def test_preflight_requires_direct_pg_auth_members_jit_not_pg_has_role_alone() -> None:
+    """Effective JIT acceptance is exact pg_auth_members edge, not pg_has_role alone."""
+    source = _migration_source()
+    body = _preflight_source_body(source)
+    assert "FROM pg_auth_members" in body
+    assert "am.admin_option" in body
+    assert "am.inherit_option" in body
+    assert "am.set_option" in body
+    assert "admin_option is not False" in body
+    assert "inherit_option is not False" in body
+    assert "set_option is not True" in body
+    assert "direct pg_auth_members JIT edge" in body
+    # Documentary denial may mention pg_has_role; it must not be the acceptance check.
+    assert "pg_has_role(..., 'SET') alone is insufficient" in body
+    without_denial = body.replace(
+        "pg_has_role(..., 'SET') alone is insufficient", ""
+    )
+    assert "pg_has_role" not in without_denial
+
+
+def test_preflight_checks_forbidden_runtime_dispatcher_candidate_memberships() -> None:
+    source = _migration_source()
+    body = _preflight_source_body(source)
+    assert "forbidden inbound candidate membership" in body
+    forbidden_block = re.search(
+        r"forbidden_members = \(([\s\S]*?)\)\n"
+        r"\s+for candidate_key in \(\"event_candidate\", \"workflow_candidate\"\)",
+        body,
+    )
+    assert forbidden_block is not None
+    members_blob = forbidden_block.group(1)
+    for needle in (
+        'roles["runtime"]',
+        'roles["migration_runtime"]',
+        'roles["event_dispatcher"]',
+        'roles["workflow_dispatcher"]',
+    ):
+        assert needle in members_blob
+    assert "FROM pg_auth_members am" in body
+    assert "member.rolname = :member" in body
+
+
+def test_preflight_fails_closed_on_preexisting_candidate_privileges() -> None:
+    source = _migration_source()
+    body = _preflight_source_body(source)
+    assert "def _assert_no_preexisting_candidate_privileges" in source
+    assert "_assert_no_preexisting_candidate_privileges(roles)" in body
+    assert body.rstrip().endswith("_assert_no_preexisting_candidate_privileges(roles)")
+    assert "already has unexpected" in source
+    assert "already has forbidden" in source
+    assert "has_table_privilege" in source
+    assert "has_column_privilege" in source
+    assert "has_schema_privilege" in source
+
+
+def test_upgrade_drops_policies_only_after_preflight() -> None:
+    source = _migration_source()
+    upgrade = re.search(
+        r"def upgrade\(\) -> None:([\s\S]*?)\ndef downgrade\(\) -> None:",
+        source,
+    )
+    assert upgrade is not None
+    body = upgrade.group(1)
+    preflight_at = body.find("_preflight(roles)")
+    first_drop_at = body.find("DROP POLICY")
+    assert preflight_at != -1
+    assert first_drop_at != -1
+    assert preflight_at < first_drop_at
+    assert "if not context.is_offline_mode():" in body
+    assert body.index("if not context.is_offline_mode():") < preflight_at
+
+
+def test_offline_sql_style_source_scan_mirrors_ci_expectations() -> None:
+    """Mirror dedicated CI offline alembic --sql acceptance via source / op.execute scans."""
+    source = _migration_source()
+    sql = _op_execute_sql(source)
+    mig = _load_migration()
+    function_sql = "\n".join(
+        [
+            mig._event_function_body(),
+            mig._workflow_function_body(
+                schema_fn="workflow.list_start_intent_candidates",
+                table="workflow.workflow_start_intents",
+                name="list_start_intent_candidates",
+            ),
+            mig._workflow_function_body(
+                schema_fn="workflow.list_command_intent_candidates",
+                table="workflow.workflow_command_intents",
+                name="list_command_intent_candidates",
+            ),
+        ]
+    )
+    emitted = f"{sql}\n{function_sql}"
+    emitted_upper = emitted.upper()
+
+    for name in (
+        "list_outbox_dispatch_candidates",
+        "list_start_intent_candidates",
+        "list_command_intent_candidates",
+    ):
+        assert name in emitted
+    assert "SECURITY DEFINER" in emitted
+    assert "SET search_path TO pg_catalog, pg_temp" in emitted
+    assert "SET LOCAL ROLE {candidate_role}" in source
+    assert "SET LOCAL ROLE {content_owner}" in source
+    assert "GRANT CREATE ON SCHEMA {schema} TO {candidate_role}" in source
+    assert "REVOKE CREATE ON SCHEMA {schema} FROM {candidate_role}" in source
+    assert "REVOKE ALL ON FUNCTION {function_reg} FROM PUBLIC" in source
+
+    assert not re.search(r"CREATE\s+ROLE", emitted_upper)
+    assert not re.search(r"ALTER\s+ROLE", emitted_upper)
+    assert not re.search(
+        r"GRANT\s+\{(?:event|workflow)_candidate\}\s+TO",
+        source,
+    )
+    assert not re.search(
+        r"GRANT\s+aieos_(?:event|workflow)_candidate_reader\s+TO",
+        emitted,
+        flags=re.IGNORECASE,
+    )
+    assert not re.search(
+        r"password|digitalocean|doctl|api\.digitalocean",
+        emitted,
+        flags=re.IGNORECASE,
+    )
+    assert not re.search(
+        r"postgresql(\+[a-z]+)?://[^\s]+:[^\s]+@",
+        emitted,
+        flags=re.IGNORECASE,
+    )
 
 
 def test_old_universal_policies_dropped_and_role_target_policies_created() -> None:

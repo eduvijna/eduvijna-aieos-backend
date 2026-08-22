@@ -21,7 +21,7 @@ This document describes the Backend-owned PostgreSQL migration surface for tenan
 | EVENT candidate indexes | Source-defined |
 | Production migration execution | **NOT AUTHORIZED** |
 | Dispatcher daemon implement / deploy | **NOT AUTHORIZED** |
-| Scheduled / reconciliation runtime | **OPEN** |
+| Scheduled / reconciliation runtime | **OPEN** / **ARCHITECTURE-GATED** |
 
 ## Migration
 
@@ -29,6 +29,9 @@ This document describes the Backend-owned PostgreSQL migration surface for tenan
 - File: `migrations/versions/adra045001_dispatcher_candidate_authority.py`
 - Preceding head: `pedi10b6001`
 - Alembic must **not** `CREATE ROLE` / `ALTER ROLE` / grant candidate-reader membership to the migrator
+- Live preflight requires the **direct exact** migrator → candidate-reader JIT edge in `pg_auth_members` (`ADMIN false` / `INHERIT false` / `SET true`); `pg_has_role` alone is not accepted
+- Pre-existing / drifted excess candidate-reader queue or schema privileges **fail closed** before universal policy drop
+- Dedicated PostgreSQL candidate-authority CI ends with Infrastructure **baseline** verification (revoke + baseline verifier; no residual migrator JIT)
 
 ## Role inputs (fail closed)
 
@@ -103,4 +106,4 @@ Scripts (Infrastructure-owned):
 | Production Alembic execution of `adra045001` | **NOT AUTHORIZED** |
 | Production candidate-reader provisioning | Infrastructure source-defined / **NOT RELEASED** |
 | Dispatcher daemon | **NOT AUTHORIZED** |
-| Scheduled / reconciliation runtime | **OPEN** |
+| Scheduled / reconciliation runtime | **OPEN** / **ARCHITECTURE-GATED** |

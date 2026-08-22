@@ -121,6 +121,131 @@ assert_no_migrator_jit() {
   [[ "$workflow_edge" == "0" ]] || fail "migrator still has workflow candidate-reader membership"
 }
 
+infra_revoke_and_baseline() {
+  run_as_deployment_admin \
+    "${INFRA_ROOT}/scripts/postgresql/revoke-candidate-migration-access.sh" \
+    || fail "Infrastructure revoke-candidate-migration-access.sh failed"
+  AIEOS_VERIFY_MODE=baseline run_as_deployment_admin \
+    "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh" \
+    || fail "Infrastructure baseline verifier failed"
+  assert_no_migrator_jit
+}
+
+assert_downgraded_state() {
+  local count
+  count="$(psql_query -c "
+    SELECT COUNT(*) FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE (n.nspname, p.proname) IN (
+      ('integration', 'list_outbox_dispatch_candidates'),
+      ('workflow', 'list_start_intent_candidates'),
+      ('workflow', 'list_command_intent_candidates')
+    )
+  ")"
+  [[ "$count" == "0" ]] || fail "candidate functions still present after downgrade"
+
+  count="$(psql_query -c "
+    SELECT COUNT(*) FROM pg_policies
+    WHERE (schemaname, tablename, policyname) IN (
+      ('integration', 'outbox_messages', 'outbox_messages_event_candidate_reader_select'),
+      ('workflow', 'workflow_start_intents', 'workflow_start_intents_workflow_candidate_reader_select'),
+      ('workflow', 'workflow_command_intents', 'workflow_command_intents_workflow_candidate_reader_select')
+    )
+  ")"
+  [[ "$count" == "0" ]] || fail "candidate RLS policies still present after downgrade"
+
+  count="$(psql_query -c "
+    SELECT COUNT(*) FROM pg_policies
+    WHERE (schemaname, tablename, policyname) IN (
+      ('integration', 'outbox_messages', 'outbox_messages_tenant_isolation'),
+      ('workflow', 'workflow_start_intents', 'workflow_start_intents_tenant_isolation'),
+      ('workflow', 'workflow_command_intents', 'workflow_command_intents_tenant_isolation')
+    )
+  ")"
+  [[ "$count" == "3" ]] || fail "original universal tenant policies not restored after downgrade"
+
+  count="$(psql_query -c "
+    SELECT COUNT(*) FROM information_schema.column_privileges
+    WHERE grantee IN (
+      '${AIEOS_EVENT_CANDIDATE_READER_ROLE}',
+      '${AIEOS_WORKFLOW_CANDIDATE_READER_ROLE}'
+    )
+      AND privilege_type = 'SELECT'
+      AND (
+        (table_schema = 'integration' AND table_name = 'outbox_messages'
+          AND column_name IN ('tenant_id', 'status', 'available_at', 'claimed_until'))
+        OR (table_schema = 'workflow'
+          AND table_name IN ('workflow_start_intents', 'workflow_command_intents')
+          AND column_name IN ('tenant_id', 'status', 'available_at', 'claimed_until'))
+      )
+  ")"
+  [[ "$count" == "0" ]] || fail "candidate scheduling-column grants still present after downgrade"
+
+  count="$(psql_query -c "
+    SELECT COUNT(*)
+    FROM (
+      SELECT 1
+      WHERE has_schema_privilege(
+        '${AIEOS_EVENT_CANDIDATE_READER_ROLE}', 'integration', 'CREATE'
+      )
+      UNION ALL
+      SELECT 1
+      WHERE has_schema_privilege(
+        '${AIEOS_WORKFLOW_CANDIDATE_READER_ROLE}', 'workflow', 'CREATE'
+      )
+    ) x
+  ")"
+  [[ "$count" == "0" ]] || fail "candidate schema CREATE from adra045001 still present after downgrade"
+
+  count="$(psql_query -c "
+    SELECT COUNT(*) FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'integration'
+      AND c.relkind = 'i'
+      AND c.relname IN (
+        'ix_outbox_messages_candidate_pending',
+        'ix_outbox_messages_candidate_claimed'
+      )
+  ")"
+  [[ "$count" == "0" ]] || fail "EVENT candidate indexes still present after downgrade"
+
+  count="$(psql_query -c "
+    SELECT COUNT(*) FROM pg_roles
+    WHERE rolname IN (
+      '${AIEOS_EVENT_CANDIDATE_READER_ROLE}',
+      '${AIEOS_WORKFLOW_CANDIDATE_READER_ROLE}'
+    )
+  ")"
+  [[ "$count" == "2" ]] || fail "candidate roles must survive downgrade"
+
+  count="$(psql_query -c "
+    SELECT COUNT(*) FROM pg_roles
+    WHERE rolname IN (
+      '${AIEOS_EVENT_CANDIDATE_READER_ROLE}',
+      '${AIEOS_WORKFLOW_CANDIDATE_READER_ROLE}'
+    )
+      AND rolcanlogin = false
+      AND rolbypassrls = false
+  ")"
+  [[ "$count" == "2" ]] || fail "candidate roles must remain NOLOGIN / NOBYPASSRLS"
+
+  count="$(psql_query -c "
+    SELECT COUNT(*) FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE (
+      (n.nspname = 'integration' AND c.relname = 'outbox_messages')
+      OR (n.nspname = 'workflow' AND c.relname IN (
+        'workflow_start_intents', 'workflow_command_intents'
+      ))
+    )
+      AND c.relrowsecurity = true
+      AND c.relforcerowsecurity = true
+  ")"
+  [[ "$count" == "3" ]] || fail "FORCE RLS must remain enabled on all three queues"
+
+  assert_no_migrator_jit
+}
+
 chmod +x \
   "${INFRA_ROOT}/scripts/postgresql/bootstrap-candidate-readers.sh" \
   "${INFRA_ROOT}/scripts/postgresql/grant-candidate-migration-access.sh" \
@@ -142,78 +267,79 @@ run_alembic_as_migrator() {
   )
 }
 
-revoke_jit_as_superuser() {
-  # Disposable CI cleanup. Terminate any leftover migrator sessions first —
-  # PostgreSQL can retain role membership while a backend still has SET ROLE
-  # active after the pytest fixture pool dispose race.
-  env PGUSER=postgres PGPASSWORD="${PGPASSWORD}" \
-    psql -v ON_ERROR_STOP=1 -X -q \
-    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'aieos_migrator' AND pid <> pg_backend_pid()" \
-    -c "REVOKE aieos_event_candidate_reader FROM aieos_migrator" \
-    -c "REVOKE aieos_workflow_candidate_reader FROM aieos_migrator"
-  local event_edge workflow_edge
-  event_edge="$(env PGUSER=postgres PGPASSWORD="${PGPASSWORD}" \
-    psql -v ON_ERROR_STOP=1 -X -At -c "
-      SELECT COUNT(*)
-      FROM pg_auth_members am
-      JOIN pg_roles granted ON granted.oid = am.roleid
-      JOIN pg_roles member ON member.oid = am.member
-      WHERE granted.rolname = 'aieos_event_candidate_reader'
-        AND member.rolname = 'aieos_migrator'
-    ")"
-  workflow_edge="$(env PGUSER=postgres PGPASSWORD="${PGPASSWORD}" \
-    psql -v ON_ERROR_STOP=1 -X -At -c "
-      SELECT COUNT(*)
-      FROM pg_auth_members am
-      JOIN pg_roles granted ON granted.oid = am.roleid
-      JOIN pg_roles member ON member.oid = am.member
-      WHERE granted.rolname = 'aieos_workflow_candidate_reader'
-        AND member.rolname = 'aieos_migrator'
-    ")"
-  [[ "$event_edge" == "0" && "$workflow_edge" == "0" ]] \
-    || return 1
-  return 0
-}
-
 run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/grant-candidate-migration-access.sh"
 AIEOS_VERIFY_MODE=jit run_as_deployment_admin \
   "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh"
 run_alembic_as_migrator upgrade head
 head_rev="$(psql_query -c "SELECT version_num FROM alembic_version")"
 [[ "$head_rev" == "adra045001" ]] || fail "expected head adra045001 after upgrade, got ${head_rev}"
-run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/revoke-candidate-migration-access.sh" \
-  || info "infrastructure revoke returned non-zero; applying superuser cleanup"
-revoke_jit_as_superuser
+infra_revoke_and_baseline
 
+# Isolated downgrade under a fresh JIT window (not shared with re-upgrade).
 run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/grant-candidate-migration-access.sh"
+AIEOS_VERIFY_MODE=jit run_as_deployment_admin \
+  "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh"
 run_alembic_as_migrator downgrade pedi10b6001
 down_rev="$(psql_query -c "SELECT version_num FROM alembic_version")"
 [[ "$down_rev" == "pedi10b6001" ]] || fail "expected pedi10b6001 after downgrade, got ${down_rev}"
+infra_revoke_and_baseline
+assert_downgraded_state
+
+# Fresh JIT re-upgrade
+run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/grant-candidate-migration-access.sh"
+AIEOS_VERIFY_MODE=jit run_as_deployment_admin \
+  "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh"
 run_alembic_as_migrator upgrade head
 head_rev="$(psql_query -c "SELECT version_num FROM alembic_version")"
 [[ "$head_rev" == "adra045001" ]] || fail "expected adra045001 after re-upgrade, got ${head_rev}"
-run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/revoke-candidate-migration-access.sh" \
-  || info "infrastructure revoke returned non-zero; applying superuser cleanup"
-revoke_jit_as_superuser
-AIEOS_VERIFY_MODE=baseline run_as_deployment_admin \
-  "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh"
+infra_revoke_and_baseline
 
-info "offline alembic SQL must not CREATE ROLE"
+info "offline alembic SQL expanded acceptance"
 offline_sql="$(
   cd "$ROOT"
   AIEOS_DATABASE_URL="postgresql+psycopg://offline-check/unused" \
     uv run alembic upgrade head --sql
 )"
+echo "$offline_sql" | grep -q 'list_outbox_dispatch_candidates' \
+  || fail "offline SQL missing event candidate function"
+echo "$offline_sql" | grep -q 'list_start_intent_candidates' \
+  || fail "offline SQL missing workflow start candidate function"
+echo "$offline_sql" | grep -q 'list_command_intent_candidates' \
+  || fail "offline SQL missing workflow command candidate function"
+echo "$offline_sql" | grep -qi 'SECURITY DEFINER' \
+  || fail "offline SQL missing SECURITY DEFINER"
+echo "$offline_sql" | grep -q 'SET search_path TO pg_catalog, pg_temp' \
+  || fail "offline SQL missing approved search_path"
+echo "$offline_sql" | grep -q 'SET LOCAL ROLE' \
+  || fail "offline SQL missing SET LOCAL ROLE transitions"
+echo "$offline_sql" | grep -qi 'REVOKE ALL ON FUNCTION' \
+  || fail "offline SQL missing PUBLIC EXECUTE revoke"
+echo "$offline_sql" | grep -qi 'GRANT CREATE ON SCHEMA' \
+  || fail "offline SQL missing candidate CREATE grant choreography"
+echo "$offline_sql" | grep -qi 'REVOKE CREATE ON SCHEMA' \
+  || fail "offline SQL missing candidate CREATE revoke choreography"
 if echo "$offline_sql" | grep -qiE 'CREATE[[:space:]]+ROLE'; then
   fail "offline SQL contains CREATE ROLE"
 fi
 if echo "$offline_sql" | grep -qiE 'ALTER[[:space:]]+ROLE'; then
   fail "offline SQL contains ALTER ROLE"
 fi
+if echo "$offline_sql" | grep -qiE 'GRANT[[:space:]]+aieos_(event|workflow)_candidate_reader[[:space:]]+TO'; then
+  fail "offline SQL grants candidate-reader membership to migrator"
+fi
+if echo "$offline_sql" | grep -qiE 'password|digitalocean|doctl|api\.digitalocean'; then
+  fail "offline SQL contains forbidden credential/token material"
+fi
+if echo "$offline_sql" | grep -qiE 'postgresql(\+[a-z]+)?://[^[:space:]]+:[^[:space:]]+@'; then
+  fail "offline SQL contains production-like connection URI"
+fi
 
-# Re-grant JIT so session-scoped pytest postgres18 fixture can cycle migrations.
+# Fresh JIT for dedicated pytest — Backend fixture must not add a second grant edge
 run_as_deployment_admin "${INFRA_ROOT}/scripts/postgresql/grant-candidate-migration-access.sh"
+AIEOS_VERIFY_MODE=jit run_as_deployment_admin \
+  "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh"
 
+export AIEOS_TEST_CANDIDATE_JIT_EXTERNAL=1
 export AIEOS_TEST_BOOTSTRAP_DATABASE_URL="postgresql+psycopg://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}"
 export AIEOS_TEST_DATABASE_URL="postgresql+psycopg://${AIEOS_MIGRATOR_ROLE}:${CI_PASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}"
 export AIEOS_TEST_RUNTIME_DATABASE_URL="postgresql+psycopg://${AIEOS_RUNTIME_ROLE}:${CI_PASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}"
@@ -224,11 +350,23 @@ export AIEOS_TEST_EVENT_DISPATCHER_DATABASE_URL="postgresql+psycopg://${AIEOS_EV
 cd "$ROOT"
 uv run pytest -v -m postgres_candidate_authority
 
-# Best-effort cleanup only: the required upgrade/downgrade/re-upgrade proofs and
-# postgres_candidate_authority tests have already passed above. Fixture pools can
-# race with catalogue REVOKE; do not fail the job on disposable cleanup.
-if ! revoke_jit_as_superuser; then
-  info "post-pytest JIT cleanup did not fully clear membership; disposable CI DB will be discarded"
+# Hard-gated final cleanup — Infrastructure revoke + baseline must pass.
+# Superuser helper is diagnostic only and must not convert failure into green CI.
+if ! run_as_deployment_admin \
+  "${INFRA_ROOT}/scripts/postgresql/revoke-candidate-migration-access.sh"; then
+  info "diagnostic: attempting disposable superuser REVOKE after Infrastructure revoke failure"
+  env PGUSER=postgres PGPASSWORD="${PGPASSWORD}" \
+    psql -v ON_ERROR_STOP=0 -X -q \
+    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = '${AIEOS_MIGRATOR_ROLE}' AND pid <> pg_backend_pid()" \
+    -c "REVOKE ${AIEOS_EVENT_CANDIDATE_READER_ROLE} FROM ${AIEOS_MIGRATOR_ROLE}" \
+    -c "REVOKE ${AIEOS_WORKFLOW_CANDIDATE_READER_ROLE} FROM ${AIEOS_MIGRATOR_ROLE}" \
+    || true
+  fail "Infrastructure revoke-candidate-migration-access.sh failed after pytest"
 fi
+
+AIEOS_VERIFY_MODE=baseline run_as_deployment_admin \
+  "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh" \
+  || fail "final Infrastructure baseline verifier failed after pytest"
+assert_no_migrator_jit
 
 info "postgresql candidate-authority CI proof complete"

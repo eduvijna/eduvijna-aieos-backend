@@ -213,18 +213,21 @@ def provision_identities(bootstrap: Engine) -> None:
         conn.execute(text(f"GRANT {ASSET_SCHEMA_OWNER_ROLE} TO {MIGRATOR_USER}"))
         # Ephemeral JIT SET membership for ADR-AIEOS-045 function ownership choreography.
         # Production JIT grant/revoke remains Infrastructure-owned; Alembic never GRANTs this.
-        conn.execute(
-            text(
-                f"GRANT {EVENT_CANDIDATE_READER_ROLE} TO {MIGRATOR_USER} "
-                f"WITH ADMIN FALSE, INHERIT FALSE, SET TRUE"
+        # Dedicated postgresql-candidate-authority CI sets AIEOS_TEST_CANDIDATE_JIT_EXTERNAL=1
+        # so Infrastructure scripts alone own the migrator->candidate JIT edge.
+        if os.environ.get("AIEOS_TEST_CANDIDATE_JIT_EXTERNAL", "").strip() != "1":
+            conn.execute(
+                text(
+                    f"GRANT {EVENT_CANDIDATE_READER_ROLE} TO {MIGRATOR_USER} "
+                    f"WITH ADMIN FALSE, INHERIT FALSE, SET TRUE"
+                )
             )
-        )
-        conn.execute(
-            text(
-                f"GRANT {WORKFLOW_CANDIDATE_READER_ROLE} TO {MIGRATOR_USER} "
-                f"WITH ADMIN FALSE, INHERIT FALSE, SET TRUE"
+            conn.execute(
+                text(
+                    f"GRANT {WORKFLOW_CANDIDATE_READER_ROLE} TO {MIGRATOR_USER} "
+                    f"WITH ADMIN FALSE, INHERIT FALSE, SET TRUE"
+                )
             )
-        )
         db_name = conn.execute(text("SELECT current_database()")).scalar_one()
         conn.execute(
             text(f"GRANT CONNECT, CREATE ON DATABASE {db_name} TO {SCHEMA_OWNER_ROLE}")

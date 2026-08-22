@@ -225,18 +225,339 @@ def _preflight(roles: dict[str, str]) -> None:
                 f"candidate-reader {role} must not be a member of any other role"
             )
 
+    # Direct JIT edge required: pg_has_role(..., 'SET') alone is insufficient.
     for candidate_key in ("event_candidate", "workflow_candidate"):
         role = roles[candidate_key]
-        can_set = bind.execute(
-            text("SELECT pg_has_role(session_user, :role, 'SET')"),
+        edges = bind.execute(
+            text(
+                """
+                SELECT am.admin_option, am.inherit_option, am.set_option
+                FROM pg_auth_members am
+                JOIN pg_roles granted ON granted.oid = am.roleid
+                JOIN pg_roles member ON member.oid = am.member
+                WHERE granted.rolname = :role
+                  AND member.oid = (
+                      SELECT oid FROM pg_roles WHERE rolname = session_user
+                  )
+                """
+            ),
+            {"role": role},
+        ).fetchall()
+        if len(edges) == 0:
+            raise RuntimeError(
+                f"migrator session_user lacks direct pg_auth_members JIT edge "
+                f"to candidate-reader {role}; Infrastructure JIT grant is "
+                "required and Alembic must not GRANT candidate-reader membership"
+            )
+        if len(edges) != 1:
+            raise RuntimeError(
+                f"ambiguous direct pg_auth_members JIT state for "
+                f"session_user -> {role}: {len(edges)} rows"
+            )
+        edge = edges[0]
+        if (
+            edge.admin_option is not False
+            or edge.inherit_option is not False
+            or edge.set_option is not True
+        ):
+            raise RuntimeError(
+                f"direct JIT edge session_user -> {role} must be "
+                "ADMIN false / INHERIT false / SET true; "
+                f"got admin={edge.admin_option} inherit={edge.inherit_option} "
+                f"set={edge.set_option}"
+            )
+
+    # Application runtime/dispatcher identities must not be candidate members.
+    forbidden_members = (
+        roles["runtime"],
+        roles["migration_runtime"],
+        roles["event_dispatcher"],
+        roles["workflow_dispatcher"],
+    )
+    for candidate_key in ("event_candidate", "workflow_candidate"):
+        role = roles[candidate_key]
+        for member_name in forbidden_members:
+            inbound = bind.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM pg_auth_members am
+                    JOIN pg_roles granted ON granted.oid = am.roleid
+                    JOIN pg_roles member ON member.oid = am.member
+                    WHERE granted.rolname = :role
+                      AND member.rolname = :member
+                    """
+                ),
+                {"role": role, "member": member_name},
+            ).scalar_one()
+            if inbound != 0:
+                raise RuntimeError(
+                    f"forbidden inbound candidate membership: {member_name} "
+                    f"is a member of {role}"
+                )
+
+    _assert_no_preexisting_candidate_privileges(roles)
+
+
+_EVENT_FORBIDDEN_SELECT_COLUMNS = (
+    "envelope",
+    "event_type",
+    "subject",
+    "aggregate_type",
+    "aggregate_id",
+    "aggregate_revision",
+    "attempt_count",
+    "claimed_by",
+    "published_at",
+    "broker_stream",
+    "broker_sequence",
+    "last_error_code",
+    "created_at",
+)
+
+_WORKFLOW_START_FORBIDDEN_SELECT_COLUMNS = (
+    "input",
+    "workflow_start_intent_id",
+    "workflow_instance_id",
+    "workflow_type",
+    "workflow_major_version",
+    "temporal_workflow_id",
+    "task_queue",
+    "business_key",
+    "attempt_count",
+    "claimed_by",
+    "delivered_at",
+    "last_error_code",
+    "created_at",
+)
+
+_WORKFLOW_COMMAND_FORBIDDEN_SELECT_COLUMNS = (
+    "payload",
+    "workflow_command_intent_id",
+    "workflow_instance_id",
+    "temporal_workflow_id",
+    "command_id",
+    "command_type",
+    "business_key",
+    "attempt_count",
+    "claimed_by",
+    "delivered_at",
+    "last_error_code",
+    "created_at",
+)
+
+_TABLE_PRIVILEGES = (
+    "SELECT",
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "TRUNCATE",
+    "REFERENCES",
+    "TRIGGER",
+)
+
+
+def _assert_no_preexisting_candidate_privileges(roles: dict[str, str]) -> None:
+    """Fail closed on unexpected candidate-reader queue/schema authority."""
+    bind = op.get_bind()
+    targets: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+        (
+            roles["event_candidate"],
+            "integration.outbox_messages",
+            _EVENT_FORBIDDEN_SELECT_COLUMNS,
+        ),
+        (
+            roles["workflow_candidate"],
+            "workflow.workflow_start_intents",
+            _WORKFLOW_START_FORBIDDEN_SELECT_COLUMNS,
+        ),
+        (
+            roles["workflow_candidate"],
+            "workflow.workflow_command_intents",
+            _WORKFLOW_COMMAND_FORBIDDEN_SELECT_COLUMNS,
+        ),
+    )
+    for role, table, forbidden_cols in targets:
+        for priv in _TABLE_PRIVILEGES:
+            has_priv = bind.execute(
+                text(
+                    "SELECT has_table_privilege(:role, :table, :priv)"
+                ),
+                {"role": role, "table": table, "priv": priv},
+            ).scalar_one()
+            if has_priv:
+                raise RuntimeError(
+                    f"candidate-reader {role} already has unexpected "
+                    f"table privilege {priv} on {table}"
+                )
+        for col in _CANDIDATE_COLUMNS:
+            has_col = bind.execute(
+                text(
+                    "SELECT has_column_privilege(:role, :table, :col, 'SELECT')"
+                ),
+                {"role": role, "table": table, "col": col},
+            ).scalar_one()
+            if has_col:
+                raise RuntimeError(
+                    f"candidate-reader {role} already has unexpected "
+                    f"column SELECT on {table}.{col}"
+                )
+        for col in forbidden_cols:
+            has_col = bind.execute(
+                text(
+                    "SELECT has_column_privilege(:role, :table, :col, 'SELECT')"
+                ),
+                {"role": role, "table": table, "col": col},
+            ).scalar_one()
+            if has_col:
+                raise RuntimeError(
+                    f"candidate-reader {role} already has forbidden "
+                    f"column SELECT on {table}.{col}"
+                )
+
+    for role_key, schema in (
+        ("event_candidate", "integration"),
+        ("workflow_candidate", "workflow"),
+    ):
+        role = roles[role_key]
+        has_create = bind.execute(
+            text("SELECT has_schema_privilege(:role, :schema, 'CREATE')"),
+            {"role": role, "schema": schema},
+        ).scalar_one()
+        if has_create:
+            raise RuntimeError(
+                f"candidate-reader {role} already has CREATE on schema {schema}"
+            )
+
+
+def _preflight_role_transition(roles: dict[str, str]) -> None:
+    """JIT/role checks for SET LOCAL ROLE choreography (upgrade or downgrade).
+
+    Does not assert absence of candidate grants — those exist after upgrade and
+    are removed by downgrade itself.
+    """
+    bind = op.get_bind()
+    for key, role in roles.items():
+        exists = bind.execute(
+            text("SELECT COUNT(*) FROM pg_roles WHERE rolname = :role"),
             {"role": role},
         ).scalar_one()
-        if not can_set:
+        if exists != 1:
             raise RuntimeError(
-                f"migrator session_user lacks temporary SET membership for "
-                f"candidate-reader {role}; Infrastructure JIT grant is required "
-                "and Alembic must not GRANT candidate-reader membership"
+                f"required role '{role}' ({key}) does not exist; Alembic "
+                "must not CREATE ROLE"
             )
+
+    for candidate_key in ("event_candidate", "workflow_candidate"):
+        role = roles[candidate_key]
+        row = bind.execute(
+            text(
+                """
+                SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
+                       rolreplication, rolbypassrls
+                FROM pg_roles
+                WHERE rolname = :role
+                """
+            ),
+            {"role": role},
+        ).one()
+        if row.rolcanlogin:
+            raise RuntimeError(f"candidate-reader {role} must be NOLOGIN")
+        if row.rolsuper:
+            raise RuntimeError(f"candidate-reader {role} must be NOSUPERUSER")
+        if row.rolcreatedb:
+            raise RuntimeError(f"candidate-reader {role} must be NOCREATEDB")
+        if row.rolcreaterole:
+            raise RuntimeError(f"candidate-reader {role} must be NOCREATEROLE")
+        if row.rolreplication:
+            raise RuntimeError(f"candidate-reader {role} must be NOREPLICATION")
+        if row.rolbypassrls:
+            raise RuntimeError(f"candidate-reader {role} must be NOBYPASSRLS")
+
+        outbound = bind.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM pg_auth_members am
+                JOIN pg_roles member ON member.oid = am.member
+                WHERE member.rolname = :role
+                """
+            ),
+            {"role": role},
+        ).scalar_one()
+        if outbound != 0:
+            raise RuntimeError(
+                f"candidate-reader {role} must not be a member of any other role"
+            )
+
+    for candidate_key in ("event_candidate", "workflow_candidate"):
+        role = roles[candidate_key]
+        edges = bind.execute(
+            text(
+                """
+                SELECT am.admin_option, am.inherit_option, am.set_option
+                FROM pg_auth_members am
+                JOIN pg_roles granted ON granted.oid = am.roleid
+                JOIN pg_roles member ON member.oid = am.member
+                WHERE granted.rolname = :role
+                  AND member.oid = (
+                      SELECT oid FROM pg_roles WHERE rolname = session_user
+                  )
+                """
+            ),
+            {"role": role},
+        ).fetchall()
+        if len(edges) == 0:
+            raise RuntimeError(
+                f"migrator session_user lacks direct pg_auth_members JIT edge "
+                f"to candidate-reader {role}; Infrastructure JIT grant is "
+                "required and Alembic must not GRANT candidate-reader membership"
+            )
+        if len(edges) != 1:
+            raise RuntimeError(
+                f"ambiguous direct pg_auth_members JIT state for "
+                f"session_user -> {role}: {len(edges)} rows"
+            )
+        edge = edges[0]
+        if (
+            edge.admin_option is not False
+            or edge.inherit_option is not False
+            or edge.set_option is not True
+        ):
+            raise RuntimeError(
+                f"direct JIT edge session_user -> {role} must be "
+                "ADMIN false / INHERIT false / SET true; "
+                f"got admin={edge.admin_option} inherit={edge.inherit_option} "
+                f"set={edge.set_option}"
+            )
+
+    forbidden_members = (
+        roles["runtime"],
+        roles["migration_runtime"],
+        roles["event_dispatcher"],
+        roles["workflow_dispatcher"],
+    )
+    for candidate_key in ("event_candidate", "workflow_candidate"):
+        role = roles[candidate_key]
+        for member_name in forbidden_members:
+            inbound = bind.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM pg_auth_members am
+                    JOIN pg_roles granted ON granted.oid = am.roleid
+                    JOIN pg_roles member ON member.oid = am.member
+                    WHERE granted.rolname = :role
+                      AND member.rolname = :member
+                    """
+                ),
+                {"role": role, "member": member_name},
+            ).scalar_one()
+            if inbound != 0:
+                raise RuntimeError(
+                    f"forbidden inbound candidate membership: {member_name} "
+                    f"is a member of {role}"
+                )
 
 
 def _candidate_select_list() -> str:
@@ -558,8 +879,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     roles = _load_roles()
     _assert_distinct(roles)
+    # Downgrade needs JIT SET ROLE, but must not require absence of candidate
+    # grants that this revision itself installed.
     if not context.is_offline_mode():
-        _preflight(roles)
+        _preflight_role_transition(roles)
 
     content = roles["content_owner"]
     event_candidate = roles["event_candidate"]
