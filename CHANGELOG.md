@@ -7,6 +7,10 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Production runtime executable entrypoints (Phase 1): `python -m aieos.platform.runtime.entrypoints.api_main` and `python -m aieos.platform.runtime.entrypoints.temporal_worker_main` with fail-closed configuration, governed dependency composition, PED-I06 Uvicorn serving, and Temporal SDK graceful shutdown. Explicit exclusions remain: event/workflow dispatcher daemons, tenant enumeration, scheduler/reconciliation runtime, backup worker, App Platform spec, OCI production promotion, cloud access, and commercial release. Production deployment and commercial release remain NOT AUTHORIZED.
+
 ### Changed
 
 - PED-I10B8 AIStor live-conformance correction (NON_PRODUCTION): upgrade

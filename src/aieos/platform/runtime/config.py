@@ -191,6 +191,16 @@ def _assert_role_separation(
             )
 
 
+def load_release_identity(environ: Mapping[str, str]) -> ReleaseIdentity:
+    """Parse fail-closed release identity from governed environment names."""
+    return ReleaseIdentity(
+        application_version=_require(environ, ENV_RELEASE_VERSION),
+        git_sha=_parse_git_sha(_require(environ, ENV_GIT_SHA)),
+        build_id=_require(environ, ENV_BUILD_ID),
+        artifact_digest=_parse_artifact_digest(_require(environ, ENV_ARTIFACT_DIGEST)),
+    )
+
+
 def load_api_runtime_config(environ: Mapping[str, str]) -> ApiRuntimeConfig:
     """Parse fail-closed STAGING/PRODUCTION API runtime configuration.
 
@@ -206,12 +216,7 @@ def load_api_runtime_config(environ: Mapping[str, str]) -> ApiRuntimeConfig:
         _require(environ, name)
 
     environment = _parse_environment(_require(environ, ENV_DEPLOYMENT_ENVIRONMENT))
-    release = ReleaseIdentity(
-        application_version=_require(environ, ENV_RELEASE_VERSION),
-        git_sha=_parse_git_sha(_require(environ, ENV_GIT_SHA)),
-        build_id=_require(environ, ENV_BUILD_ID),
-        artifact_digest=_parse_artifact_digest(_require(environ, ENV_ARTIFACT_DIGEST)),
-    )
+    release = load_release_identity(environ)
     runtime_role = _parse_role(
         ENV_RUNTIME_DATABASE_ROLE, _require(environ, ENV_RUNTIME_DATABASE_ROLE)
     )
