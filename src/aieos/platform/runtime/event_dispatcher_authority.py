@@ -11,15 +11,19 @@ from aieos.platform.runtime.config_event_dispatcher import EventDispatcherRuntim
 from aieos.platform.runtime.errors import RuntimeConfigurationError
 
 _GOVERNED_SCHEMAS = ("content", "security", "integration", "workflow", "asset")
-_CANDIDATE_FN = "list_outbox_dispatch_candidates"
-_CANDIDATE_SCHEMA = "integration"
-_CANDIDATE_ARGS = "integer, timestamp with time zone"
+
+# Exact PostgreSQL regprocedure identity for ADR-AIEOS-045 candidate authority.
+_CANDIDATE_REGPROCEDURE = (
+    "integration.list_outbox_dispatch_candidates(integer,timestamp with time zone)"
+)
 
 
 @dataclass(frozen=True, slots=True)
 class EventDispatcherAuthorityProbeResult:
     current_user: str
     function_owner: str
+    function_oid: int
+    function_identity: str
 
 
 def probe_event_dispatcher_database_authority(
@@ -27,6 +31,9 @@ def probe_event_dispatcher_database_authority(
     config: EventDispatcherRuntimeConfig,
 ) -> EventDispatcherAuthorityProbeResult:
     """Verify LOGIN / NOBYPASSRLS / EXECUTE-only candidate-function boundary.
+
+    Resolves the candidate function by exact ``to_regprocedure`` OID — never by
+    name + argument count + substring matching.
 
     Never logs database URL/password. Raises RuntimeConfigurationError on failure.
     """
@@ -70,10 +77,21 @@ def probe_event_dispatcher_database_authority(
                 "EVENT dispatcher role must not own governed AIEOS schemas"
             )
 
+        exact_oid = conn.execute(
+            text("SELECT to_regprocedure(:reg)::oid"),
+            {"reg": _CANDIDATE_REGPROCEDURE},
+        ).scalar_one_or_none()
+        if exact_oid is None:
+            raise RuntimeConfigurationError(
+                "integration.list_outbox_dispatch_candidates(integer, timestamptz) "
+                "exact signature is missing"
+            )
+
         fn = conn.execute(
             text(
                 """
-                SELECT p.prosecdef AS security_definer,
+                SELECT p.oid AS function_oid,
+                       p.prosecdef AS security_definer,
                        r.rolname AS owner_name,
                        r.rolcanlogin AS owner_login,
                        r.rolsuper AS owner_super,
@@ -82,27 +100,13 @@ def probe_event_dispatcher_database_authority(
                        has_function_privilege('public', p.oid, 'EXECUTE') AS public_execute,
                        pg_get_function_identity_arguments(p.oid) AS identity_args
                 FROM pg_proc p
-                JOIN pg_namespace n ON n.oid = p.pronamespace
                 JOIN pg_roles r ON r.oid = p.proowner
-                WHERE n.nspname = :schema
-                  AND p.proname = :fname
-                  AND p.pronargs = 2
+                WHERE p.oid = :oid
                 """
             ),
-            {
-                "schema": _CANDIDATE_SCHEMA,
-                "fname": _CANDIDATE_FN,
-            },
-        ).mappings().first()
-        if fn is None:
-            raise RuntimeConfigurationError(
-                "integration.list_outbox_dispatch_candidates(integer, timestamptz) is missing"
-            )
-        identity_args = str(fn["identity_args"]).lower().replace(" ", "")
-        if "integer" not in identity_args or "timestamp" not in identity_args:
-            raise RuntimeConfigurationError(
-                "candidate function signature must be (integer, timestamptz)"
-            )
+            {"oid": int(exact_oid)},
+        ).mappings().one()
+
         if not fn["security_definer"]:
             raise RuntimeConfigurationError(
                 "candidate function must be SECURITY DEFINER"
@@ -147,4 +151,6 @@ def probe_event_dispatcher_database_authority(
         return EventDispatcherAuthorityProbeResult(
             current_user=str(current_user),
             function_owner=str(fn["owner_name"]),
+            function_oid=int(fn["function_oid"]),
+            function_identity=str(fn["identity_args"]),
         )

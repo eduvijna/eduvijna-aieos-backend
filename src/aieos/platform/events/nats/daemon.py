@@ -123,6 +123,10 @@ class EventDispatcherDaemon:
     def shutdown_requested(self) -> bool:
         return self._shutdown.is_set()
 
+    @property
+    def claimed_by(self) -> str:
+        return self._claimed_by
+
     async def _wait_poll_or_shutdown(self) -> None:
         try:
             await asyncio.wait_for(

@@ -35,13 +35,19 @@ Importing the module has **zero** external side effects.
 1. Load EVENT dispatcher runtime config (fail-closed)
 2. Configure secret-safe logging
 3. Build EVENT SQLAlchemy Engine
-4. READ-ONLY database authority probe
+4. READ-ONLY database authority probe (exact `to_regprocedure` OID for
+   `integration.list_outbox_dispatch_candidates(integer,timestamp with time zone)`)
 5. Parse in-memory NATS `.creds`
-6. Connect NATS with verifying TLS + `user_jwt_cb` / `signature_cb`
+6. Connect via `connect_event_dispatcher_nats` with verifying TLS + `user_jwt_cb` /
+   `signature_cb`, bounded by an **outer** asyncio deadline equal to
+   `AIEOS_EVENT_DISPATCHER_NATS_CONNECT_TIMEOUT_SECONDS` (inner nats-py
+   `connect_timeout` alone is not the startup bound)
 7. Compose candidate repo, outbox dispatcher, publisher (`expected_stream=AIEOS_EVENTS_PROD`), daemon
-8. SIGTERM/SIGINT handling
+8. SIGTERM/SIGINT → Temporal-style supervise: stop new passes; current pass may
+   finish within `AIEOS_EVENT_DISPATCHER_SHUTDOWN_GRACE_SECONDS` or the daemon
+   task is cancelled
 9. Fair candidate → `dispatch_once(tenant_id)` loop
-10. Shutdown: stop new passes, drain NATS, wipe credentials, dispose Engine
+10. Cleanup: bounded NATS drain/close, credential wipe, Engine dispose
 
 ## Candidate authority
 

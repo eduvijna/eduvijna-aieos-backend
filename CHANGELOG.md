@@ -9,6 +9,12 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PED-I11R1 corrective runtime gates on the EVENT dispatcher source: outer asyncio
+  deadline for complete initial NATS establishment; Temporal-style shutdown-grace
+  supervision of in-flight daemon work; exact `to_regprocedure` OID resolution for
+  `integration.list_outbox_dispatch_candidates(integer,timestamp with time zone)`;
+  disposable TLS proof through `connect_event_dispatcher_nats` with verified N9
+  cleanup postcondition. No ADR redesign, migration, OpenAPI, or production authority.
 - PED-I11 production EVENT dispatcher runtime source (ADR-AIEOS-025/045/046): fail-closed
   `EventDispatcherRuntimeConfig`, in-memory JWT/NKey `.creds` callbacks, TLS NATS connection
   factory, READ-ONLY database authority probe, `SqlAlchemyOutboxCandidateRepository` over

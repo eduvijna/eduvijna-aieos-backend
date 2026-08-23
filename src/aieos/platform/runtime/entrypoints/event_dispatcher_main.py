@@ -1,4 +1,4 @@
-"""Production EVENT dispatcher executable entrypoint (PED-I11).
+"""Production EVENT dispatcher executable entrypoint (PED-I11 / PED-I11R1).
 
 Importing this module has no external side effects.
 """
@@ -70,6 +70,74 @@ def _log_startup_failure(category: str, exc: BaseException) -> None:
     )
 
 
+async def supervise_event_dispatcher_daemon(
+    daemon: EventDispatcherDaemon,
+    config: EventDispatcherRuntimeConfig,
+    *,
+    shutdown_event: asyncio.Event | None = None,
+) -> None:
+    """Temporal-worker-style supervision: first of daemon completion or shutdown.
+
+    On signal/shutdown:
+    - stop new passes (daemon.request_shutdown)
+    - allow current pass under ``shutdown_grace_seconds``
+    - cancel the daemon task if grace expires
+    """
+    shutdown_event = shutdown_event or asyncio.Event()
+    run_task = asyncio.create_task(daemon.run_forever(), name="event-dispatcher-daemon")
+    shutdown_waiter = asyncio.create_task(
+        shutdown_event.wait(), name="event-dispatcher-shutdown-waiter"
+    )
+    try:
+        done, _pending = await asyncio.wait(
+            {run_task, shutdown_waiter},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if run_task in done:
+            shutdown_waiter.cancel()
+            await asyncio.gather(shutdown_waiter, return_exceptions=True)
+            await run_task
+            return
+
+        logger.info(
+            "event_dispatcher shutdown_requested claimed_by=%s",
+            daemon.claimed_by,
+        )
+        daemon.request_shutdown()
+        try:
+            await asyncio.wait_for(
+                run_task,
+                timeout=float(config.shutdown_grace_seconds),
+            )
+        except TimeoutError:
+            logger.error(
+                "event_dispatcher shutdown grace exceeded category=shutdown"
+            )
+            run_task.cancel()
+            await asyncio.gather(run_task, return_exceptions=True)
+            raise
+    finally:
+        if not shutdown_waiter.done():
+            shutdown_waiter.cancel()
+        await asyncio.gather(shutdown_waiter, return_exceptions=True)
+        if not run_task.done():
+            run_task.cancel()
+            await asyncio.gather(run_task, return_exceptions=True)
+
+
+async def _bounded_nats_drain(nats_client, *, grace_seconds: float) -> None:
+    try:
+        await asyncio.wait_for(
+            nats_client.drain(),
+            timeout=float(grace_seconds),
+        )
+    except Exception:
+        try:
+            await nats_client.close()
+        except Exception:
+            pass
+
+
 async def run_event_dispatcher(config: EventDispatcherRuntimeConfig) -> None:
     engine = create_event_dispatcher_engine(config)
     credentials: InMemoryNatsCredentials | None = None
@@ -98,11 +166,15 @@ async def run_event_dispatcher(config: EventDispatcherRuntimeConfig) -> None:
             claimed_by=claimed_by,
         )
 
+        shutdown_event = asyncio.Event()
         loop = asyncio.get_running_loop()
 
         def _request_shutdown() -> None:
-            logger.info("event_dispatcher shutdown_requested claimed_by=%s", claimed_by)
+            logger.info(
+                "event_dispatcher signal_shutdown claimed_by=%s", claimed_by
+            )
             daemon.request_shutdown()
+            shutdown_event.set()
 
         for sig in (signal.SIGTERM, signal.SIGINT):
             try:
@@ -110,19 +182,17 @@ async def run_event_dispatcher(config: EventDispatcherRuntimeConfig) -> None:
             except NotImplementedError:
                 signal.signal(sig, lambda _signum, _frame: _request_shutdown())
 
-        await daemon.run_forever()
+        await supervise_event_dispatcher_daemon(
+            daemon,
+            config,
+            shutdown_event=shutdown_event,
+        )
     finally:
         if nats_client is not None:
-            try:
-                await asyncio.wait_for(
-                    nats_client.drain(),
-                    timeout=float(config.shutdown_grace_seconds),
-                )
-            except Exception:
-                try:
-                    await nats_client.close()
-                except Exception:
-                    pass
+            await _bounded_nats_drain(
+                nats_client,
+                grace_seconds=float(config.shutdown_grace_seconds),
+            )
         if credentials is not None:
             credentials.wipe()
         engine.dispose()
