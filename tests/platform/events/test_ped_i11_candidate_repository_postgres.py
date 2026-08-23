@@ -20,6 +20,45 @@ _AS_OF = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 _T_ELIGIBLE = datetime(1990, 1, 1, 0, 0, 0, tzinfo=UTC)
 
 
+def _insert_pending(
+    conn,
+    *,
+    tenant_id: uuid.UUID,
+    available_at: datetime,
+) -> None:
+    eid = uuid.uuid7()
+    aggregate_id = uuid.uuid7()
+    set_tenant(conn, tenant_id)
+    conn.execute(
+        text(
+            """
+            INSERT INTO integration.outbox_messages (
+                event_id, tenant_id, event_type, subject, aggregate_type,
+                aggregate_id, aggregate_revision, envelope, status,
+                attempt_count, available_at, claimed_by, claimed_until,
+                published_at, broker_stream, broker_sequence, last_error_code,
+                created_at
+            ) VALUES (
+                :event_id, :tenant_id, :event_type, :subject, 'content',
+                :aggregate_id, 0,
+                jsonb_build_object('secret', 'PED_I11_NO_LEAK'),
+                'PENDING', 0, :available_at,
+                NULL, NULL, NULL, NULL, NULL, NULL, :created_at
+            )
+            """
+        ),
+        {
+            "event_id": eid,
+            "tenant_id": tenant_id,
+            "event_type": f"io.eduvijna.aieos.content.content.created.v1",
+            "subject": f"content/{aggregate_id}",
+            "aggregate_id": aggregate_id,
+            "available_at": available_at,
+            "created_at": available_at,
+        },
+    )
+
+
 def test_candidate_repository_shape_and_order(
     event_dispatcher_engine, bootstrap_engine
 ) -> None:
@@ -27,32 +66,12 @@ def test_candidate_repository_shape_and_order(
     tenant_b = uuid.UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb92")
     with bootstrap_engine.begin() as conn:
         conn.execute(text("SET LOCAL ROLE aieos_content_owner"))
-        for tenant_id, available_at in (
-            (tenant_a, _T_ELIGIBLE),
-            (tenant_b, _T_ELIGIBLE + timedelta(hours=1)),
-        ):
-            set_tenant(conn, tenant_id)
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO integration.outbox_messages (
-                      event_id, tenant_id, aggregate_type, aggregate_id,
-                      event_type, envelope, status, available_at, attempt_count
-                    ) VALUES (
-                      :eid, :tid, 'content', :aid,
-                      'io.eduvijna.aieos.content.content.created.v1',
-                      CAST(:env AS jsonb), 'PENDING', :avail, 0
-                    )
-                    """
-                ),
-                {
-                    "eid": str(uuid.uuid7()),
-                    "tid": str(tenant_id),
-                    "aid": str(uuid.uuid7()),
-                    "env": '{"secret":"PED_I11_NO_LEAK"}',
-                    "avail": available_at,
-                },
-            )
+        _insert_pending(conn, tenant_id=tenant_a, available_at=_T_ELIGIBLE)
+        _insert_pending(
+            conn,
+            tenant_id=tenant_b,
+            available_at=_T_ELIGIBLE + timedelta(hours=1),
+        )
 
     repo = SqlAlchemyOutboxCandidateRepository(event_dispatcher_engine)
     with event_dispatcher_engine.connect() as conn:
