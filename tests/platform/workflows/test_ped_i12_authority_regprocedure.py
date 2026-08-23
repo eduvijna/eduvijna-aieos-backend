@@ -8,14 +8,14 @@ from sqlalchemy import text
 from aieos.platform.runtime.config_workflow_dispatcher import (
     WorkflowDispatcherRuntimeConfig,
 )
+from aieos.platform.runtime.errors import RuntimeConfigurationError
 from aieos.platform.runtime.models import DeploymentEnvironment, ReleaseIdentity
 from aieos.platform.runtime.workflow_dispatcher_authority import (
     COMMAND_CANDIDATE_REGPROCEDURE,
     START_CANDIDATE_REGPROCEDURE,
     probe_workflow_dispatcher_database_authority,
 )
-from tests.conftest import WORKFLOW_DISPATCHER_USER
-
+from tests.conftest import WORKFLOW_CANDIDATE_READER_ROLE, WORKFLOW_DISPATCHER_USER
 pytestmark = pytest.mark.postgres_candidate_authority
 
 _WRONG_START = (
@@ -145,3 +145,61 @@ def test_wrong_overload_constants_differ_from_authorized() -> None:
     assert COMMAND_CANDIDATE_REGPROCEDURE != _WRONG_COMMAND
     assert "timestamp without time zone" not in START_CANDIDATE_REGPROCEDURE
     assert "timestamp without time zone" not in COMMAND_CANDIDATE_REGPROCEDURE
+
+
+def test_ordinary_outbound_candidate_reader_membership_fails_closed(
+    workflow_dispatcher_engine, bootstrap_engine
+) -> None:
+    """PED-I12R1: candidate-reader -> ordinary NOLOGIN role must fail closed.
+
+    Direction is exact: GRANT ordinary TO workflow_candidate_reader.
+    deployment-admin -> candidate-reader remains a separate governed edge and is
+    not the subject of this proof.
+    """
+    ordinary = "aieos_pedi12r1_ordinary_outbound_probe"
+    baseline = probe_workflow_dispatcher_database_authority(
+        workflow_dispatcher_engine, _cfg()
+    )
+    assert baseline.current_user == WORKFLOW_DISPATCHER_USER
+
+    try:
+        with bootstrap_engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"""
+                    CREATE ROLE {ordinary}
+                        NOLOGIN NOSUPERUSER NOBYPASSRLS
+                        NOCREATEDB NOCREATEROLE NOREPLICATION
+                    """
+                )
+            )
+            # candidate-reader -> ordinary (forbidden outbound direction)
+            conn.execute(
+                text(f"GRANT {ordinary} TO {WORKFLOW_CANDIDATE_READER_ROLE}")
+            )
+
+        with pytest.raises(
+            RuntimeConfigurationError,
+            match="must not be a member of any other PostgreSQL role",
+        ):
+            probe_workflow_dispatcher_database_authority(
+                workflow_dispatcher_engine, _cfg()
+            )
+    finally:
+        with bootstrap_engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"REVOKE {ordinary} FROM {WORKFLOW_CANDIDATE_READER_ROLE}"
+                )
+            )
+            conn.execute(text(f"DROP ROLE IF EXISTS {ordinary}"))
+
+    restored = probe_workflow_dispatcher_database_authority(
+        workflow_dispatcher_engine, _cfg()
+    )
+    assert restored.current_user == WORKFLOW_DISPATCHER_USER
+    assert (
+        restored.start_function.function_owner
+        == restored.command_function.function_owner
+        == WORKFLOW_CANDIDATE_READER_ROLE
+    )

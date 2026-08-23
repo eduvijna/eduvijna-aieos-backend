@@ -196,3 +196,18 @@ def test_gateway_ast_has_no_admin_defs() -> None:
         "delete_namespace",
     ):
         assert forbidden not in method_names
+
+
+def test_authority_enforces_zero_outbound_candidate_reader_memberships() -> None:
+    """PED-I12R1 static invariant: exact zero outbound, no attribute filter."""
+    source = (
+        SRC / "platform/runtime/workflow_dispatcher_authority.py"
+    ).read_text(encoding="utf-8")
+    assert "WHERE member.rolname = :owner" in source
+    assert "must not be a member of any other PostgreSQL role" in source
+    assert "OR granted.rolsuper" not in source
+    assert "OR granted.rolbypassrls" not in source
+    assert "OR granted.rolcanlogin" not in source
+    # Still retains dispatcher -> candidate-reader denial (opposite direction).
+    assert "granted.rolname = :owner" in source
+    assert "member.rolname = current_user" in source

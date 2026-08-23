@@ -140,7 +140,23 @@ Proves for **both** candidate functions:
 - PUBLIC EXECUTE absent
 - both owned by the same workflow candidate-reader authority
 - dispatcher is **not** a member of that candidate-reader role
-- candidate-reader has no unsafe outbound SUPERUSER/BYPASSRLS/LOGIN memberships (practical check)
+  (`dispatcher -> candidate-reader` membership is forbidden)
+- candidate-reader has **ZERO outbound role memberships**
+  (candidate-reader is not a member of any other PostgreSQL role)
+
+Outbound zero-membership is exact Infrastructure baseline
+(`verify_no_outbound_role_memberships`): any `pg_auth_members` row where
+`member.rolname = candidate-reader` fails closed. There is no SUPERUSER /
+BYPASSRLS / LOGIN attribute exception — an ordinary NOLOGIN role may still own
+or receive object privileges and can broaden SECURITY DEFINER authority.
+
+This is distinct from the separately governed Infrastructure administrative edge:
+
+`deployment-admin -> candidate-reader`
+
+and from the dispatcher membership denial:
+
+`dispatcher -> candidate-reader`
 
 Probe is read-only.
 

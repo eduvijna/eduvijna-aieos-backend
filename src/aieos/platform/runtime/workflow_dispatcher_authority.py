@@ -122,27 +122,25 @@ def _probe_candidate_function(
             "WORKFLOW dispatcher must not be a member of the candidate-reader role"
         )
 
-    # Practical outbound membership safety for the candidate-reader owner.
-    unsafe_outbound = conn.execute(
+    # Exact zero-outbound membership (Infrastructure verify_no_outbound_role_memberships).
+    # Direction: candidate-reader -> granted role. No SUPERUSER / LOGIN / RLS-bypass
+    # attribute filter — an ordinary NOLOGIN role may still broaden SECURITY DEFINER
+    # authority. Distinct from deployment-admin -> candidate-reader and
+    # dispatcher -> candidate-reader.
+    outbound = conn.execute(
         text(
             """
             SELECT COUNT(*)::int
             FROM pg_auth_members am
-            JOIN pg_roles granted ON granted.oid = am.roleid
             JOIN pg_roles member ON member.oid = am.member
             WHERE member.rolname = :owner
-              AND (
-                    granted.rolsuper
-                 OR granted.rolbypassrls
-                 OR granted.rolcanlogin
-              )
             """
         ),
         {"owner": fn["owner_name"]},
     ).scalar_one()
-    if unsafe_outbound:
+    if outbound != 0:
         raise RuntimeConfigurationError(
-            f"{label} candidate-reader owner has unsafe outbound role membership"
+            "WORKFLOW candidate-reader must not be a member of any other PostgreSQL role"
         )
 
     return WorkflowCandidateFunctionProbe(
@@ -159,7 +157,7 @@ def probe_workflow_dispatcher_database_authority(
 ) -> WorkflowDispatcherAuthorityProbeResult:
     """Verify LOGIN / NOBYPASSRLS / dual candidate-function EXECUTE boundary.
 
-    Resolves BOTH candidate functions by exact ``to_regprocedure`` OID — never by
+    Resolves BOTH candidate functions by exact ``to_regprocedure`` OID - never by
     name + argument count + substring matching.
 
     Never logs database URL/password. Raises RuntimeConfigurationError on failure.
