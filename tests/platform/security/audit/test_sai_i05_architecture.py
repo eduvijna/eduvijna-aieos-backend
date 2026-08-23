@@ -435,8 +435,17 @@ class TestDataMinimizationAndAuthoritySeparation:
 
         PED-I11 may construct an EVENT dispatcher Engine via ``create_engine``
         only in ``platform/runtime/event_dispatcher_database.py``.
+
+        PED-I12 may construct a WORKFLOW dispatcher Engine via ``create_engine``
+        only in ``platform/runtime/workflow_dispatcher_database.py``.
         """
-        _engine_allowed = frozenset({"database.py", "event_dispatcher_database.py"})
+        _engine_allowed = frozenset(
+            {
+                "database.py",
+                "event_dispatcher_database.py",
+                "workflow_dispatcher_database.py",
+            }
+        )
         for path in _py_files(SRC_ROOT / "aieos"):
             text = path.read_text(encoding="utf-8")
             if "alembic" in path.parts or "migrations" in str(path):
@@ -472,6 +481,15 @@ class TestDataMinimizationAndAuthoritySeparation:
         ).read_text(encoding="utf-8")
         assert "create_engine" in event_db_src
         assert "AIEOS_DATABASE_URL" not in event_db_src
+        workflow_db_src = (
+            SRC_ROOT
+            / "aieos"
+            / "platform"
+            / "runtime"
+            / "workflow_dispatcher_database.py"
+        ).read_text(encoding="utf-8")
+        assert "create_engine" in workflow_db_src
+        assert "AIEOS_DATABASE_URL" not in workflow_db_src
 
 
 class TestMigrationChainAndOpenApi:

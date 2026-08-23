@@ -12,6 +12,7 @@ Platform specification, and commercial release remain **NOT AUTHORIZED**.
 | HTTP API | `python -m aieos.platform.runtime.entrypoints.api_main` |
 | Content Review Temporal worker | `python -m aieos.platform.runtime.entrypoints.temporal_worker_main` |
 | EVENT dispatcher | `python -m aieos.platform.runtime.entrypoints.event_dispatcher_main` |
+| WORKFLOW dispatcher | `python -m aieos.platform.runtime.entrypoints.workflow_dispatcher_main` |
 
 Importing these modules has **no runtime side effects**. Configuration and external
 connections occur only when `main()` executes.
@@ -19,7 +20,7 @@ connections occur only when `main()` executes.
 ## Explicit exclusions (still gated)
 
 - Event dispatcher daemon — **source implemented (PED-I11); production execution/deployment NOT AUTHORIZED**
-- Workflow dispatcher daemon
+- Workflow dispatcher daemon — **source implemented (PED-I12); production execution/deployment NOT AUTHORIZED**
 - Tenant enumeration / cross-tenant scanning
 - Scheduled / periodic reconciliation runtime
 - Asset backup worker
@@ -37,6 +38,20 @@ connections occur only when `main()` executes.
 7. SIGTERM/SIGINT → drain NATS, wipe credentials, dispose Engine
 
 See `docs/PED-I11-PRODUCTION-EVENT-DISPATCHER-RUNTIME.md`.
+
+## WORKFLOW dispatcher startup sequence (PED-I12)
+
+1. `load_workflow_dispatcher_runtime_config_from_process_environment()`
+2. `create_workflow_dispatcher_engine(config)`
+3. READ-ONLY dual-candidate-function authority probe
+4. Distinct WORKFLOW_DISPATCHER Temporal `Client.connect` (TLS + dispatcher API key; outer complete-connect timeout)
+5. `TemporalClientReviewGateway` + existing START/COMMAND dispatchers
+6. START + COMMAND candidate discovery + fair dual-stream daemon
+7. SIGTERM/SIGINT → shutdown grace for in-flight pass → dispose Engine
+
+See `docs/PED-I12-PRODUCTION-WORKFLOW-DISPATCHER-RUNTIME.md`.
+
+**PED-I12 Backend source ≠ production WORKFLOW dispatcher activation.**
 
 Production operating cadence/batch values remain **deployment-gated** (not frozen here).
 
@@ -97,6 +112,16 @@ See `docs/PED-I01-PRODUCTION-RUNTIME-CONFIG-CONTRACT.md` and
 - `AIEOS_TEMPORAL_SHUTDOWN_GRACE_SECONDS`
 
 STAGING/PRODUCTION Temporal connections require TLS (`tls=True`). Plaintext is forbidden.
+
+### WORKFLOW dispatcher-only (PED-I12; distinct from worker)
+
+- `AIEOS_WORKFLOW_DISPATCHER_TEMPORAL_TARGET_HOST`
+- `AIEOS_WORKFLOW_DISPATCHER_TEMPORAL_NAMESPACE`
+- `AIEOS_WORKFLOW_DISPATCHER_TEMPORAL_API_KEY`
+- `AIEOS_WORKFLOW_DISPATCHER_TEMPORAL_CONNECT_TIMEOUT_SECONDS`
+- plus DB/daemon cadence variables documented in `docs/PED-I12-PRODUCTION-WORKFLOW-DISPATCHER-RUNTIME.md`
+
+Worker `AIEOS_TEMPORAL_*` variables are **not** dispatcher credential fallback.
 
 ## Commercial / provisioning
 

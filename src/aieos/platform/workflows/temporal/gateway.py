@@ -15,6 +15,7 @@ from temporalio.service import RPCError, RPCStatusCode
 
 from aieos.platform.workflows.constants import (
     CONTENT_REVIEW_TASK_QUEUE,
+    ERROR_TASK_QUEUE_MISMATCH,
     ERROR_TEMPORAL_UNAVAILABLE,
     ERROR_WORKFLOW_IDENTITY_CONFLICT,
     ERROR_WORKFLOW_NOT_FOUND,
@@ -79,13 +80,21 @@ class TemporalClientReviewGateway:
         start_input: dict[str, Any],
         reconciliation_timeout_seconds: float,
     ) -> StartDeliveryResult:
+        # PED-I12 operation fence: only ContentReviewWorkflowV1 on aieos.content.review.
+        # Fail closed BEFORE any Temporal call; never normalize arbitrary queues.
+        if task_queue != CONTENT_REVIEW_TASK_QUEUE:
+            return StartDeliveryResult(
+                delivered=False,
+                error_code=ERROR_TASK_QUEUE_MISMATCH,
+                permanent=True,
+            )
         try:
             await asyncio.wait_for(
                 self._client.start_workflow(
                     ContentReviewWorkflowV1.run,
                     start_input,
                     id=temporal_workflow_id,
-                    task_queue=task_queue or CONTENT_REVIEW_TASK_QUEUE,
+                    task_queue=CONTENT_REVIEW_TASK_QUEUE,
                     id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
                 ),
                 timeout=reconciliation_timeout_seconds,

@@ -9,6 +9,20 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PED-I12 production WORKFLOW dispatcher runtime **source** (ADR-AIEOS-045/047):
+  fail-closed `WorkflowDispatcherRuntimeConfig` with architecture-frozen
+  `AIEOS_WORKFLOW_DISPATCHER_TEMPORAL_*` env names (worker `AIEOS_TEMPORAL_*`
+  never accepted as fallback), dedicated dispatcher Engine + dual
+  `to_regprocedure` authority probe, START/COMMAND candidate repositories,
+  distinct TLS Temporal client factory with outer complete-connect timeout,
+  task-queue operation fence (`aieos.content.review` exact), fair dual-stream
+  daemon reusing existing start/command dispatchers + delivery reconciliation,
+  executable `python -m aieos.platform.runtime.entrypoints.workflow_dispatcher_main`,
+  focused `ped_i12` tests, CI job `workflow-dispatcher-runtime`, and
+  `docs/PED-I12-PRODUCTION-WORKFLOW-DISPATCHER-RUNTIME.md`. Production Temporal
+  Cloud access, Namespace/service-account/API-key mutation, production DB
+  migration, candidate-reader provisioning, deployment, and production
+  dispatcher execution remain NOT AUTHORIZED.
 - PED-I11R1 corrective runtime gates on the EVENT dispatcher source: outer asyncio
   deadline for complete initial NATS establishment; Temporal-style shutdown-grace
   supervision of in-flight daemon work; exact `to_regprocedure` OID resolution for
