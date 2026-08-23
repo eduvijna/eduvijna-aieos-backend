@@ -11,19 +11,34 @@ Platform specification, and commercial release remain **NOT AUTHORIZED**.
 |----------|---------|
 | HTTP API | `python -m aieos.platform.runtime.entrypoints.api_main` |
 | Content Review Temporal worker | `python -m aieos.platform.runtime.entrypoints.temporal_worker_main` |
+| EVENT dispatcher | `python -m aieos.platform.runtime.entrypoints.event_dispatcher_main` |
 
-Importing either module has **no runtime side effects**. Configuration and external
+Importing these modules has **no runtime side effects**. Configuration and external
 connections occur only when `main()` executes.
 
 ## Explicit exclusions (still gated)
 
-- Event dispatcher daemon
+- Event dispatcher daemon — **source implemented (PED-I11); production execution/deployment NOT AUTHORIZED**
 - Workflow dispatcher daemon
 - Tenant enumeration / cross-tenant scanning
 - Scheduled / periodic reconciliation runtime
 - Asset backup worker
 - App Platform specification or sizing freeze
 - OCI production promotion / deployment
+
+## EVENT dispatcher startup sequence (PED-I11)
+
+1. `load_event_dispatcher_runtime_config_from_process_environment()`
+2. `create_event_dispatcher_engine(config)`
+3. READ-ONLY database authority probe
+4. Parse `AIEOS_EVENT_DISPATCHER_NATS_CREDENTIALS` in memory
+5. TLS NATS connect with `user_jwt_cb` / `signature_cb`
+6. Candidate discovery + `ContentOutboxDispatcher.dispatch_once(tenant_id)` fair loop
+7. SIGTERM/SIGINT → drain NATS, wipe credentials, dispose Engine
+
+See `docs/PED-I11-PRODUCTION-EVENT-DISPATCHER-RUNTIME.md`.
+
+Production operating cadence/batch values remain **deployment-gated** (not frozen here).
 
 ## API startup sequence
 

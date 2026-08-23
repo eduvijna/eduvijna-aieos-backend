@@ -432,7 +432,11 @@ class TestDataMinimizationAndAuthoritySeparation:
 
         PED-I02 may construct a runtime Engine via ``create_engine`` only in
         ``platform/runtime/database.py`` (never from migrator DSN).
+
+        PED-I11 may construct an EVENT dispatcher Engine via ``create_engine``
+        only in ``platform/runtime/event_dispatcher_database.py``.
         """
+        _engine_allowed = frozenset({"database.py", "event_dispatcher_database.py"})
         for path in _py_files(SRC_ROOT / "aieos"):
             text = path.read_text(encoding="utf-8")
             if "alembic" in path.parts or "migrations" in str(path):
@@ -440,7 +444,7 @@ class TestDataMinimizationAndAuthoritySeparation:
             if "platform" in path.parts and "runtime" in path.parts:
                 assert "aieos_migrator" not in text
                 assert "MIGRATOR_USER" not in text
-                if path.name != "database.py":
+                if path.name not in _engine_allowed:
                     assert "create_engine" not in text
                 continue
             assert "aieos_migrator" not in text
@@ -459,6 +463,15 @@ class TestDataMinimizationAndAuthoritySeparation:
         assert "create_engine" in database_src
         assert "AIEOS_DATABASE_URL" not in database_src
         assert "runtime_database_url" in database_src
+        event_db_src = (
+            SRC_ROOT
+            / "aieos"
+            / "platform"
+            / "runtime"
+            / "event_dispatcher_database.py"
+        ).read_text(encoding="utf-8")
+        assert "create_engine" in event_db_src
+        assert "AIEOS_DATABASE_URL" not in event_db_src
 
 
 class TestMigrationChainAndOpenApi:
