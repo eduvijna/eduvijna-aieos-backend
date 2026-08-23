@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -382,6 +383,66 @@ def _call_candidates(
     ).fetchall()
 
 
+def _db_error_sqlstate(exc: BaseException) -> str | None:
+    orig = getattr(exc, "orig", None)
+    if orig is None:
+        return None
+    return getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+
+
+def _assert_expected_db_failure(
+    *,
+    execute: Callable[[], Any],
+    expected_sqlstate: str,
+    message_fragment: str | None = None,
+) -> None:
+    """Prove one expected PostgreSQL failure reached real evaluation, not 25P02."""
+    with pytest.raises((ProgrammingError, DBAPIError)) as excinfo:
+        execute()
+    sqlstate = _db_error_sqlstate(excinfo.value)
+    assert sqlstate is not None, f"missing SQLSTATE from {excinfo.value!r}"
+    assert sqlstate != "25P02", (
+        "expected underlying PostgreSQL failure, not "
+        f"aborted-transaction artifact 25P02 ({excinfo.value!r})"
+    )
+    assert sqlstate == expected_sqlstate, (
+        f"expected SQLSTATE {expected_sqlstate}, got {sqlstate}: {excinfo.value!r}"
+    )
+    if message_fragment is not None:
+        assert message_fragment in str(excinfo.value)
+
+
+def _assert_role_privilege_denied(
+    engine: Engine,
+    *,
+    role: str,
+    execute: Callable[[Connection], Any],
+) -> None:
+    with engine.connect() as conn:
+        with conn.begin():
+            conn.execute(text(f"SET LOCAL ROLE {role}"))
+            _assert_expected_db_failure(
+                execute=lambda: execute(conn),
+                expected_sqlstate="42501",
+            )
+
+
+def _assert_function_argument_rejected(
+    engine: Engine,
+    *,
+    schema_fn: str,
+    execute: Callable[[Connection, str], Any],
+    message_fragment: str,
+) -> None:
+    with engine.connect() as conn:
+        with conn.begin():
+            _assert_expected_db_failure(
+                execute=lambda: execute(conn, schema_fn),
+                expected_sqlstate="P0001",
+                message_fragment=message_fragment,
+            )
+
+
 def _assert_result_shape(rows: list[Any]) -> None:
     for row in rows:
         mapping = row._mapping
@@ -739,19 +800,42 @@ def test_eligibility_matrix_min_order_limit_and_invalid_args(
                 assert limited[0].tenant_id == TENANT_A
                 assert limited[0].eligible_at == _T_ELIGIBLE_A
 
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(
-                        text(f"SELECT * FROM {schema_fn}(NULL, :p_as_of)"),
+            invalid_cases: tuple[
+                tuple[str, Callable[[Connection, str], Any]], ...
+            ] = (
+                (
+                    "p_limit must satisfy 1 <= p_limit <= 1000",
+                    lambda c, fn: c.execute(
+                        text(f"SELECT * FROM {fn}(NULL, :p_as_of)"),
                         {"p_as_of": _AS_OF},
-                    )
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    _call_candidates(conn, schema_fn, p_limit=0, p_as_of=_AS_OF)
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    _call_candidates(conn, schema_fn, p_limit=1001, p_as_of=_AS_OF)
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(
-                        text(f"SELECT * FROM {schema_fn}(10, NULL)")
-                    )
+                    ).fetchall(),
+                ),
+                (
+                    "p_limit must satisfy 1 <= p_limit <= 1000",
+                    lambda c, fn: _call_candidates(
+                        c, fn, p_limit=0, p_as_of=_AS_OF
+                    ),
+                ),
+                (
+                    "p_limit must satisfy 1 <= p_limit <= 1000",
+                    lambda c, fn: _call_candidates(
+                        c, fn, p_limit=1001, p_as_of=_AS_OF
+                    ),
+                ),
+                (
+                    "p_as_of must not be null",
+                    lambda c, fn: c.execute(
+                        text(f"SELECT * FROM {fn}(10, NULL)")
+                    ).fetchall(),
+                ),
+            )
+            for message_fragment, execute in invalid_cases:
+                _assert_function_argument_rejected(
+                    engine,
+                    schema_fn=schema_fn,
+                    execute=execute,
+                    message_fragment=message_fragment,
+                )
     finally:
         if seeded is not None:
             with bootstrap_engine.connect() as conn:
@@ -798,112 +882,151 @@ def test_payload_non_exposure_and_candidate_dml_denied(
                 _assert_result_shape(rows)
                 assert sentinel not in repr(rows)
 
-        with bootstrap_engine.connect() as conn:
-            with conn.begin():
-                conn.execute(text(f"SET LOCAL ROLE {EVENT_CANDIDATE_READER_ROLE}"))
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(
-                        text("SELECT envelope FROM integration.outbox_messages")
-                    ).fetchall()
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO integration.outbox_messages (
-                                event_id, tenant_id, event_type, subject,
-                                aggregate_type, aggregate_id, aggregate_revision,
-                                envelope, status, attempt_count, available_at,
-                                created_at
-                            ) VALUES (
-                                :id, :tenant, 't', 's', 'content', :agg, 0,
-                                '{}'::jsonb, 'PENDING', 0, now(), now()
-                            )
-                            """
-                        ),
-                        {
-                            "id": uuid.uuid7(),
-                            "tenant": TENANT_A,
-                            "agg": uuid.uuid7(),
-                        },
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=EVENT_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text("SELECT envelope FROM integration.outbox_messages")
+            ).fetchall(),
+        )
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=EVENT_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text(
+                    """
+                    INSERT INTO integration.outbox_messages (
+                        event_id, tenant_id, event_type, subject,
+                        aggregate_type, aggregate_id, aggregate_revision,
+                        envelope, status, attempt_count, available_at,
+                        created_at
+                    ) VALUES (
+                        :id, :tenant, 't', 's', 'content', :agg, 0,
+                        '{}'::jsonb, 'PENDING', 0, now(), now()
                     )
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(
-                        text(
-                            "UPDATE integration.outbox_messages "
-                            "SET status = 'CLAIMED'"
-                        )
-                    )
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(text("DELETE FROM integration.outbox_messages"))
-
-        with bootstrap_engine.connect() as conn:
-            with conn.begin():
-                conn.execute(
-                    text(f"SET LOCAL ROLE {WORKFLOW_CANDIDATE_READER_ROLE}")
+                    """
+                ),
+                {
+                    "id": uuid.uuid7(),
+                    "tenant": TENANT_A,
+                    "agg": uuid.uuid7(),
+                },
+            ),
+        )
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=EVENT_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text(
+                    "UPDATE integration.outbox_messages SET status = 'CLAIMED'"
                 )
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(
-                        text("SELECT input FROM workflow.workflow_start_intents")
-                    ).fetchall()
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(
-                        text("SELECT payload FROM workflow.workflow_command_intents")
-                    ).fetchall()
-                for table in (
-                    "workflow.workflow_start_intents",
-                    "workflow.workflow_command_intents",
-                ):
-                    with pytest.raises((ProgrammingError, DBAPIError)):
-                        conn.execute(
-                            text(f"UPDATE {table} SET status = 'CLAIMED'")
-                        )
-                    with pytest.raises((ProgrammingError, DBAPIError)):
-                        conn.execute(text(f"DELETE FROM {table}"))
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO workflow.workflow_start_intents (
-                                workflow_start_intent_id, tenant_id,
-                                workflow_instance_id, workflow_type,
-                                workflow_major_version, temporal_workflow_id,
-                                task_queue, business_key, input, status,
-                                attempt_count, available_at, created_at
-                            ) VALUES (
-                                :id, :tenant, :wid, 'ContentReviewWorkflowV1', 1,
-                                'x', 'aieos.content.review', 'bk', '{}'::jsonb,
-                                'PENDING', 0, now(), now()
-                            )
-                            """
-                        ),
-                        {
-                            "id": uuid.uuid7(),
-                            "tenant": TENANT_A,
-                            "wid": uuid.uuid7(),
-                        },
+            ),
+        )
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=EVENT_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text("DELETE FROM integration.outbox_messages")
+            ),
+        )
+
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=WORKFLOW_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text("SELECT input FROM workflow.workflow_start_intents")
+            ).fetchall(),
+        )
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=WORKFLOW_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text("SELECT payload FROM workflow.workflow_command_intents")
+            ).fetchall(),
+        )
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=WORKFLOW_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text(
+                    "UPDATE workflow.workflow_start_intents SET status = 'CLAIMED'"
+                )
+            ),
+        )
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=WORKFLOW_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text("DELETE FROM workflow.workflow_start_intents")
+            ),
+        )
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=WORKFLOW_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text(
+                    "UPDATE workflow.workflow_command_intents SET status = 'CLAIMED'"
+                )
+            ),
+        )
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=WORKFLOW_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text("DELETE FROM workflow.workflow_command_intents")
+            ),
+        )
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=WORKFLOW_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text(
+                    """
+                    INSERT INTO workflow.workflow_start_intents (
+                        workflow_start_intent_id, tenant_id,
+                        workflow_instance_id, workflow_type,
+                        workflow_major_version, temporal_workflow_id,
+                        task_queue, business_key, input, status,
+                        attempt_count, available_at, created_at
+                    ) VALUES (
+                        :id, :tenant, :wid, 'ContentReviewWorkflowV1', 1,
+                        'x', 'aieos.content.review', 'bk', '{}'::jsonb,
+                        'PENDING', 0, now(), now()
                     )
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO workflow.workflow_command_intents (
-                                workflow_command_intent_id, tenant_id,
-                                workflow_instance_id, temporal_workflow_id,
-                                command_id, command_type, business_key, payload,
-                                status, attempt_count, available_at, created_at
-                            ) VALUES (
-                                :id, :tenant, :wid, 'tw', :cid, 'SignalCommand',
-                                'bk', '{}'::jsonb, 'PENDING', 0, now(), now()
-                            )
-                            """
-                        ),
-                        {
-                            "id": uuid.uuid7(),
-                            "tenant": TENANT_A,
-                            "wid": uuid.uuid7(),
-                            "cid": uuid.uuid7(),
-                        },
+                    """
+                ),
+                {
+                    "id": uuid.uuid7(),
+                    "tenant": TENANT_A,
+                    "wid": uuid.uuid7(),
+                },
+            ),
+        )
+        _assert_role_privilege_denied(
+            bootstrap_engine,
+            role=WORKFLOW_CANDIDATE_READER_ROLE,
+            execute=lambda c: c.execute(
+                text(
+                    """
+                    INSERT INTO workflow.workflow_command_intents (
+                        workflow_command_intent_id, tenant_id,
+                        workflow_instance_id, temporal_workflow_id,
+                        command_id, command_type, business_key, payload,
+                        status, attempt_count, available_at, created_at
+                    ) VALUES (
+                        :id, :tenant, :wid, 'tw', :cid, 'SignalCommand',
+                        'bk', '{}'::jsonb, 'PENDING', 0, now(), now()
                     )
+                    """
+                ),
+                {
+                    "id": uuid.uuid7(),
+                    "tenant": TENANT_A,
+                    "wid": uuid.uuid7(),
+                    "cid": uuid.uuid7(),
+                },
+            ),
+        )
     finally:
         if seeded is not None:
             with bootstrap_engine.connect() as conn:
