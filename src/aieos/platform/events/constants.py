@@ -40,11 +40,18 @@ OUTBOX_QUARANTINED = "QUARANTINED"
 
 ERROR_NATS_UNAVAILABLE = "nats_unavailable"
 ERROR_NATS_PUBLISH_REJECTED = "nats_publish_rejected"
+ERROR_NATS_STREAM_MISMATCH = "nats_stream_mismatch"
 ERROR_RETRY_EXHAUSTED = "retry_exhausted"
 ERROR_EVENT_CONTRACT_INVALID = "event_contract_invalid"
 
+# TEST-ONLY stream name used by GCI-I08 disposable harnesses. Not production authority.
 TEST_STREAM_NAME = "AIEOS_EVENTS"
 TEST_STREAM_SUBJECTS = ("io.eduvijna.aieos.>",)
+
+# ADR-AIEOS-046 production event-plane contract.
+PRODUCTION_EVENT_STREAM_NAME = "AIEOS_EVENTS_PROD"
+PRODUCTION_EVENT_STREAM_SUBJECTS = ("io.eduvijna.aieos.>",)
+PRODUCTION_EVENT_PUBLISH_PREFIX = "io.eduvijna.aieos.content."
 
 
 def content_subject(content_id: str) -> str:

@@ -38,6 +38,21 @@ _TEMPORALIO_AUTHORIZED_RELATIVES = frozenset(
         Path("entrypoints") / "temporal_worker_main.py",
     }
 )
+# PED-I11 EVENT dispatcher runtime authorizes NATS config/entrypoint composition.
+_NATS_AUTHORIZED_RELATIVES = frozenset(
+    {
+        Path("config_event_dispatcher.py"),
+        Path("entrypoints") / "event_dispatcher_main.py",
+        Path("event_dispatcher_database.py"),
+        Path("event_dispatcher_authority.py"),
+    }
+)
+_CREATE_ENGINE_AUTHORIZED_RELATIVES = frozenset(
+    {
+        Path("database.py"),
+        Path("event_dispatcher_database.py"),
+    }
+)
 
 
 def _py_files(root: Path) -> list[Path]:
@@ -65,6 +80,8 @@ def test_runtime_package_import_boundary() -> None:
         for needle in _FORBIDDEN_IMPORT_NEEDLES:
             if needle == "temporalio" and rel in _TEMPORALIO_AUTHORIZED_RELATIVES:
                 continue
+            if needle == "nats" and rel in _NATS_AUTHORIZED_RELATIVES:
+                continue
             assert needle not in text, f"{path}: {needle}"
             assert f"import {needle}" not in lower
         # PED-I06: uvicorn allowed only in asgi.py; still forbidden elsewhere.
@@ -74,7 +91,7 @@ def test_runtime_package_import_boundary() -> None:
         assert "AllowReviewAuthorization" not in text
         assert "AllowPublicationAuthorization" not in text
         assert "metadata.create_all" not in text
-        if path.name != "database.py":
+        if rel not in _CREATE_ENGINE_AUTHORIZED_RELATIVES:
             assert "create_engine" not in text
         # No module-level production singleton (assignment at column 0)
         for line in text.splitlines():
