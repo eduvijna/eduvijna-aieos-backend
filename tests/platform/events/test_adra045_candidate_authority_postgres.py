@@ -443,6 +443,20 @@ def _assert_function_argument_rejected(
             )
 
 
+def _assert_engine_privilege_denied(
+    engine: Engine,
+    *,
+    execute: Callable[[Connection], Any],
+) -> None:
+    """Independent authorization denial under the engine's login identity."""
+    with engine.connect() as conn:
+        with conn.begin():
+            _assert_expected_db_failure(
+                execute=lambda: execute(conn),
+                expected_sqlstate="42501",
+            )
+
+
 def _assert_result_shape(rows: list[Any]) -> None:
     for row in rows:
         mapping = row._mapping
@@ -543,13 +557,15 @@ def test_event_dispatcher_can_call_event_function_workflow_denied(
         ).fetchall()
         assert isinstance(rows, list)
 
-    with workflow_dispatcher_engine.connect() as conn:
-        with pytest.raises((ProgrammingError, DBAPIError)):
-            conn.execute(
-                text(
-                    "SELECT * FROM integration.list_outbox_dispatch_candidates(10, now())"
-                )
+    # Independent cross-authority denial: WORKFLOW dispatcher -> EVENT function.
+    _assert_engine_privilege_denied(
+        workflow_dispatcher_engine,
+        execute=lambda c: c.execute(
+            text(
+                "SELECT * FROM integration.list_outbox_dispatch_candidates(10, now())"
             )
+        ),
+    )
 
 
 def test_workflow_dispatcher_can_call_workflow_functions_event_denied(
@@ -566,17 +582,21 @@ def test_workflow_dispatcher_can_call_workflow_functions_event_denied(
         assert isinstance(start_rows, list)
         assert isinstance(command_rows, list)
 
-    with event_dispatcher_engine.connect() as conn:
-        with pytest.raises((ProgrammingError, DBAPIError)):
-            conn.execute(
-                text("SELECT * FROM workflow.list_start_intent_candidates(10, now())")
+    # Independent cross-authority denials: EVENT dispatcher -> each WORKFLOW function.
+    _assert_engine_privilege_denied(
+        event_dispatcher_engine,
+        execute=lambda c: c.execute(
+            text("SELECT * FROM workflow.list_start_intent_candidates(10, now())")
+        ),
+    )
+    _assert_engine_privilege_denied(
+        event_dispatcher_engine,
+        execute=lambda c: c.execute(
+            text(
+                "SELECT * FROM workflow.list_command_intent_candidates(10, now())"
             )
-        with pytest.raises((ProgrammingError, DBAPIError)):
-            conn.execute(
-                text(
-                    "SELECT * FROM workflow.list_command_intent_candidates(10, now())"
-                )
-            )
+        ),
+    )
 
 
 def test_candidate_select_columns_only(bootstrap_engine: Engine) -> None:
@@ -1045,13 +1065,15 @@ def test_dispatcher_login_tenant_rls_fail_closed_and_local(
             with conn.begin():
                 seeded = _seed_eligibility_matrix(conn)
 
-        with event_dispatcher_engine.connect() as conn:
-            with pytest.raises((ProgrammingError, DBAPIError)):
-                conn.execute(
-                    text("SELECT count(*) FROM integration.outbox_messages")
-                ).scalar_one()
-            conn.rollback()
+        # Missing tenant context: independent authorization denial (not 25P02).
+        _assert_engine_privilege_denied(
+            event_dispatcher_engine,
+            execute=lambda c: c.execute(
+                text("SELECT count(*) FROM integration.outbox_messages")
+            ).scalar_one(),
+        )
 
+        with event_dispatcher_engine.connect() as conn:
             with conn.begin():
                 set_tenant(conn, TENANT_A)
                 tenants = {
@@ -1066,21 +1088,26 @@ def test_dispatcher_login_tenant_rls_fail_closed_and_local(
                 assert tenants == {TENANT_A}
                 assert TENANT_B not in tenants
 
-            with pytest.raises((ProgrammingError, DBAPIError)):
-                conn.execute(
-                    text("SELECT count(*) FROM integration.outbox_messages")
-                ).scalar_one()
-            conn.rollback()
+        # After commit, tenant-local context must not survive.
+        _assert_engine_privilege_denied(
+            event_dispatcher_engine,
+            execute=lambda c: c.execute(
+                text("SELECT count(*) FROM integration.outbox_messages")
+            ).scalar_one(),
+        )
 
         for table in (
             "workflow.workflow_start_intents",
             "workflow.workflow_command_intents",
         ):
-            with workflow_dispatcher_engine.connect() as conn:
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()
-                conn.rollback()
+            _assert_engine_privilege_denied(
+                workflow_dispatcher_engine,
+                execute=lambda c, t=table: c.execute(
+                    text(f"SELECT count(*) FROM {t}")
+                ).scalar_one(),
+            )
 
+            with workflow_dispatcher_engine.connect() as conn:
                 with conn.begin():
                     set_tenant(conn, TENANT_A)
                     tenants = {
@@ -1092,9 +1119,12 @@ def test_dispatcher_login_tenant_rls_fail_closed_and_local(
                     assert tenants == {TENANT_A}
                     assert TENANT_B not in tenants
 
-                with pytest.raises((ProgrammingError, DBAPIError)):
-                    conn.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()
-                conn.rollback()
+            _assert_engine_privilege_denied(
+                workflow_dispatcher_engine,
+                execute=lambda c, t=table: c.execute(
+                    text(f"SELECT count(*) FROM {t}")
+                ).scalar_one(),
+            )
     finally:
         if seeded is not None:
             with bootstrap_engine.connect() as conn:
