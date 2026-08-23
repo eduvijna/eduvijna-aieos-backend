@@ -51,7 +51,8 @@ def _generate_disposable_creds(workdir: Path) -> str:
     with zipfile.ZipFile(nsc_zip) as zf:
         zf.extractall(workdir / "bin")
     nsc_candidates = list((workdir / "bin").rglob("nsc*"))
-    nsc = next(p for p in nsc_candidates if p.is_file())
+    nsc = next(p for p in nsc_candidates if p.is_file() and "nsc" in p.name.lower())
+    nsc.chmod(nsc.stat().st_mode | 0o111)
     env = os.environ.copy()
     env["XDG_DATA_HOME"] = str(workdir / "xdg-data")
     env["XDG_CONFIG_HOME"] = str(workdir / "xdg-config")
