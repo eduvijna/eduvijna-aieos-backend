@@ -129,6 +129,7 @@ class TestIdempotencyPrivileges:
 
 
 class TestAlembicCycle:
+    "adra045001_dispatcher_candidate_authority.py",
     def test_downgrade_gcii020001_and_reupgrade(
         self, postgres18, bootstrap_engine
     ) -> None:
@@ -149,7 +150,7 @@ class TestAlembicCycle:
         command.upgrade(cfg, "head")
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("pedi10b6001")
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("adra045001")
             api_tables = {
                 row[0]
                 for row in conn.execute(
@@ -163,6 +164,7 @@ class TestAlembicCycle:
             if path.name != "__init__.py"
         )
         assert versions == [
+            "adra045001_dispatcher_candidate_authority.py",
             "gcii020001_content_schema.py",
             "gcii050001_api_idempotency.py",
             "gcii060001_review_decisions.py",
@@ -174,6 +176,6 @@ class TestAlembicCycle:
             "gcii130001_migration_import.py",
             "pedi090001_security_authority.py",
             "pedi10b2001_asset_authority_sor.py",
-    "pedi10b6001_asset_security_audit.py",
-        "saii020001_security_audit_ledger.py",
+            "pedi10b6001_asset_security_audit.py",
+            "saii020001_security_audit_ledger.py",
         ]

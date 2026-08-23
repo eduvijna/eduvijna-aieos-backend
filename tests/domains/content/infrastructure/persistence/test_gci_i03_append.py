@@ -715,6 +715,7 @@ class TestArchitectureAndNoSchemaChange:
             if path.name != "__init__.py"
         )
         assert versions == [
+            "adra045001_dispatcher_candidate_authority.py",
             "gcii020001_content_schema.py",
             "gcii050001_api_idempotency.py",
             "gcii060001_review_decisions.py",
@@ -726,7 +727,7 @@ class TestArchitectureAndNoSchemaChange:
             "gcii130001_migration_import.py",
             "pedi090001_security_authority.py",
             "pedi10b2001_asset_authority_sor.py",
-    "pedi10b6001_asset_security_audit.py",
+            "pedi10b6001_asset_security_audit.py",
             "saii020001_security_audit_ledger.py",
         ]
         assert not Path(

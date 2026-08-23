@@ -9,6 +9,7 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- ADR-AIEOS-045 database candidate-authority: Alembic `adra045001` role-scoped RLS, candidate-reader grants/functions/indexes, architecture + PostgreSQL 18 acceptance tests, and CI `postgresql-candidate-authority` handshake against Infrastructure pin `1249634403cacd9caec4ba48b72821e629b222f5`. Production migration is not executed, production candidate-reader roles are not provisioned, and the dispatcher daemon is not implemented or deployed.
 - Production runtime executable entrypoints (Phase 1): `python -m aieos.platform.runtime.entrypoints.api_main` and `python -m aieos.platform.runtime.entrypoints.temporal_worker_main` with fail-closed configuration, governed dependency composition, PED-I06 Uvicorn serving, and Temporal SDK graceful shutdown. Explicit exclusions remain: event/workflow dispatcher daemons, tenant enumeration, scheduler/reconciliation runtime, backup worker, App Platform spec, OCI production promotion, cloud access, and commercial release. Production deployment and commercial release remain NOT AUTHORIZED.
 - Phase-1R correction on PR #15: Temporal worker observes both `Worker.run()` completion and shutdown signals; logging formatter no longer requires custom LogRecord fields; production Content catalog/registry remain intentionally empty (no `test.generic` promotion).
 
