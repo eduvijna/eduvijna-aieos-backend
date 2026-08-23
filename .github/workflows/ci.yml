@@ -132,6 +132,41 @@ jobs:
             echo "- result: PASSED"
           } >> "${GITHUB_STEP_SUMMARY}"
 
+  workflow-dispatcher-runtime:
+    name: workflow-dispatcher-runtime
+    needs:
+      - quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.4"
+          python-version: "3.14.7"
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
+
+      - name: PED-I12 WORKFLOW dispatcher runtime source tests
+        run: |
+          set -euo pipefail
+          uv run pytest -v -m ped_i12
+          {
+            echo "## PED-I12 workflow-dispatcher-runtime"
+            echo ""
+            echo "- classification: SOURCE_RUNTIME_TESTS"
+            echo "- production_temporal_cloud: false"
+            echo "- production_credentials: false"
+            echo "- production_db: false"
+            echo "- result: PASSED"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   oci-runtime-probe:
     name: oci-runtime-probe
     needs:

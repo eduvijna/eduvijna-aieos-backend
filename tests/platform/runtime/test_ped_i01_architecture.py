@@ -51,6 +51,7 @@ _CREATE_ENGINE_AUTHORIZED_RELATIVES = frozenset(
     {
         Path("database.py"),
         Path("event_dispatcher_database.py"),
+        Path("workflow_dispatcher_database.py"),
     }
 )
 

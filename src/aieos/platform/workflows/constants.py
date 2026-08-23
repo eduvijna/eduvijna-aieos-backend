@@ -22,6 +22,7 @@ ERROR_WORKFLOW_IDENTITY_CONFLICT = "workflow_identity_conflict"
 ERROR_WORKFLOW_NOT_FOUND = "workflow_not_found"
 ERROR_WORKFLOW_TERMINAL_MISMATCH = "workflow_terminal_mismatch"
 ERROR_RETRY_EXHAUSTED = "retry_exhausted"
+ERROR_TASK_QUEUE_MISMATCH = "task_queue_mismatch"
 
 
 def content_review_business_key(*, content_id: str, version_id: str) -> str:
