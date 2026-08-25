@@ -53,7 +53,9 @@ def assert_clean_source(repo_root: Path, backend_git_sha: str) -> None:
         raise ValueError(f"HEAD ({head}) != backend-git-sha ({backend_git_sha})")
     porcelain = _run(["git", "status", "--porcelain"], cwd=repo_root)
     if porcelain:
-        raise ValueError("dirty source rejected in authoritative mode")
+        raise ValueError(
+            "dirty source rejected in authoritative mode:\n" + porcelain
+        )
 
 
 def _inspect_image(image: str) -> dict[str, Any]:

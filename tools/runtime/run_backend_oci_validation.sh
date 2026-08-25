@@ -3,6 +3,10 @@
 # Builds a LOCAL image only. No registry authentication. No push. No DigitalOcean calls.
 set -euo pipefail
 
+# Prevent tools/release/__pycache__ from appearing as dirty source.
+# (.gitignore un-ignores tools/release/**, so bytecode would fail porcelain.)
+export PYTHONDONTWRITEBYTECODE=1
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT}"
 
@@ -151,14 +155,14 @@ echo "${CFG_JSON}" | grep -viE 'auths|dockercfg|X-Registry|Authorization' >/dev/
 
 echo "==> Provenance receipt + verify"
 export PYTHONPATH="${ROOT}/tools/release${PYTHONPATH:+:${PYTHONPATH}}"
-python tools/release/build_backend_oci_provenance.py \
+python -B tools/release/build_backend_oci_provenance.py \
   --image "${IMAGE_TAG}" \
   --backend-git-sha "${BACKEND_SHA}" \
   --architecture-git-sha "${ARCHITECTURE_SHA}" \
   --infrastructure-git-sha "${INFRASTRUCTURE_SHA}" \
   --output "${RECEIPT_PATH}"
-python tools/release/verify_backend_oci_provenance.py --receipt "${RECEIPT_PATH}"
-RECEIPT_SHA="$(python - <<PY
+python -B tools/release/verify_backend_oci_provenance.py --receipt "${RECEIPT_PATH}"
+RECEIPT_SHA="$(python -B - <<PY
 import hashlib
 from pathlib import Path
 p = Path(r"${RECEIPT_PATH}")
@@ -166,14 +170,14 @@ print(hashlib.sha256(p.read_bytes()).hexdigest())
 PY
 )"
 
-DOCKERFILE_SHA="$(python - <<PY
+DOCKERFILE_SHA="$(python -B - <<PY
 import hashlib
 from pathlib import Path
 p = Path("deploy/oci/Dockerfile.backend-runtime")
 print(hashlib.sha256(p.read_bytes()).hexdigest())
 PY
 )"
-UV_LOCK_SHA="$(python - <<PY
+UV_LOCK_SHA="$(python -B - <<PY
 import hashlib
 from pathlib import Path
 p = Path("uv.lock")
