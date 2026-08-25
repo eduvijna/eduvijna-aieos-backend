@@ -9,6 +9,32 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- WPI-OCI-I01R1 Backend OCI provenance hardening + exact-head CI recovery
+  (ADR-AIEOS-051): PR CI builds/validates exact `pull_request.head.sha`
+  (never synthetic merge SHA); removes `--allow-dirty`; derives receipt
+  Python/uv/base-image/OS/user/Cmd/labels from actual image/Dockerfile;
+  verifier binds VERSION/Dockerfile/uv.lock hashes to current source;
+  exact `10001:10001` user and exact fail-closed default command; closed
+  OCI label receipt schema; fail-closed image-config auth scan; Dockerfile
+  revision build-args without `unknown` defaults. Credential-free only;
+  DOCR publication, DigitalOcean credentials, registry login/push,
+  WPI-OCI-P01, TV01 App CREATE, and production deployment remain
+  **NOT AUTHORIZED**. TV01 remains **AUTHORIZED BUT PAUSED ON OCI
+  MANIFEST DIGEST**. Supersedes unmerged PR #19 recovery path.
+- WPI-OCI-I01 Backend production OCI source foundation (ADR-AIEOS-051):
+  `deploy/oci/Dockerfile.backend-runtime` (Python 3.14.7 / uv 0.12.4 /
+  linux/amd64 / non-root 10001:10001 / fail-closed default exit 64),
+  stdlib provenance tooling under `tools/release/backend_oci_*.py`,
+  credential-free validator `tools/runtime/run_backend_oci_validation.sh`,
+  architecture/provenance tests, CI job `backend-production-oci`, and
+  `docs/WPI-OCI-I01-BACKEND-PRODUCTION-OCI.md`. Source-identity note:
+  `8f4dd172…` is I01 implementation BASE only; publishable revision is the
+  post-I01 merged Backend SHA. `Dockerfile.api-runtime-probe` remains
+  NON_PRODUCTION and untouched. Credential-free local/CI validation only;
+  DOCR publication, DigitalOcean credentials, registry login/push,
+  WPI-OCI-P01, TV01 App CREATE, and production deployment remain
+  **NOT AUTHORIZED**. WPI-AP-DP-TV01 remains **AUTHORIZED BUT PAUSED ON
+  OCI MANIFEST DIGEST**.
 - PED-I12 production WORKFLOW dispatcher runtime **source** (ADR-AIEOS-045/047):
   fail-closed `WorkflowDispatcherRuntimeConfig` with architecture-frozen
   `AIEOS_WORKFLOW_DISPATCHER_TEMPORAL_*` env names (worker `AIEOS_TEMPORAL_*`

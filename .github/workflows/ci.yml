@@ -192,6 +192,70 @@ jobs:
             echo "- production_authorized: false"
           } >> "${GITHUB_STEP_SUMMARY}"
 
+  backend-production-oci:
+    name: backend-production-oci
+    needs:
+      - quality-gate
+    runs-on: ubuntu-latest
+    env:
+      AIEOS_ARCHITECTURE_GIT_SHA: b153193256450d0ce8afe0b5d2127dfbfd8f2123
+      AIEOS_INFRASTRUCTURE_GIT_SHA: 205e15bda0047b42aef1c4f67bb09fe4f156440a
+    steps:
+      - name: Resolve exact source SHA (PR head, never synthetic merge)
+        id: source
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            SOURCE_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            SOURCE_SHA="${{ github.sha }}"
+          fi
+          echo "sha=${SOURCE_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved SOURCE_SHA=${SOURCE_SHA}"
+
+      - name: Checkout exact SOURCE_SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.4"
+          python-version: "3.14.7"
+          enable-cache: true
+
+      - name: Prove exact source pins and clean checkout
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA="$(git rev-parse HEAD)"
+          echo "SOURCE_SHA=${SOURCE_SHA}"
+          echo "HEAD_SHA=${HEAD_SHA}"
+          echo "github.sha=${GITHUB_SHA}"
+          test "${HEAD_SHA}" = "${SOURCE_SHA}"
+          test -z "$(git status --porcelain)"
+          test "${AIEOS_ARCHITECTURE_GIT_SHA}" = "b153193256450d0ce8afe0b5d2127dfbfd8f2123"
+          test "${AIEOS_INFRASTRUCTURE_GIT_SHA}" = "205e15bda0047b42aef1c4f67bb09fe4f156440a"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            test "${SOURCE_SHA}" = "${{ github.event.pull_request.head.sha }}"
+            # github.sha on pull_request is the synthetic merge commit — must not be authority.
+            test "${SOURCE_SHA}" != "${GITHUB_SHA}"
+          fi
+          echo "architecture_pin=${AIEOS_ARCHITECTURE_GIT_SHA}"
+          echo "infrastructure_pin=${AIEOS_INFRASTRUCTURE_GIT_SHA}"
+
+      - name: Credential-free Backend production OCI validation
+        env:
+          AIEOS_BACKEND_GIT_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # Invoke via bash — do not chmod tracked files (would dirty porcelain
+          # and fail authoritative clean-source validation).
+          bash tools/runtime/run_backend_oci_validation.sh
+
   verified-build:
     name: verified-build
     needs:
