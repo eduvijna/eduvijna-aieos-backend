@@ -227,8 +227,9 @@ jobs:
           AIEOS_INFRASTRUCTURE_GIT_SHA: 205e15bda0047b42aef1c4f67bb09fe4f156440a
         run: |
           set -euo pipefail
-          chmod +x tools/runtime/run_backend_oci_validation.sh
-          tools/runtime/run_backend_oci_validation.sh
+          # Invoke via bash — do not chmod tracked files (would dirty porcelain
+          # and fail authoritative clean-source validation).
+          bash tools/runtime/run_backend_oci_validation.sh
 
   verified-build:
     name: verified-build

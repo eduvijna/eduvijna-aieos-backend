@@ -22,8 +22,17 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> Source identity"
-test "$(git rev-parse HEAD)" = "${BACKEND_SHA}"
-test -z "$(git status --porcelain)"
+HEAD_SHA="$(git rev-parse HEAD)"
+if [[ "${HEAD_SHA}" != "${BACKEND_SHA}" ]]; then
+  echo "HEAD (${HEAD_SHA}) != backend_git_sha (${BACKEND_SHA})" >&2
+  exit 1
+fi
+PORCELAIN="$(git status --porcelain)"
+if [[ -n "${PORCELAIN}" ]]; then
+  echo "dirty source rejected in authoritative mode:" >&2
+  echo "${PORCELAIN}" >&2
+  exit 1
+fi
 echo "backend_git_sha=${BACKEND_SHA}"
 echo "architecture_git_sha=${ARCHITECTURE_SHA}"
 echo "infrastructure_git_sha=${INFRASTRUCTURE_SHA}"
