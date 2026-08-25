@@ -1,0 +1,55 @@
+# WPI-OCI-I01 / ADR-AIEOS-051 — AIEOS Backend production runtime OCI candidate.
+#
+# Classification: PRODUCTION_BACKEND_RUNTIME (artifact PURPOSE only).
+# publication_performed = false until separately authorized WPI-OCI-P01.
+# NOT deployable. Does NOT promote Dockerfile.api-runtime-probe.
+#
+# Source identity: AIEOS_GIT_REVISION must be the exact commit being built
+# (PR SHA / post-merge main SHA). Do NOT hard-code the WPI-OCI-I01 base SHA
+# 8f4dd172e6a0ba8b4ad944b0ae22060442356342 as the published image revision.
+
+FROM ghcr.io/astral-sh/uv:0.12.4-trixie-slim@sha256:8d033111899301598e33bd321b85f33f86e3ba2953ce00ff70a9cac020246a7c
+
+ARG AIEOS_GIT_REVISION=unknown
+ARG AIEOS_ARCHITECTURE_REVISION=unknown
+ARG AIEOS_INFRASTRUCTURE_REVISION=unknown
+ARG AIEOS_APPLICATION_VERSION=0.1.0
+
+LABEL org.opencontainers.image.title="aieos-backend" \
+      org.opencontainers.image.description="AIEOS Backend production runtime OCI candidate (WORKFLOW_DISPATCHER + TEMPORAL_WORKER modules; not published by I01)" \
+      org.opencontainers.image.version="${AIEOS_APPLICATION_VERSION}" \
+      org.opencontainers.image.source="https://github.com/eduvijna/eduvijna-aieos-backend" \
+      org.opencontainers.image.revision="${AIEOS_GIT_REVISION}" \
+      io.eduvijna.aieos.classification="PRODUCTION_BACKEND_RUNTIME" \
+      io.eduvijna.aieos.application_version="${AIEOS_APPLICATION_VERSION}" \
+      io.eduvijna.aieos.git_revision="${AIEOS_GIT_REVISION}" \
+      io.eduvijna.aieos.architecture_revision="${AIEOS_ARCHITECTURE_REVISION}" \
+      io.eduvijna.aieos.infrastructure_revision="${AIEOS_INFRASTRUCTURE_REVISION}"
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_INSTALL_DIR=/opt/python \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    PATH="/opt/venv/bin:/opt/python/bin:${PATH}"
+
+WORKDIR /app
+
+RUN groupadd --gid 10001 aieos \
+    && useradd --uid 10001 --gid 10001 --home-dir /app --shell /usr/sbin/nologin aieos \
+    && mkdir -p /opt/python /opt/venv \
+    && chown -R aieos:aieos /opt/python /opt/venv /app
+
+COPY --chown=aieos:aieos pyproject.toml uv.lock VERSION README.md ./
+COPY --chown=aieos:aieos src ./src
+
+USER 10001:10001
+
+RUN uv python install 3.14.7 \
+    && uv sync --locked --no-dev --no-editable \
+    && rm -rf /opt/python/.lock /opt/python/.temp \
+    && chmod -R go-w /opt/python /opt/venv /app \
+    && /opt/venv/bin/python --version
+
+# Fail-closed default: App Platform must supply the governed worker run command.
+# Exit 64. Does not start dispatcher/worker/API/EVENT. Does not open ports.
+CMD ["python", "-c", "import sys; print('AIEOS_BACKEND_RUNTIME_COMMAND_REQUIRED', file=sys.stderr); raise SystemExit(64)"]
