@@ -3,6 +3,7 @@
 # Classification: PRODUCTION_BACKEND_RUNTIME (artifact PURPOSE only).
 # publication_performed = false until separately authorized WPI-OCI-P01.
 # NOT deployable. Does NOT promote Dockerfile.api-runtime-probe.
+# Production deployment / App Platform mutation: NOT AUTHORIZED.
 #
 # Source identity: AIEOS_GIT_REVISION must be the exact commit being built
 # (PR SHA / post-merge main SHA). Do NOT hard-code the WPI-OCI-I01 base SHA
@@ -16,7 +17,7 @@ ARG AIEOS_INFRASTRUCTURE_REVISION=unknown
 ARG AIEOS_APPLICATION_VERSION=0.1.0
 
 LABEL org.opencontainers.image.title="aieos-backend" \
-      org.opencontainers.image.description="AIEOS Backend production runtime OCI candidate (WORKFLOW_DISPATCHER + TEMPORAL_WORKER modules; not published by I01)" \
+      org.opencontainers.image.description="AIEOS Backend production runtime OCI candidate (governed worker modules; not published by I01)" \
       org.opencontainers.image.version="${AIEOS_APPLICATION_VERSION}" \
       org.opencontainers.image.source="https://github.com/eduvijna/eduvijna-aieos-backend" \
       org.opencontainers.image.revision="${AIEOS_GIT_REVISION}" \
