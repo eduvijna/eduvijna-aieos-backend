@@ -1,0 +1,565 @@
+"""WPI-OCI-I01R1E1 Backend OCI provenance unit tests (no Docker/provider)."""
+
+from __future__ import annotations
+
+import json
+import sys
+from copy import deepcopy
+
+import pytest
+
+from tests.dbutil import REPO_ROOT
+
+RELEASE = REPO_ROOT / "tools" / "release"
+sys.path.insert(0, str(RELEASE))
+
+from backend_oci_common import (  # noqa: E402
+    ARTIFACT_KIND,
+    BASE_IMAGE_DIGEST,
+    BASE_IMAGE_REFERENCE,
+    CLASSIFICATION,
+    EXPECTED_PYTHON_VERSION,
+    EXPECTED_RUNTIME_USER,
+    EXPECTED_UV_VERSION,
+    SOURCE_REPOSITORY,
+    assert_default_command,
+    canonical_json,
+    default_command_contract,
+    parse_dockerfile_base_image,
+    parse_python_version_output,
+    parse_uv_version_output,
+    reject_secret_like_values,
+    require_full_git_sha,
+    sha256_file_hex,
+)
+from build_backend_oci_provenance import (  # noqa: E402
+    build_prepublication_receipt,
+    main as build_main,
+)
+from verify_backend_oci_provenance import (  # noqa: E402
+    main as verify_main,
+    verify_receipt,
+)
+
+BACKEND = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+ARCH = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+INFRA = "cccccccccccccccccccccccccccccccccccccccc"
+
+
+def _inspect(
+    *,
+    revision: str = BACKEND,
+    arch: str = ARCH,
+    infra: str = INFRA,
+    user: str = EXPECTED_RUNTIME_USER,
+    cmd: list[str] | None = None,
+) -> dict:
+    return {
+        "Id": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "Os": "linux",
+        "Architecture": "amd64",
+        "Config": {
+            "User": user,
+            "Cmd": cmd if cmd is not None else default_command_contract(),
+            "Labels": {
+                "org.opencontainers.image.title": "aieos-backend",
+                "org.opencontainers.image.description": "candidate",
+                "org.opencontainers.image.version": "0.1.0",
+                "org.opencontainers.image.source": "https://github.com/eduvijna/eduvijna-aieos-backend",
+                "org.opencontainers.image.revision": revision,
+                "io.eduvijna.aieos.classification": "PRODUCTION_BACKEND_RUNTIME",
+                "io.eduvijna.aieos.application_version": "0.1.0",
+                "io.eduvijna.aieos.git_revision": revision,
+                "io.eduvijna.aieos.architecture_revision": arch,
+                "io.eduvijna.aieos.infrastructure_revision": infra,
+            },
+            "Env": ["PATH=/opt/venv/bin", "UV_COMPILE_BYTECODE=1"],
+        },
+    }
+
+
+def _patch_clean_for_unit_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test-only: skip live git checks while exercising receipt field validation."""
+
+    def _noop(repo_root, backend_git_sha):  # noqa: ANN001
+        return None
+
+    monkeypatch.setattr("build_backend_oci_provenance.assert_clean_git_source", _noop)
+    monkeypatch.setattr("verify_backend_oci_provenance.assert_clean_git_source", _noop)
+
+
+def _receipt(monkeypatch: pytest.MonkeyPatch, **overrides):
+    _patch_clean_for_unit_fixture(monkeypatch)
+    receipt = build_prepublication_receipt(
+        repo_root=REPO_ROOT,
+        image="unused:local",
+        backend_git_sha=BACKEND,
+        architecture_git_sha=ARCH,
+        infrastructure_git_sha=INFRA,
+        inspect_obj=_inspect(),
+        observed_python_version=EXPECTED_PYTHON_VERSION,
+        observed_uv_version=EXPECTED_UV_VERSION,
+    )
+    receipt.update(overrides)
+    return receipt
+
+
+def test_production_build_has_no_fixture_pass_helper() -> None:
+    text = (RELEASE / "build_backend_oci_provenance.py").read_text(encoding="utf-8")
+    assert "build_fixture_receipt_for_tests" not in text
+    assert "require_clean_source" not in text
+    assert "validation_status\"] = \"FIXTURE\"" not in text
+    assert "source_clean\": True if require_clean_source" not in text
+
+
+def test_production_build_has_no_executable_dirty_pass_route() -> None:
+    text = (RELEASE / "build_backend_oci_provenance.py").read_text(encoding="utf-8")
+    assert 'add_argument("--allow-dirty"' not in text
+    assert "assert_clean_git_source(repo_root, backend_git_sha)" in text
+    with pytest.raises(SystemExit):
+        build_main(
+            [
+                "--image",
+                "x",
+                "--backend-git-sha",
+                BACKEND,
+                "--architecture-git-sha",
+                ARCH,
+                "--infrastructure-git-sha",
+                INFRA,
+                "--output",
+                str(REPO_ROOT / "tmp-should-not-exist.json"),
+                "--allow-dirty",
+            ]
+        )
+
+
+def test_valid_receipt_deterministic_and_verifies(monkeypatch: pytest.MonkeyPatch) -> None:
+    a = _receipt(monkeypatch)
+    b = _receipt(monkeypatch)
+    assert canonical_json(a) == canonical_json(b)
+    verify_receipt(a)
+    assert a["artifact_kind"] == ARTIFACT_KIND
+    assert a["classification"] == CLASSIFICATION
+    assert a["source_repository"] == SOURCE_REPOSITORY
+    assert a["publication_performed"] is False
+    assert a["base_image"]["digest"] == BASE_IMAGE_DIGEST
+    assert a["base_image"]["reference"] == BASE_IMAGE_REFERENCE
+    assert "manifest_digest" not in a
+    assert a["image_config_id"].startswith("sha256:")
+    assert a["python_version"] == EXPECTED_PYTHON_VERSION
+    assert a["uv_version"] == EXPECTED_UV_VERSION
+
+
+def test_invalid_git_sha_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_clean_for_unit_fixture(monkeypatch)
+    with pytest.raises(ValueError):
+        require_full_git_sha("not-a-sha")
+    with pytest.raises(ValueError):
+        build_prepublication_receipt(
+            repo_root=REPO_ROOT,
+            image="x",
+            backend_git_sha="ABC",
+            architecture_git_sha=ARCH,
+            infrastructure_git_sha=INFRA,
+            inspect_obj=_inspect(),
+            observed_python_version=EXPECTED_PYTHON_VERSION,
+            observed_uv_version=EXPECTED_UV_VERSION,
+        )
+
+
+def test_build_receipt_rejects_dirty_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_clean(repo_root, backend_git_sha):  # noqa: ANN001
+        raise ValueError("dirty source rejected in authoritative mode:\n M dirty")
+
+    monkeypatch.setattr(
+        "build_backend_oci_provenance.assert_clean_git_source", fake_clean
+    )
+    with pytest.raises(ValueError, match="dirty"):
+        build_prepublication_receipt(
+            repo_root=REPO_ROOT,
+            image="x",
+            backend_git_sha=BACKEND,
+            architecture_git_sha=ARCH,
+            infrastructure_git_sha=INFRA,
+            inspect_obj=_inspect(),
+            observed_python_version=EXPECTED_PYTHON_VERSION,
+            observed_uv_version=EXPECTED_UV_VERSION,
+        )
+
+
+def test_build_receipt_rejects_head_backend_sha_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_clean(repo_root, backend_git_sha):  # noqa: ANN001
+        raise ValueError(
+            f"HEAD (eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee) != "
+            f"backend-git-sha ({backend_git_sha})"
+        )
+
+    monkeypatch.setattr(
+        "build_backend_oci_provenance.assert_clean_git_source", fake_clean
+    )
+    with pytest.raises(ValueError, match="HEAD"):
+        build_prepublication_receipt(
+            repo_root=REPO_ROOT,
+            image="x",
+            backend_git_sha=BACKEND,
+            architecture_git_sha=ARCH,
+            infrastructure_git_sha=INFRA,
+            inspect_obj=_inspect(),
+            observed_python_version=EXPECTED_PYTHON_VERSION,
+            observed_uv_version=EXPECTED_UV_VERSION,
+        )
+
+
+def test_verifier_rejects_dirty_current_source_despite_forged_pass_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = _receipt(monkeypatch)
+    assert receipt["source_clean"] is True
+    assert receipt["validation_status"] == "PASS"
+
+    def fake_dirty(repo_root, backend_git_sha):  # noqa: ANN001
+        raise ValueError("dirty source rejected in authoritative mode:\n M forged")
+
+    monkeypatch.setattr(
+        "verify_backend_oci_provenance.assert_clean_git_source", fake_dirty
+    )
+    with pytest.raises(ValueError, match="dirty"):
+        verify_receipt(receipt)
+
+
+def test_verifier_rejects_head_not_equal_receipt_backend_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = _receipt(monkeypatch)
+
+    def fake_mismatch(repo_root, backend_git_sha):  # noqa: ANN001
+        raise ValueError(
+            "HEAD (ffffffffffffffffffffffffffffffffffffffff) != "
+            f"backend-git-sha ({backend_git_sha})"
+        )
+
+    monkeypatch.setattr(
+        "verify_backend_oci_provenance.assert_clean_git_source", fake_mismatch
+    )
+    with pytest.raises(ValueError, match="HEAD"):
+        verify_receipt(receipt)
+
+
+def test_verifier_cli_has_no_repo_root() -> None:
+    text = (RELEASE / "verify_backend_oci_provenance.py").read_text(encoding="utf-8")
+    assert 'add_argument(\n        "--repo-root"' not in text
+    assert 'add_argument("--repo-root"' not in text
+    assert "--repo-root is not authorized" in text
+    with pytest.raises(SystemExit):
+        verify_main(["--receipt", "x.json", "--repo-root", "/tmp/other"])
+
+
+def test_version_mismatch_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_clean_for_unit_fixture(monkeypatch)
+    import build_backend_oci_provenance as mod
+
+    original = mod.assert_version_coherence
+    mod.assert_version_coherence = lambda root: (_ for _ in ()).throw(
+        ValueError("VERSION (0.1.0) != pyproject.toml version (9.9.9)")
+    )
+    try:
+        with pytest.raises(ValueError, match="VERSION"):
+            build_prepublication_receipt(
+                repo_root=REPO_ROOT,
+                image="x",
+                backend_git_sha=BACKEND,
+                architecture_git_sha=ARCH,
+                infrastructure_git_sha=INFRA,
+                inspect_obj=_inspect(),
+                observed_python_version=EXPECTED_PYTHON_VERSION,
+                observed_uv_version=EXPECTED_UV_VERSION,
+            )
+    finally:
+        mod.assert_version_coherence = original
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("python_version", "3.13.0"),
+        ("uv_version", "0.11.0"),
+        ("build_platform", "linux/arm64"),
+        ("runtime_user", "0:0"),
+        ("publication_performed", True),
+        ("publication_authorized", True),
+        ("deployment_authorized", True),
+    ],
+)
+def test_wrong_scalar_fields_rejected(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: object
+) -> None:
+    receipt = _receipt(monkeypatch, **{field: value})
+    with pytest.raises(ValueError):
+        verify_receipt(receipt)
+
+
+def test_observed_python_and_uv_derived_and_wrong_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_clean_for_unit_fixture(monkeypatch)
+    assert parse_python_version_output("Python 3.14.7") == "3.14.7"
+    assert parse_uv_version_output("uv 0.12.4 (x86_64-unknown-linux-musl)") == "0.12.4"
+    with pytest.raises(ValueError, match="python"):
+        build_prepublication_receipt(
+            repo_root=REPO_ROOT,
+            image="x",
+            backend_git_sha=BACKEND,
+            architecture_git_sha=ARCH,
+            infrastructure_git_sha=INFRA,
+            inspect_obj=_inspect(),
+            observed_python_version="3.13.0",
+            observed_uv_version=EXPECTED_UV_VERSION,
+        )
+    with pytest.raises(ValueError, match="uv"):
+        build_prepublication_receipt(
+            repo_root=REPO_ROOT,
+            image="x",
+            backend_git_sha=BACKEND,
+            architecture_git_sha=ARCH,
+            infrastructure_git_sha=INFRA,
+            inspect_obj=_inspect(),
+            observed_python_version=EXPECTED_PYTHON_VERSION,
+            observed_uv_version="0.11.0",
+        )
+
+
+def test_base_reference_digest_mismatch_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    text = (REPO_ROOT / "deploy/oci/Dockerfile.backend-runtime").read_text(encoding="utf-8")
+    ref, digest = parse_dockerfile_base_image(text)
+    assert ref == BASE_IMAGE_REFERENCE
+    assert digest == BASE_IMAGE_DIGEST
+    receipt = _receipt(monkeypatch)
+    receipt["base_image"] = {
+        "reference": BASE_IMAGE_REFERENCE,
+        "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    }
+    with pytest.raises(ValueError):
+        verify_receipt(receipt)
+    bad_ref = BASE_IMAGE_REFERENCE.replace("0.12.4", "0.12.3")
+    receipt2 = _receipt(monkeypatch)
+    receipt2["base_image"] = {"reference": bad_ref, "digest": BASE_IMAGE_DIGEST}
+    with pytest.raises(ValueError):
+        verify_receipt(receipt2)
+
+
+def test_current_dockerfile_and_uv_lock_hash_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = _receipt(monkeypatch)
+    verify_receipt(receipt)
+    receipt["dockerfile_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="dockerfile_sha256"):
+        verify_receipt(receipt)
+    receipt2 = _receipt(monkeypatch)
+    receipt2["uv_lock_sha256"] = "1" * 64
+    with pytest.raises(ValueError, match="uv_lock_sha256"):
+        verify_receipt(receipt2)
+    assert _receipt(monkeypatch)["dockerfile_sha256"] == sha256_file_hex(
+        REPO_ROOT / "deploy/oci/Dockerfile.backend-runtime"
+    )
+    assert _receipt(monkeypatch)["uv_lock_sha256"] == sha256_file_hex(REPO_ROOT / "uv.lock")
+
+
+def test_version_pyproject_receipt_mismatch_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = _receipt(monkeypatch)
+    receipt["application_version"] = "9.9.9"
+    receipt["oci_labels"] = dict(receipt["oci_labels"])
+    receipt["oci_labels"]["org.opencontainers.image.version"] = "9.9.9"
+    receipt["oci_labels"]["io.eduvijna.aieos.application_version"] = "9.9.9"
+    with pytest.raises(ValueError, match="application_version"):
+        verify_receipt(receipt)
+
+
+def test_named_runtime_user_aieos_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_clean_for_unit_fixture(monkeypatch)
+    with pytest.raises(ValueError, match="runtime_user"):
+        build_prepublication_receipt(
+            repo_root=REPO_ROOT,
+            image="x",
+            backend_git_sha=BACKEND,
+            architecture_git_sha=ARCH,
+            infrastructure_git_sha=INFRA,
+            inspect_obj=_inspect(user="aieos"),
+            observed_python_version=EXPECTED_PYTHON_VERSION,
+            observed_uv_version=EXPECTED_UV_VERSION,
+        )
+
+
+def test_approximate_marker_plus_64_command_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    approx = [
+        "python",
+        "-c",
+        "print('AIEOS_BACKEND_RUNTIME_COMMAND_REQUIRED'); raise SystemExit(0)",
+    ]
+    approx_with_64_text = [
+        "python",
+        "-c",
+        "print('AIEOS_BACKEND_RUNTIME_COMMAND_REQUIRED and 64'); raise SystemExit(0)",
+    ]
+    with pytest.raises(ValueError):
+        assert_default_command(approx)
+    with pytest.raises(ValueError):
+        assert_default_command(approx_with_64_text)
+    receipt = _receipt(monkeypatch, default_command=approx_with_64_text)
+    with pytest.raises(ValueError):
+        verify_receipt(receipt)
+
+
+def test_extra_oci_receipt_label_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = _receipt(monkeypatch)
+    labels = dict(receipt["oci_labels"])
+    labels["org.opencontainers.image.licenses"] = "proprietary"
+    receipt["oci_labels"] = labels
+    with pytest.raises(ValueError, match="oci_labels"):
+        verify_receipt(receipt)
+
+
+def test_nested_token_secret_auth_key_rejected() -> None:
+    with pytest.raises(ValueError):
+        reject_secret_like_values({"oci_labels": {"api_token": "x"}})
+    with pytest.raises(ValueError):
+        reject_secret_like_values({"nested": {"db_password": "x"}})
+    with pytest.raises(ValueError):
+        reject_secret_like_values({"meta": {"Authorization": "Bearer x"}})
+    with pytest.raises(ValueError):
+        reject_secret_like_values({"docker_auth": {}})
+
+
+def test_forbidden_credential_like_value_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = _receipt(monkeypatch)
+    bad = deepcopy(receipt)
+    bad["oci_labels"] = dict(receipt["oci_labels"])
+    bad["oci_labels"]["org.opencontainers.image.description"] = "EV[ABCDEFGH]"
+    with pytest.raises(ValueError):
+        verify_receipt(bad)
+    with pytest.raises(ValueError):
+        reject_secret_like_values({"note": "dop_v1_abc"})
+    with pytest.raises(ValueError):
+        reject_secret_like_values({"note": "Authorization: Bearer abc"})
+
+
+def test_missing_label_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_clean_for_unit_fixture(monkeypatch)
+    insp = _inspect()
+    del insp["Config"]["Labels"]["org.opencontainers.image.title"]
+    with pytest.raises(ValueError):
+        build_prepublication_receipt(
+            repo_root=REPO_ROOT,
+            image="x",
+            backend_git_sha=BACKEND,
+            architecture_git_sha=ARCH,
+            infrastructure_git_sha=INFRA,
+            inspect_obj=insp,
+            observed_python_version=EXPECTED_PYTHON_VERSION,
+            observed_uv_version=EXPECTED_UV_VERSION,
+        )
+
+
+def test_revision_mismatch_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_clean_for_unit_fixture(monkeypatch)
+    with pytest.raises(ValueError):
+        build_prepublication_receipt(
+            repo_root=REPO_ROOT,
+            image="x",
+            backend_git_sha=BACKEND,
+            architecture_git_sha=ARCH,
+            infrastructure_git_sha=INFRA,
+            inspect_obj=_inspect(revision="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+            observed_python_version=EXPECTED_PYTHON_VERSION,
+            observed_uv_version=EXPECTED_UV_VERSION,
+        )
+
+
+def test_architecture_and_infrastructure_label_mismatch_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_clean_for_unit_fixture(monkeypatch)
+    with pytest.raises(ValueError):
+        build_prepublication_receipt(
+            repo_root=REPO_ROOT,
+            image="x",
+            backend_git_sha=BACKEND,
+            architecture_git_sha=ARCH,
+            infrastructure_git_sha=INFRA,
+            inspect_obj=_inspect(arch="ffffffffffffffffffffffffffffffffffffffff"),
+            observed_python_version=EXPECTED_PYTHON_VERSION,
+            observed_uv_version=EXPECTED_UV_VERSION,
+        )
+    with pytest.raises(ValueError):
+        build_prepublication_receipt(
+            repo_root=REPO_ROOT,
+            image="x",
+            backend_git_sha=BACKEND,
+            architecture_git_sha=ARCH,
+            infrastructure_git_sha=INFRA,
+            inspect_obj=_inspect(infra="1111111111111111111111111111111111111111"),
+            observed_python_version=EXPECTED_PYTHON_VERSION,
+            observed_uv_version=EXPECTED_UV_VERSION,
+        )
+
+
+def test_unknown_and_publication_fields_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = _receipt(monkeypatch)
+    bad = deepcopy(receipt)
+    bad["extra"] = "nope"
+    with pytest.raises(ValueError, match="unknown"):
+        verify_receipt(bad)
+    for field in ("registry", "repository", "manifest_digest"):
+        bad2 = deepcopy(receipt)
+        bad2[field] = "x"
+        with pytest.raises(ValueError):
+            verify_receipt(bad2)
+
+
+def test_secret_and_ev_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = _receipt(monkeypatch)
+    bad = deepcopy(receipt)
+    bad["token"] = "dop_v1_x"
+    with pytest.raises(ValueError):
+        verify_receipt(bad)
+
+
+def test_default_command_mismatch_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = _receipt(monkeypatch)
+    receipt["default_command"] = [
+        "python",
+        "-m",
+        "aieos.platform.runtime.entrypoints.workflow_dispatcher_main",
+    ]
+    with pytest.raises(ValueError):
+        verify_receipt(receipt)
+
+
+def test_malformed_base_digest_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = _receipt(monkeypatch)
+    receipt["base_image"] = {"reference": "ghcr.io/astral-sh/uv:0.12.4", "digest": "latest"}
+    with pytest.raises(ValueError):
+        verify_receipt(receipt)
+
+
+def test_canonical_json_stable(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {"b": 1, "a": {"z": 2, "y": [3, 1]}}
+    assert canonical_json(payload) == '{"a":{"y":[3,1],"z":2},"b":1}'
+    assert json.loads(canonical_json(_receipt(monkeypatch)))["schema_version"] == 1
+
+
+def test_image_config_id_is_config_identity_not_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = _receipt(monkeypatch)
+    assert "manifest" not in receipt["image_config_id"].lower() or receipt[
+        "image_config_id"
+    ].startswith("sha256:")
+    assert "manifest_digest" not in receipt
