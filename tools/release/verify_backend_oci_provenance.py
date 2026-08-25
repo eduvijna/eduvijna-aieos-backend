@@ -1,4 +1,4 @@
-"""Verify sanitized pre-publication Backend OCI provenance receipt (WPI-OCI-I01R1)."""
+"""Verify sanitized pre-publication Backend OCI provenance receipt (WPI-OCI-I01R1E1)."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from backend_oci_common import (
     REQUIRED_RECEIPT_FIELDS,
     SCHEMA_VERSION,
     SOURCE_REPOSITORY,
+    assert_clean_git_source,
     assert_default_command,
     assert_version_coherence,
     default_command_contract,
@@ -40,8 +41,13 @@ from backend_oci_common import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def verify_receipt(receipt: dict[str, Any], *, repo_root: Path | None = None) -> None:
-    root = repo_root if repo_root is not None else REPO_ROOT
+def verify_receipt(receipt: dict[str, Any]) -> None:
+    """Verify receipt against the actual repository at REPO_ROOT.
+
+    Independently proves current HEAD == receipt.backend_git_sha and clean
+    porcelain before accepting source_clean=true / validation_status=PASS.
+    """
+    root = REPO_ROOT
     if not isinstance(receipt, dict):
         raise ValueError("receipt must be an object")
 
@@ -73,6 +79,9 @@ def verify_receipt(receipt: dict[str, Any], *, repo_root: Path | None = None) ->
         receipt["infrastructure_git_sha"], label="infrastructure_git_sha"
     )
 
+    # Independently prove source identity/cleanliness against the live checkout.
+    assert_clean_git_source(root, backend)
+
     if receipt["python_version"] != EXPECTED_PYTHON_VERSION:
         raise ValueError("python_version mismatch")
     if receipt["uv_version"] != EXPECTED_UV_VERSION:
@@ -83,7 +92,6 @@ def verify_receipt(receipt: dict[str, Any], *, repo_root: Path | None = None) ->
     require_sha256_hex(receipt["dockerfile_sha256"], label="dockerfile_sha256")
     require_sha256_hex(receipt["uv_lock_sha256"], label="uv_lock_sha256")
 
-    # Bind receipt hashes/version to current repository source (not syntax-only).
     current_version = assert_version_coherence(root)
     if receipt["application_version"] != current_version:
         raise ValueError("application_version does not match VERSION/pyproject")
@@ -160,18 +168,17 @@ def verify_receipt(receipt: dict[str, Any], *, repo_root: Path | None = None) ->
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv_list = list(argv) if argv is not None else sys.argv[1:]
+    if "--repo-root" in argv_list:
+        raise SystemExit("--repo-root is not authorized")
+
     parser = argparse.ArgumentParser(description="Verify Backend OCI pre-publication provenance")
     parser.add_argument("--receipt", required=True)
-    parser.add_argument(
-        "--repo-root",
-        default=str(REPO_ROOT),
-        help="Repository root used to bind Dockerfile/uv.lock/VERSION hashes",
-    )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(argv_list)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     path = Path(args.receipt)
     receipt = json.loads(path.read_text(encoding="utf-8"))
-    verify_receipt(receipt, repo_root=Path(args.repo_root))
+    verify_receipt(receipt)
     print("VERIFY_PASS")
     return 0
 

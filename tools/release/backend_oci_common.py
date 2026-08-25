@@ -170,6 +170,36 @@ def assert_version_coherence(repo_root: Path) -> str:
     return version
 
 
+def assert_clean_git_source(repo_root: Path, backend_git_sha: str) -> None:
+    """Fail-closed local Git identity/cleanliness proof (stdlib subprocess only).
+
+    Bounded reads only: ``git rev-parse HEAD`` and ``git status --porcelain``.
+    No network. No mutation.
+    """
+    import subprocess
+
+    backend_git_sha = require_full_git_sha(backend_git_sha, label="backend_git_sha")
+
+    def _git(cmd: list[str]) -> str:
+        completed = subprocess.run(
+            cmd,
+            cwd=str(repo_root),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout.strip()
+
+    head = _git(["git", "rev-parse", "HEAD"])
+    if head != backend_git_sha:
+        raise ValueError(f"HEAD ({head}) != backend-git-sha ({backend_git_sha})")
+    porcelain = _git(["git", "status", "--porcelain"])
+    if porcelain:
+        raise ValueError(
+            "dirty source rejected in authoritative mode:\n" + porcelain
+        )
+
+
 def extract_base_image_digest(reference: str) -> str:
     if "@sha256:" not in reference:
         raise ValueError("base image reference must be digest-pinned (@sha256:...)")

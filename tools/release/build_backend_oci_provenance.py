@@ -1,4 +1,4 @@
-"""Build sanitized pre-publication Backend OCI provenance receipt (WPI-OCI-I01R1)."""
+"""Build sanitized pre-publication Backend OCI provenance receipt (WPI-OCI-I01R1E1)."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from backend_oci_common import (
     REQUIRED_OCI_LABELS,
     SCHEMA_VERSION,
     SOURCE_REPOSITORY,
+    assert_clean_git_source,
     assert_default_command,
     assert_version_coherence,
     canonical_json,
@@ -46,17 +47,6 @@ def _run(cmd: list[str], *, cwd: Path) -> str:
         text=True,
     )
     return completed.stdout.strip()
-
-
-def assert_clean_source(repo_root: Path, backend_git_sha: str) -> None:
-    head = _run(["git", "rev-parse", "HEAD"], cwd=repo_root)
-    if head != backend_git_sha:
-        raise ValueError(f"HEAD ({head}) != backend-git-sha ({backend_git_sha})")
-    porcelain = _run(["git", "status", "--porcelain"], cwd=repo_root)
-    if porcelain:
-        raise ValueError(
-            "dirty source rejected in authoritative mode:\n" + porcelain
-        )
 
 
 def _inspect_image(image: str) -> dict[str, Any]:
@@ -107,7 +97,6 @@ def _labels_from_inspect(inspect_obj: dict[str, Any]) -> dict[str, str]:
         if not isinstance(val, str) or not val:
             raise ValueError(f"missing required OCI label: {key}")
         out[key] = val
-    # Closed receipt label schema: only allowlisted keys enter the receipt.
     return out
 
 
@@ -157,13 +146,11 @@ def build_prepublication_receipt(
     inspect_obj: dict[str, Any] | None = None,
     observed_python_version: str | None = None,
     observed_uv_version: str | None = None,
-    require_clean_source: bool = True,
 ) -> dict[str, Any]:
-    """Pure/testable receipt builder.
+    """Authoritative pre-publication receipt builder.
 
-    When inspect_obj is provided (unit tests), observed_* versions must also be
-    provided. That internal path is NOT an executable dirty-source bypass:
-    the CLI always requires clean source and never exposes --allow-dirty.
+    Always proves clean source identity before emitting source_clean=true /
+    validation_status=PASS. No dirty-source bypass parameter exists.
     """
     backend_git_sha = require_full_git_sha(backend_git_sha, label="backend_git_sha")
     architecture_git_sha = require_full_git_sha(
@@ -172,8 +159,7 @@ def build_prepublication_receipt(
     infrastructure_git_sha = require_full_git_sha(
         infrastructure_git_sha, label="infrastructure_git_sha"
     )
-    if require_clean_source:
-        assert_clean_source(repo_root, backend_git_sha)
+    assert_clean_git_source(repo_root, backend_git_sha)
 
     application_version = assert_version_coherence(repo_root)
     dockerfile = repo_root / DOCKERFILE_REL
@@ -232,7 +218,6 @@ def build_prepublication_receipt(
     runtime_user = _runtime_user(inspect_obj)
     default_command = _default_command(inspect_obj)
 
-    # Emit PASS only after all observed values match the governed contract.
     receipt: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "artifact_kind": ARTIFACT_KIND,
@@ -255,58 +240,20 @@ def build_prepublication_receipt(
         "oci_labels": labels,
         "runtime_user": runtime_user,
         "default_command": default_command,
-        "source_clean": True if require_clean_source else False,
+        "source_clean": True,
         "validation_status": "PASS",
         "publication_performed": False,
         "publication_authorized": False,
         "deployment_authorized": False,
     }
-    if not require_clean_source:
-        # Unit-test fixture path: never claim authoritative clean PASS.
-        # Callers that need a verifiable PASS receipt must set source_clean after
-        # separately proving cleanliness, or use require_clean_source=True.
-        receipt["validation_status"] = "FIXTURE"
     reject_secret_like_values(receipt)
-    if require_clean_source:
-        if receipt["validation_status"] != "PASS" or receipt["source_clean"] is not True:
-            raise ValueError("authoritative receipt must be PASS with source_clean=true")
+    if receipt["validation_status"] != "PASS" or receipt["source_clean"] is not True:
+        raise ValueError("authoritative receipt must be PASS with source_clean=true")
     return receipt
-
-
-def build_fixture_receipt_for_tests(
-    *,
-    repo_root: Path,
-    backend_git_sha: str,
-    architecture_git_sha: str,
-    infrastructure_git_sha: str,
-    inspect_obj: dict[str, Any],
-    observed_python_version: str = EXPECTED_PYTHON_VERSION,
-    observed_uv_version: str = EXPECTED_UV_VERSION,
-) -> dict[str, Any]:
-    """Internal test helper: builds a PASS-shaped receipt without git clean checks.
-
-    Not exposed on the CLI. Does not constitute an authoritative dirty bypass.
-    """
-    draft = build_prepublication_receipt(
-        repo_root=repo_root,
-        image="unused:local",
-        backend_git_sha=backend_git_sha,
-        architecture_git_sha=architecture_git_sha,
-        infrastructure_git_sha=infrastructure_git_sha,
-        inspect_obj=inspect_obj,
-        observed_python_version=observed_python_version,
-        observed_uv_version=observed_uv_version,
-        require_clean_source=False,
-    )
-    draft["source_clean"] = True
-    draft["validation_status"] = "PASS"
-    reject_secret_like_values(draft)
-    return draft
 
 
 def main(argv: list[str] | None = None) -> int:
     argv_list = list(argv) if argv is not None else sys.argv[1:]
-    # No --allow-dirty. Authoritative CLI always proves clean source.
     if "--allow-dirty" in argv_list:
         raise SystemExit("--allow-dirty is not authorized")
 
@@ -326,7 +273,6 @@ def main(argv: list[str] | None = None) -> int:
         backend_git_sha=args.backend_git_sha,
         architecture_git_sha=args.architecture_git_sha,
         infrastructure_git_sha=args.infrastructure_git_sha,
-        require_clean_source=True,
     )
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
