@@ -50,6 +50,7 @@ class _UnusedUowFactory:
 def _schema() -> dict:
     app = create_app(
         uow_factory=_UnusedUowFactory(),
+        teaching_uow_factory=_UnusedUowFactory(),
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),

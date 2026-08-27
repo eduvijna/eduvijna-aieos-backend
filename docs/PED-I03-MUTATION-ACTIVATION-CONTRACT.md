@@ -71,7 +71,8 @@ A stale activation for release A must not activate release B.
 
 `content_create`, `content_version_append`, `content_review_submit`,
 `content_review_approve`, `content_review_request_changes`,
-`content_review_reject`, `content_publish`
+`content_review_reject`, `content_publish`, `teaching_work_create`,
+`teaching_work_refine`
 
 GET/HEAD/OPTIONS product routes are not gated. `/livez` and `/readyz` are not
 gated. Future write-capable `/api/v1` routes without explicit classification

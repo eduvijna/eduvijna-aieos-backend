@@ -201,6 +201,7 @@ def _app(
     factory = uow_factory or RecordingUowFactory()
     app = create_app(
         uow_factory=factory,
+        teaching_uow_factory=factory,
         request_identity_authenticator=authenticator,
         security_resolver=CurrentAuthoritySecurityContextResolver(authority),
         content_types=StaticContentTypeCatalog({"test.generic"}),

@@ -47,7 +47,7 @@ BOUNDARY_DOC = REPO_ROOT / "docs" / "GCI-I04-NON-PRODUCTION-MUTATION-BOUNDARY.md
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 SNAPSHOT = REPO_ROOT / "contracts" / "openapi" / "aieos-v1.json"
 EXPECTED_OPENAPI_SHA256 = (
-    "D847C7BC21227072DC2627426A1B61774F33DEB78F65397C7C584BCC38C0BCAF"
+    "AD58AD462CB21222D03188DCF1AB5DD86BF7D648DEC4955B45660F3219E00488"
 )
 
 _EXPECTED_MIGRATIONS = [
@@ -65,6 +65,7 @@ _EXPECTED_MIGRATIONS = [
     "pedi10b2001_asset_authority_sor.py",
     "pedi10b6001_asset_security_audit.py",
     "saii020001_security_audit_ledger.py",
+    "tosd020001_teaching_work.py",
 ]
 
 # Frozen SAI-I05 mutation inventory classification.
@@ -511,6 +512,7 @@ class TestMigrationChainAndOpenApi:
         def schema() -> dict:
             app = create_app(
                 uow_factory=_UnusedUowFactory(),
+                teaching_uow_factory=_UnusedUowFactory(),
                 request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
                 security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
                 content_types=StaticContentTypeCatalog({"test.generic"}),

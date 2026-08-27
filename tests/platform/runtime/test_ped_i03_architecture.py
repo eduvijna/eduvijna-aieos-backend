@@ -69,6 +69,7 @@ class _UnusedUow:
 def _minimal_app() -> FastAPI:
     return create_app(
         uow_factory=_UnusedUow(),
+        teaching_uow_factory=_UnusedUow(),
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),
@@ -164,7 +165,7 @@ def test_migration_head_unchanged() -> None:
     versions = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
     assert "pedi090001_security_authority.py" in versions
     assert "pedi10b2001_asset_authority_sor.py" in versions
-    assert versions[-1] == "saii020001_security_audit_ledger.py"
+    assert versions[-1] == "tosd020001_teaching_work.py"
     for path in MIGRATIONS.rglob("*.py"):
         assert "pedi030001" not in path.read_text(encoding="utf-8")
 

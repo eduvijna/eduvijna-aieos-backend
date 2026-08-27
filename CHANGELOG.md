@@ -9,6 +9,25 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV02 Lane B — Teaching Work durable aggregate and Today's Mission
+  projection. New `teaching` bounded context (`src/aieos/domains/teaching/**`)
+  with the `TeachingWork` aggregate, create/refine/query/mission application
+  services, SQLAlchemy persistence, and HTTP v1 operations
+  `teaching_work_create`, `teaching_work_list`, `teaching_work_get`,
+  `teaching_work_refine`, and `teacher_os_today_mission`. Adds Alembic
+  migration `tosd020001` creating the `teaching` schema, `teaching.works`
+  (UUIDv7 PK, per-tenant indexes, `teaching.current_tenant_id()`, ENABLE +
+  FORCE RLS with a tenant isolation policy), and moves the expected Alembic
+  head from `adra045001` to `tosd020001`. Teaching Intent stays a request
+  that enters Work creation — there is no `teaching_intents` table — and
+  Mission is recomputed on every read from the Review Queue projection plus
+  durable Work rows, so there is no mission table. Refine uses `If-Match`
+  optimistic concurrency and `Idempotency-Key` replay through the existing
+  platform idempotency records. Adds the NON_PRODUCTION reference scenario
+  `src/aieos/development/teacher_os_teaching_work_scenario.py` with an
+  explicit loader under `tools/development/` (never seeded on startup),
+  PostgreSQL-backed and adversarial `tos_dev02` tests, and
+  `docs/TOS-DEV02-LANE-B.md`. No AI generation, agents, or MCP surface.
 - TOS-DEV01 Lane B — NON_PRODUCTION Teacher OS Review Queue development
   reference scenario (`src/aieos/development/**`, explicit loader under
   `tools/development/`), plus PostgreSQL-backed spine proofs in

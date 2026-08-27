@@ -20,6 +20,8 @@ _MUTATION_IDEMPOTENCY_IDS = {
     "content_review_request_changes",
     "content_review_reject",
     "content_publish",
+    "teaching_work_create",
+    "teaching_work_refine",
 }
 _IF_MATCH_OPERATION_IDS = {
     "content_version_append",
@@ -28,6 +30,7 @@ _IF_MATCH_OPERATION_IDS = {
     "content_review_request_changes",
     "content_review_reject",
     "content_publish",
+    "teaching_work_refine",
 }
 _GET_OPERATION_IDS = {
     "content_get",
@@ -35,6 +38,9 @@ _GET_OPERATION_IDS = {
     "content_version_get",
     "teacher_os_review_queue_list",
     "teacher_os_review_queue_get",
+    "teaching_work_get",
+    "teaching_work_list",
+    "teacher_os_today_mission",
 }
 
 _IDEMPOTENCY_PARAM = {
@@ -155,6 +161,9 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                     "content_review_approve",
                     "content_review_request_changes",
                     "content_review_reject",
+                    "teaching_work_create",
+                    "teaching_work_get",
+                    "teaching_work_refine",
                 }:
                     headers["ETag"] = {
                         "description": "Opaque aggregate revision validator",
@@ -163,6 +172,11 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                 if status == "201" and operation_id == "content_create":
                     headers["Location"] = {
                         "description": "Canonical Content URL",
+                        "schema": {"type": "string"},
+                    }
+                if status == "201" and operation_id == "teaching_work_create":
+                    headers["Location"] = {
+                        "description": "Canonical Teaching Work URL",
                         "schema": {"type": "string"},
                     }
                 if status == "201" and operation_id == "content_version_append":

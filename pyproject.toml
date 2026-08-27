@@ -75,4 +75,5 @@ markers = [
     "postgres_candidate_authority: disposable PostgreSQL 18 candidate-authority acceptance",
     "ped_i11: Production EVENT dispatcher runtime source (ADR-AIEOS-045/046)",
     "ped_i12: Production WORKFLOW dispatcher runtime source (ADR-AIEOS-045/047)",
+    "tos_dev02: Teaching Work durable aggregate and Today's Mission projection",
 ]

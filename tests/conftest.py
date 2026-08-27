@@ -409,6 +409,20 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                     f"TO {MIGRATION_RUNTIME_USER}"
                 )
             )
+            # TOS-DEV02: durable Teaching Work container (no DELETE, RLS enforced).
+            conn.execute(text(f"GRANT USAGE ON SCHEMA teaching TO {RUNTIME_USER}"))
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT, UPDATE ON teaching.works TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(text(f"REVOKE DELETE ON teaching.works FROM {RUNTIME_USER}"))
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION teaching.current_tenant_id() "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
             conn.execute(text(f"GRANT USAGE ON SCHEMA api TO {RUNTIME_USER}"))
             conn.execute(
                 text(
