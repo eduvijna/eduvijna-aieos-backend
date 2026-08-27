@@ -41,7 +41,7 @@ SNAPSHOT = REPO_ROOT / "contracts" / "openapi" / "aieos-v1.json"
 COMPOSITION = SRC_ROOT / "platform" / "runtime" / "composition.py"
 
 EXPECTED_OPENAPI_SHA256 = (
-    "D847C7BC21227072DC2627426A1B61774F33DEB78F65397C7C584BCC38C0BCAF"
+    "AD58AD462CB21222D03188DCF1AB5DD86BF7D648DEC4955B45660F3219E00488"
 )
 
 _FORBIDDEN_POLICY_ENGINES = (
@@ -101,6 +101,7 @@ def test_openapi_sha_unchanged() -> None:
 
     app = create_app(
         uow_factory=_UnusedUowFactory(),
+        teaching_uow_factory=_UnusedUowFactory(),
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),

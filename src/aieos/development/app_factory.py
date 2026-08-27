@@ -25,6 +25,9 @@ from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
 )
+from aieos.domains.teaching.infrastructure.persistence.uow import (
+    SqlAlchemyTeachingUnitOfWorkFactory,
+)
 from aieos.platform.api.app import create_app
 
 CURSOR_KEY = b"tos-dev01-development-cursor-signing-key"
@@ -43,6 +46,7 @@ def build_development_review_scenario_app(
     """
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+        teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
         request_identity_authenticator=DevelopmentPrincipalAuthenticator(principal_id),
         security_resolver=DevelopmentTenantSecurityResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog({DEV_CONTENT_TYPE}),

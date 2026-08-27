@@ -17,6 +17,9 @@ from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
 )
+from aieos.domains.teaching.infrastructure.persistence.uow import (
+    SqlAlchemyTeachingUnitOfWorkFactory,
+)
 from aieos.platform.api.app import create_app
 from tests.dbutil import REPO_ROOT
 from tests.fakes import (
@@ -67,6 +70,7 @@ _EXPECTED_MIGRATIONS = [
     "pedi10b2001_asset_authority_sor.py",
     "pedi10b6001_asset_security_audit.py",
     "saii020001_security_audit_ledger.py",
+    "tosd020001_teaching_work.py",
 ]
 
 
@@ -178,6 +182,7 @@ class TestArchitectureAbuse:
         tenant_id = uuid.uuid7()
         app = create_app(
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+            teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
             request_identity_authenticator=FixedPrincipalAuthenticator(tenant_id),
             security_resolver=StubSecurityContextResolver(tenant_id, tenant_id),
             content_types=StaticContentTypeCatalog({"test.generic"}),

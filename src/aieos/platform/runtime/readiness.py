@@ -16,10 +16,10 @@ from sqlalchemy.engine.url import make_url
 
 from aieos.platform.runtime.models import ApiRuntimeConfig
 
-EXPECTED_ALEMBIC_HEAD = "adra045001"
+EXPECTED_ALEMBIC_HEAD = "tosd020001"
 EXPECTED_POSTGRES_MAJOR = 18
 
-_CONTENT_OWNED_SCHEMAS = ("content", "api", "workflow", "integration")
+_CONTENT_OWNED_SCHEMAS = ("content", "api", "workflow", "integration", "teaching")
 _ALL_APP_SCHEMAS = (*_CONTENT_OWNED_SCHEMAS, "security")
 
 
@@ -128,7 +128,8 @@ class SqlAlchemyApiReadinessProbe:
                             FROM pg_namespace n
                             JOIN pg_roles r ON r.oid = n.nspowner
                             WHERE n.nspname IN
-                              ('content', 'api', 'workflow', 'integration', 'security')
+                              ('content', 'api', 'workflow', 'integration',
+                               'teaching', 'security')
                             """
                         )
                     )
@@ -149,7 +150,8 @@ class SqlAlchemyApiReadinessProbe:
                         SELECT count(*) FROM pg_namespace n
                         JOIN pg_roles r ON r.oid = n.nspowner
                         WHERE n.nspname IN
-                          ('content', 'api', 'workflow', 'integration', 'security')
+                          ('content', 'api', 'workflow', 'integration',
+                           'teaching', 'security')
                           AND r.rolname = current_user
                         """
                     )

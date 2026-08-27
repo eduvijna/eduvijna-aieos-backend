@@ -17,6 +17,7 @@ if str(_SRC) not in sys.path:
 
 from aieos.domains.content.infrastructure.persistence import models as _content_models  # noqa: F401
 from aieos.domains.content.infrastructure.persistence.metadata import content_metadata
+from aieos.domains.teaching.infrastructure.persistence import models as _teaching_models  # noqa: F401
 from aieos.platform.api.infrastructure.persistence import models as _api_models  # noqa: F401
 
 config = context.config

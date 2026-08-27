@@ -51,7 +51,7 @@ UV_LOCK = REPO_ROOT / "uv.lock"
 MIGRATIONS = REPO_ROOT / "migrations" / "versions"
 SRC_ROOT = REPO_ROOT / "src"
 EXPECTED_OPENAPI_SHA256 = (
-    "D847C7BC21227072DC2627426A1B61774F33DEB78F65397C7C584BCC38C0BCAF"
+    "AD58AD462CB21222D03188DCF1AB5DD86BF7D648DEC4955B45660F3219E00488"
 )
 _CLOUD_NEEDLES = (
     "import boto3",
@@ -120,7 +120,7 @@ class TestDocsAndContracts:
         digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest().upper()
         assert digest == EXPECTED_OPENAPI_SHA256
         assert UV_LOCK.is_file()
-        assert EXPECTED_ALEMBIC_HEAD == "adra045001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd020001"
         source = READINESS.read_text(encoding="utf-8")
         assert "asset_schema_owner" not in source
         assert "AIEOS_ASSET_SCHEMA_OWNER_ROLE" not in source

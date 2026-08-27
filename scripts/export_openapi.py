@@ -67,6 +67,7 @@ class _ExportAssetCurrentGovernance:
 def main() -> None:
     app = create_app(
         uow_factory=_UnusedUowFactory(),
+        teaching_uow_factory=_UnusedUowFactory(),
         request_identity_authenticator=_ExportOnlyRequestIdentityAuthenticator(),
         security_resolver=_ExportResolver(),
         content_types=StaticContentTypeCatalog({"test.generic"}),

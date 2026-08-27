@@ -29,7 +29,7 @@ CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 UV_LOCK = REPO_ROOT / "uv.lock"
 EXPECTED_OPENAPI_SHA256 = (
-    "D847C7BC21227072DC2627426A1B61774F33DEB78F65397C7C584BCC38C0BCAF"
+    "AD58AD462CB21222D03188DCF1AB5DD86BF7D648DEC4955B45660F3219E00488"
 )
 FROZEN_REASONS = (
     "NOT_FOUND",
@@ -254,7 +254,7 @@ class TestBoundaries:
     def test_no_new_migration_head_remains_pedi10b2001(self) -> None:
         assert not any(p.name.startswith("pedi10b4") for p in MIGRATIONS.glob("*.py"))
         assert (MIGRATIONS / "pedi10b2001_asset_authority_sor.py").is_file()
-        assert EXPECTED_ALEMBIC_HEAD == "adra045001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd020001"
 
     def test_no_test_blobstore_fake_in_production_source(self) -> None:
         fake = (

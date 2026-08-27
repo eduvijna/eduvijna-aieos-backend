@@ -31,6 +31,9 @@ from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWork,
     SqlAlchemyContentUnitOfWorkFactory,
 )
+from aieos.domains.teaching.infrastructure.persistence.uow import (
+    SqlAlchemyTeachingUnitOfWorkFactory,
+)
 from aieos.platform.api.app import create_app
 from aieos.platform.api.infrastructure.persistence.repositories import (
     SqlAlchemyIdempotencyRepository,
@@ -130,6 +133,7 @@ LEAK_NEEDLES = (
 def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID, **kw):
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+        teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog({"test.generic"}),

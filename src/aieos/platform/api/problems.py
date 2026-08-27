@@ -52,6 +52,21 @@ from aieos.domains.content.application.errors import (
     VersionLineageConflict,
     WorkflowCoordinationFailed,
 )
+from aieos.domains.teaching.application.errors import (
+    AggregateRevisionConflict as TeachingAggregateRevisionConflict,
+)
+from aieos.domains.teaching.application.errors import (
+    IdempotencyKeyReused as TeachingIdempotencyKeyReused,
+)
+from aieos.domains.teaching.application.errors import (
+    InvalidTeachingWorkRequest,
+    PersistenceInvariantViolation as TeachingPersistenceInvariantViolation,
+    PersistenceOperationFailed as TeachingPersistenceOperationFailed,
+    TeacherOsMissionUnavailable,
+    TeachingApplicationError,
+    TeachingWorkForbidden,
+    TeachingWorkNotFound,
+)
 from aieos.platform.api.context import (
     InvalidTenantHeaderError,
     bind_response_context,
@@ -404,6 +419,57 @@ _APPLICATION_PROBLEMS: dict[type[ContentApplicationError], tuple[int, str, str, 
     ),
 }
 
+_TEACHING_PROBLEMS: dict[type[TeachingApplicationError], tuple[int, str, str, str]] = {
+    TeachingWorkNotFound: (
+        404,
+        "teaching_work_not_found",
+        "Teaching Work not found",
+        "Teaching Work was not found",
+    ),
+    TeachingWorkForbidden: (
+        403,
+        "forbidden",
+        "Forbidden",
+        "Teaching Work is owned by a different teacher",
+    ),
+    TeachingAggregateRevisionConflict: (
+        412,
+        "resource_revision_conflict",
+        "Resource revision conflict",
+        "If-Match does not match the current aggregate revision",
+    ),
+    InvalidTeachingWorkRequest: (
+        422,
+        "invalid_teaching_work_request",
+        "Invalid Teaching Work request",
+        "Teaching Work request is invalid",
+    ),
+    TeachingIdempotencyKeyReused: (
+        409,
+        "idempotency_key_reused",
+        "Idempotency key reused",
+        "Idempotency-Key was already used with a different request",
+    ),
+    TeachingPersistenceOperationFailed: (
+        503,
+        "persistence_unavailable",
+        "Persistence unavailable",
+        "Teaching persistence is temporarily unavailable",
+    ),
+    TeachingPersistenceInvariantViolation: (
+        422,
+        "persistence_invariant_violation",
+        "Persistence invariant violated",
+        "A Teaching persistence invariant was violated",
+    ),
+    TeacherOsMissionUnavailable: (
+        503,
+        "teacher_os_mission_unavailable",
+        "Today's Mission unavailable",
+        "Today's Mission projection is temporarily unavailable",
+    ),
+}
+
 
 def install_exception_handlers(app) -> None:
     @app.exception_handler(RequestValidationError)
@@ -459,6 +525,28 @@ def install_exception_handlers(app) -> None:
         request: Request, exc: ContentApplicationError
     ) -> JSONResponse:
         mapping = _APPLICATION_PROBLEMS.get(type(exc))
+        if mapping is None:
+            status, code, title, detail = (
+                500,
+                "internal_error",
+                "Internal error",
+                "An unexpected error occurred",
+            )
+        else:
+            status, code, title, detail = mapping
+        return problem_response(
+            request,
+            status=status,
+            code=code,
+            title=title,
+            detail=detail,
+        )
+
+    @app.exception_handler(TeachingApplicationError)
+    async def teaching_application_handler(
+        request: Request, exc: TeachingApplicationError
+    ) -> JSONResponse:
+        mapping = _TEACHING_PROBLEMS.get(type(exc))
         if mapping is None:
             status, code, title, detail = (
                 500,
@@ -612,6 +700,7 @@ def install_exception_handlers(app) -> None:
                 StarletteHTTPException,
                 RequestValidationError,
                 ContentApplicationError,
+                TeachingApplicationError,
                 UnauthenticatedError,
                 UnauthorizedError,
                 AuthenticationUnavailableError,

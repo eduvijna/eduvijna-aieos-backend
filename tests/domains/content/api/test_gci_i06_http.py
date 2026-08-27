@@ -25,6 +25,9 @@ from aieos.domains.content.infrastructure.persistence.repositories import (
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
 )
+from aieos.domains.teaching.infrastructure.persistence.uow import (
+    SqlAlchemyTeachingUnitOfWorkFactory,
+)
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.api.app import create_app
 from aieos.platform.api.etag import encode_revision_etag
@@ -70,6 +73,7 @@ def _app(
 ):
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
+        teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog({"test.generic"}),

@@ -40,6 +40,8 @@ FROZEN_API_MUTATION_OPERATION_IDS: frozenset[str] = frozenset(
         "content_review_request_changes",
         "content_review_reject",
         "content_publish",
+        "teaching_work_create",
+        "teaching_work_refine",
     }
 )
 
@@ -50,6 +52,9 @@ READ_ONLY_OPERATION_IDS: frozenset[str] = frozenset(
         "content_version_get",
         "teacher_os_review_queue_list",
         "teacher_os_review_queue_get",
+        "teaching_work_get",
+        "teaching_work_list",
+        "teacher_os_today_mission",
     }
 )
 

@@ -14,6 +14,8 @@ CONTENT_REVIEW_APPROVE_V1 = "content_review_approve.v1"
 CONTENT_REVIEW_REQUEST_CHANGES_V1 = "content_review_request_changes.v1"
 CONTENT_REVIEW_REJECT_V1 = "content_review_reject.v1"
 CONTENT_PUBLISH_V1 = "content_publish.v1"
+TEACHING_WORK_CREATE_V1 = "teaching_work_create.v1"
+TEACHING_WORK_REFINE_V1 = "teaching_work_refine.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +28,15 @@ class IdempotencyScope:
 
 @dataclass(frozen=True, slots=True)
 class IdempotencyOutcome:
+    """Established result of one idempotent mutation.
+
+    ``result_content_id`` is the generic primary result identifier of the
+    operation. The column name is content-oriented for historical reasons
+    (GCI-I05 shipped before non-Content mutations existed); non-Content
+    operations such as ``teaching_work_create.v1`` store their own result UUID
+    (the Work identity) in it. It is not a foreign key to content.contents.
+    """
+
     tenant_id: UUID
     principal_id: UUID
     operation: str
