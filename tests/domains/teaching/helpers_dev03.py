@@ -54,6 +54,7 @@ def build_client(
     model_gateway: StructuredModelGateway | None = None,
     provider_id: str = "fake",
     model_id: str = "fake-model",
+    generation_lease_seconds: int = 120,
 ) -> TestClient:
     gateway = model_gateway if model_gateway is not None else build_fake_gateway()
     app = create_app(
@@ -76,6 +77,7 @@ def build_client(
         ai_generation_authorization=AllowAIGenerationAuthorization(),
         ai_provider_id=provider_id,
         ai_model_id=model_id,
+        generation_lease_seconds=generation_lease_seconds,
     )
     return TestClient(app, raise_server_exceptions=False)
 

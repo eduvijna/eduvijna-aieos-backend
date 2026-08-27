@@ -64,6 +64,7 @@ def _row_to_run(row: Mapping[str, Any]) -> GenerationRun:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         completed_at=row["completed_at"],
+        lease_expires_at=row["lease_expires_at"],
     )
 
 
@@ -98,6 +99,7 @@ def _values(run: GenerationRun) -> dict[str, Any]:
         "created_at": run.created_at,
         "updated_at": run.updated_at,
         "completed_at": run.completed_at,
+        "lease_expires_at": run.lease_expires_at,
     }
 
 
@@ -211,6 +213,33 @@ class SqlAlchemyGenerationRunRepository:
                 generation_runs_table.c.principal_id == principal_id,
                 generation_runs_table.c.work_resource_id == work_resource_id,
                 generation_runs_table.c.status == GenerationRunStatus.SUCCEEDED.value,
+            )
+            .order_by(generation_runs_table.c.created_at.asc())
+            .limit(1)
+        )
+        try:
+            row = self._connection.execute(stmt).mappings().one_or_none()
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return None if row is None else _row_to_run(row)
+
+    def find_active_or_succeeded_for_work(
+        self,
+        *,
+        work_resource_id: UUID,
+    ) -> GenerationRun | None:
+        """Return the work-fence holder (RUNNING or SUCCEEDED), if any."""
+        stmt = (
+            select(generation_runs_table)
+            .where(
+                generation_runs_table.c.tenant_id == self._execution_tenant_id,
+                generation_runs_table.c.work_resource_id == work_resource_id,
+                generation_runs_table.c.status.in_(
+                    (
+                        GenerationRunStatus.RUNNING.value,
+                        GenerationRunStatus.SUCCEEDED.value,
+                    )
+                ),
             )
             .order_by(generation_runs_table.c.created_at.asc())
             .limit(1)

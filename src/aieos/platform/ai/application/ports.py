@@ -38,6 +38,12 @@ class GenerationRunRepository(Protocol):
         work_resource_id: UUID,
     ) -> GenerationRun | None: ...
 
+    def find_active_or_succeeded_for_work(
+        self,
+        *,
+        work_resource_id: UUID,
+    ) -> GenerationRun | None: ...
+
     def list_for_work(
         self,
         *,

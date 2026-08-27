@@ -31,10 +31,17 @@ class FakeStructuredModelGateway:
     output_tokens: int | None = 20
     total_tokens: int | None = 30
     calls: list[StructuredGenerationRequest[Any]] = field(default_factory=list)
+    before_generate: Callable[[], None] | None = None
+
+    @property
+    def call_count(self) -> int:
+        return len(self.calls)
 
     def generate_structured[T: BaseModel](
         self, request: StructuredGenerationRequest[T]
     ) -> StructuredGenerationResult[T]:
+        if self.before_generate is not None:
+            self.before_generate()
         self.calls.append(request)
         if self.error is not None:
             raise self.error
@@ -62,3 +69,7 @@ class FakeStructuredModelGateway:
 
     def fail_invalid(self, message: str = "output invalid") -> None:
         self.error = ModelOutputInvalid(message)
+
+
+# Back-compat alias used by TOS-DEV03R1 proofs.
+FakeModelGateway = FakeStructuredModelGateway

@@ -53,6 +53,10 @@ class ContentVersionRepository(Protocol):
         self, version_id: ContentVersionId
     ) -> Mapping[str, object] | None: ...
 
+    def find_by_generation_run_id(
+        self, generation_run_id: UUID
+    ) -> ContentVersion | None: ...
+
 
 class ContentTypeCatalog(Protocol):
     def contains(self, content_type: str) -> bool: ...

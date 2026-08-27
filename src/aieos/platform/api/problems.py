@@ -56,6 +56,7 @@ from aieos.domains.teaching.application.errors import (
     AggregateRevisionConflict as TeachingAggregateRevisionConflict,
 )
 from aieos.domains.teaching.application.errors import (
+    ContentMaterializationFailedError,
     EducationalQualityFailedError,
     GenerationIdempotencyConflict,
     GenerationServiceUnavailable,
@@ -489,6 +490,12 @@ _TEACHING_PROBLEMS: dict[type[TeachingApplicationError], tuple[int, str, str, st
         "model_generation_failed",
         "Model generation failed",
         "Model generation failed",
+    ),
+    ContentMaterializationFailedError: (
+        502,
+        "content_materialization_failed",
+        "Content materialization failed",
+        "Generated content could not be materialized for review",
     ),
     ModelOutputInvalidError: (
         502,

@@ -93,6 +93,7 @@ def create_app(
     ai_generation_authorization: AIGenerationAuthorizationPort | None = None,
     ai_provider_id: str = DEFAULT_AI_PROVIDER,
     ai_model_id: str = DEFAULT_AI_MODEL,
+    generation_lease_seconds: int = 120,
 ) -> FastAPI:
     codec = CursorCodec(cursor_signing_key)
     app = FastAPI(
@@ -174,10 +175,12 @@ def create_app(
         app.state.generate_teaching_work_service = GenerateTeachingWorkService(
             teaching_uow_factory,
             ai_uow_factory,
+            uow_factory,
             GenerateWorksheetCapability(model_gateway),
             create_ai_for_review,
             provider_id=ai_provider_id,
             model_id=ai_model_id,
+            lease_seconds=generation_lease_seconds,
         )
         app.state.list_teaching_work_artifacts_service = ListTeachingWorkArtifactsService(
             teaching_uow_factory,

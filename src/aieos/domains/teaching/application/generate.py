@@ -1,9 +1,9 @@
-"""Teaching Work → AI worksheet generation orchestration (TOS-DEV03)."""
+"""Teaching Work → AI worksheet generation orchestration (TOS-DEV03 / TOS-DEV03R1)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Mapping
 from uuid import UUID
 
@@ -11,10 +11,18 @@ from aieos.domains.content.application.ai_for_review import (
     CreateAIGeneratedContentForReviewCommand,
     CreateAIGeneratedContentForReviewResult,
     CreateAIGeneratedContentForReviewService,
+    find_content_version_by_generation_run_id,
 )
 from aieos.domains.content.application.audit import (
-    MutationAuditProvenance,
     ai_materialization_audit_provenance,
+)
+from aieos.domains.content.application.errors import (
+    AIGenerationForbidden,
+    ContentApplicationError,
+)
+from aieos.domains.content.application.ports import ContentUnitOfWorkFactory
+from aieos.domains.content.domain.identities import (
+    AggregateRevision as ContentAggregateRevision,
 )
 from aieos.domains.content.domain.provenance import AIGenerationProvenanceV1
 from aieos.domains.education.application.generate_worksheet import (
@@ -28,6 +36,7 @@ from aieos.domains.education.schema import (
     WORKSHEET_SCHEMA_VERSION,
 )
 from aieos.domains.teaching.application.errors import (
+    ContentMaterializationFailedError,
     EducationalQualityFailedError,
     GenerationIdempotencyConflict,
     ModelGenerationFailedError,
@@ -41,7 +50,9 @@ from aieos.domains.teaching.application.errors import (
 )
 from aieos.domains.teaching.application.ports import TeachingUnitOfWorkFactory
 from aieos.domains.teaching.domain.identities import AggregateRevision, WorkId
+from aieos.platform.ai.application.errors import GenerationRunConflict
 from aieos.platform.ai.application.ports import AIUnitOfWorkFactory
+from aieos.platform.ai.config import DEFAULT_GENERATION_LEASE_SECONDS
 from aieos.platform.ai.domain.generation_run import (
     GenerationRun,
     GenerationRunId,
@@ -131,25 +142,39 @@ def _generation_fingerprint(
     )
 
 
+def _lease_fresh(run: GenerationRun, *, now: datetime) -> bool:
+    if run.lease_expires_at is None:
+        return False
+    return run.lease_expires_at > now
+
+
 class GenerateTeachingWorkService:
-    """Orchestrate Work revision gate → GenerationRun → capability → Content+Review."""
+    """Orchestrate Work revision gate → GenerationRun → capability → Content+Review.
+
+    Durable statuses only: RUNNING → SUCCEEDED | FAILED.
+    VALIDATED is never written on ordinary paths.
+    """
 
     def __init__(
         self,
         teaching_uow_factory: TeachingUnitOfWorkFactory,
         ai_uow_factory: AIUnitOfWorkFactory,
+        content_uow_factory: ContentUnitOfWorkFactory,
         worksheet_capability: GenerateWorksheetCapability,
         create_ai_content_for_review: CreateAIGeneratedContentForReviewService,
         *,
         provider_id: str,
         model_id: str,
+        lease_seconds: int = DEFAULT_GENERATION_LEASE_SECONDS,
     ) -> None:
         self._teaching_uow_factory = teaching_uow_factory
         self._ai_uow_factory = ai_uow_factory
+        self._content_uow_factory = content_uow_factory
         self._worksheet_capability = worksheet_capability
         self._create_ai_content_for_review = create_ai_content_for_review
         self._provider_id = provider_id
         self._model_id = model_id
+        self._lease_seconds = lease_seconds
 
     def generate(
         self,
@@ -164,6 +189,7 @@ class GenerateTeachingWorkService:
     ) -> GenerateTeachingWorkResult:
         decided_at = now if now is not None else datetime.now(UTC)
         key_hash = hash_idempotency_key(idempotency_key)
+        lease_expires_at = decided_at + timedelta(seconds=self._lease_seconds)
 
         with self._teaching_uow_factory(execution_tenant_id) as teaching_uow:
             work = teaching_uow.works.get(work_id)
@@ -185,80 +211,18 @@ class GenerateTeachingWorkService:
             model_id=self._model_id,
         )
 
-        with self._ai_uow_factory(execution_tenant_id) as ai_uow:
-            existing_success = ai_uow.generation_runs.find_succeeded_for_work(
-                principal_id=principal_id,
-                work_resource_id=work_id.value,
-            )
-            by_key = ai_uow.generation_runs.get_by_idempotency_key(
-                principal_id=principal_id,
-                idempotency_key_sha256=key_hash,
-            )
-
-            if by_key is not None:
-                if by_key.request_fingerprint_sha256 != fingerprint:
-                    raise GenerationIdempotencyConflict(
-                        "Idempotency-Key was already used with a different request"
-                    )
-                if by_key.status is GenerationRunStatus.RUNNING:
-                    raise WorkGenerationInProgress("work generation is in progress")
-                if by_key.status is GenerationRunStatus.FAILED:
-                    code = by_key.failure_code or "model_generation_failed"
-                    if code == "educational_quality_failed":
-                        raise EducationalQualityFailedError(
-                            educational_quality=_quality_view_from_summary(
-                                by_key.educational_quality_summary
-                            )
-                        )
-                    if code == "model_provider_unavailable":
-                        raise ModelProviderUnavailableError("model provider unavailable")
-                    if code == "model_output_invalid":
-                        raise ModelOutputInvalidError("model output invalid")
-                    raise ModelGenerationFailedError(code)
-                if by_key.status is GenerationRunStatus.SUCCEEDED:
-                    return self._result_from_run(work_id, by_key)
-                if by_key.status is GenerationRunStatus.VALIDATED:
-                    raise WorkGenerationInProgress("work generation is in progress")
-
-            if existing_success is not None and (
-                by_key is None or by_key.generation_run_id != existing_success.generation_run_id
-            ):
-                err = WorkGenerationAlreadyExists()
-                err.existing_generation_run_id = existing_success.generation_run_id
-                err.existing_content_id = existing_success.result_content_id
-                err.existing_version_id = existing_success.result_version_id
-                raise err
-
-            run = GenerationRun(
-                generation_run_id=GenerationRunId.generate(),
-                tenant_id=execution_tenant_id,
-                principal_id=principal_id,
-                work_resource_type=WORK_RESOURCE_TYPE,
-                work_resource_id=work_id.value,
-                work_resource_revision=int(expected_aggregate_revision),
-                capability_id=CAPABILITY_EDUCATION_GENERATE_WORKSHEET,
-                provider_id=self._provider_id,
-                model_id=self._model_id,
-                status=GenerationRunStatus.RUNNING,
-                request_fingerprint_sha256=fingerprint,
-                idempotency_key_sha256=key_hash,
-                provider_response_id=None,
-                input_tokens=None,
-                output_tokens=None,
-                total_tokens=None,
-                educational_quality_summary=None,
-                result_content_id=None,
-                result_version_id=None,
-                result_content_revision=None,
-                failure_code=None,
-                aggregate_revision=0,
-                created_at=decided_at,
-                updated_at=decided_at,
-                completed_at=None,
-            )
-            ai_uow.generation_runs.insert(run)
-            ai_uow.commit()
-            run_id = run.generation_run_id
+        run_id = self._claim_or_resolve_run(
+            execution_tenant_id,
+            principal_id,
+            work_id=work_id,
+            expected_aggregate_revision=expected_aggregate_revision,
+            key_hash=key_hash,
+            fingerprint=fingerprint,
+            lease_expires_at=lease_expires_at,
+            decided_at=decided_at,
+        )
+        if isinstance(run_id, GenerateTeachingWorkResult):
+            return run_id
 
         generation_input = WorksheetGenerationInput(
             work_ref=ResourceRef(
@@ -320,9 +284,11 @@ class GenerateTeachingWorkService:
             locked = ai_uow.generation_runs.get_for_update(run_id)
             if locked is None:
                 raise TeachingWorkNotFound("GenerationRun was not found")
-            validated = replace(
+            if locked.status is GenerationRunStatus.SUCCEEDED:
+                return self._result_from_run(work_id, locked)
+            # Stay RUNNING; refresh provider metadata and lease in place.
+            refreshed = replace(
                 locked,
-                status=GenerationRunStatus.VALIDATED,
                 provider_id=meta.provider_id,
                 model_id=meta.model_id,
                 provider_response_id=meta.provider_response_id,
@@ -330,15 +296,20 @@ class GenerateTeachingWorkService:
                 output_tokens=meta.output_tokens,
                 total_tokens=meta.total_tokens,
                 educational_quality_summary=quality_summary,
-                aggregate_revision=1,
+                lease_expires_at=decided_at + timedelta(seconds=self._lease_seconds),
                 updated_at=decided_at,
             )
-            if not ai_uow.generation_runs.update(validated, expected_revision=0):
+            if not ai_uow.generation_runs.update(
+                refreshed, expected_revision=locked.aggregate_revision
+            ):
                 raise WorkGenerationInProgress("work generation concurrency conflict")
             ai_uow.commit()
+            run_revision = refreshed.aggregate_revision
 
         provenance = AIGenerationProvenanceV1(
-            generation_run_ref=ResourceRef(GENERATION_RUN_RESOURCE_TYPE, run_id.value, 1),
+            generation_run_ref=ResourceRef(
+                GENERATION_RUN_RESOURCE_TYPE, run_id.value, run_revision
+            ),
             prompt_execution_ref=None,
             provider_id=meta.provider_id,
             model_id=meta.model_id,
@@ -373,36 +344,374 @@ class GenerateTeachingWorkService:
                 audit_provenance=audit,
                 now=decided_at,
             )
-        except Exception as exc:
+        except AIGenerationForbidden as exc:
             self._mark_failed(
                 execution_tenant_id,
                 run_id,
-                failure_code="model_generation_failed",
+                failure_code="content_materialization_failed",
                 educational_quality_summary=quality_summary,
                 provider_metadata=meta,
                 now=decided_at,
             )
-            raise ModelGenerationFailedError("content materialization failed") from exc
+            raise TeachingWorkForbidden("AI content materialization is forbidden") from exc
+        except ContentApplicationError as exc:
+            self._mark_failed(
+                execution_tenant_id,
+                run_id,
+                failure_code="content_materialization_failed",
+                educational_quality_summary=quality_summary,
+                provider_metadata=meta,
+                now=decided_at,
+            )
+            raise ContentMaterializationFailedError(
+                "content materialization failed"
+            ) from exc
+        except Exception as exc:
+            self._mark_failed(
+                execution_tenant_id,
+                run_id,
+                failure_code="content_materialization_failed",
+                educational_quality_summary=quality_summary,
+                provider_metadata=meta,
+                now=decided_at,
+            )
+            raise ContentMaterializationFailedError(
+                "content materialization failed"
+            ) from exc
 
+        return self._finalize_succeeded(
+            execution_tenant_id,
+            work_id,
+            run_id,
+            materialization=materialization,
+            quality_summary=quality_summary,
+            now=decided_at,
+        )
+
+    def _claim_or_resolve_run(
+        self,
+        execution_tenant_id: UUID,
+        principal_id: UUID,
+        *,
+        work_id: WorkId,
+        expected_aggregate_revision: AggregateRevision,
+        key_hash: str,
+        fingerprint: str,
+        lease_expires_at: datetime,
+        decided_at: datetime,
+        _attempt: int = 0,
+    ) -> GenerationRunId | GenerateTeachingWorkResult:
+        """Insert RUNNING under work/idempotency fences; resolve conflicts without model call."""
+        if _attempt > 2:
+            raise WorkGenerationInProgress("work generation concurrency conflict")
+        with self._ai_uow_factory(execution_tenant_id) as ai_uow:
+            by_key = ai_uow.generation_runs.get_by_idempotency_key(
+                principal_id=principal_id,
+                idempotency_key_sha256=key_hash,
+            )
+            if by_key is not None:
+                resolved = self._resolve_existing_run(
+                    execution_tenant_id,
+                    principal_id,
+                    work_id=work_id,
+                    run=by_key,
+                    fingerprint=fingerprint,
+                    key_hash=key_hash,
+                    lease_expires_at=lease_expires_at,
+                    decided_at=decided_at,
+                    same_key=True,
+                )
+                if resolved is not None:
+                    return resolved
+
+            run = GenerationRun(
+                generation_run_id=GenerationRunId.generate(),
+                tenant_id=execution_tenant_id,
+                principal_id=principal_id,
+                work_resource_type=WORK_RESOURCE_TYPE,
+                work_resource_id=work_id.value,
+                work_resource_revision=int(expected_aggregate_revision),
+                capability_id=CAPABILITY_EDUCATION_GENERATE_WORKSHEET,
+                provider_id=self._provider_id,
+                model_id=self._model_id,
+                status=GenerationRunStatus.RUNNING,
+                request_fingerprint_sha256=fingerprint,
+                idempotency_key_sha256=key_hash,
+                provider_response_id=None,
+                input_tokens=None,
+                output_tokens=None,
+                total_tokens=None,
+                educational_quality_summary=None,
+                result_content_id=None,
+                result_version_id=None,
+                result_content_revision=None,
+                failure_code=None,
+                aggregate_revision=0,
+                created_at=decided_at,
+                updated_at=decided_at,
+                completed_at=None,
+                lease_expires_at=lease_expires_at,
+            )
+            try:
+                ai_uow.generation_runs.insert(run)
+                ai_uow.commit()
+                return run.generation_run_id
+            except GenerationRunConflict:
+                ai_uow.rollback()
+
+        with self._ai_uow_factory(execution_tenant_id) as ai_uow:
+            by_key = ai_uow.generation_runs.get_by_idempotency_key(
+                principal_id=principal_id,
+                idempotency_key_sha256=key_hash,
+            )
+            winner = ai_uow.generation_runs.find_active_or_succeeded_for_work(
+                work_resource_id=work_id.value,
+            )
+            conflict_run = by_key if by_key is not None else winner
+            if conflict_run is None:
+                raise WorkGenerationInProgress("work generation concurrency conflict")
+            resolved = self._resolve_existing_run(
+                execution_tenant_id,
+                principal_id,
+                work_id=work_id,
+                run=conflict_run,
+                fingerprint=fingerprint,
+                key_hash=key_hash,
+                lease_expires_at=lease_expires_at,
+                decided_at=decided_at,
+                same_key=(
+                    by_key is not None
+                    and by_key.idempotency_key_sha256 == key_hash
+                ),
+            )
+            if resolved is not None:
+                return resolved
+
+        # Stale fence released — retry claim once.
+        return self._claim_or_resolve_run(
+            execution_tenant_id,
+            principal_id,
+            work_id=work_id,
+            expected_aggregate_revision=expected_aggregate_revision,
+            key_hash=key_hash,
+            fingerprint=fingerprint,
+            lease_expires_at=lease_expires_at,
+            decided_at=decided_at,
+            _attempt=_attempt + 1,
+        )
+
+    def _resolve_existing_run(
+        self,
+        execution_tenant_id: UUID,
+        principal_id: UUID,
+        *,
+        work_id: WorkId,
+        run: GenerationRun,
+        fingerprint: str,
+        key_hash: str,
+        lease_expires_at: datetime,
+        decided_at: datetime,
+        same_key: bool,
+    ) -> GenerationRunId | GenerateTeachingWorkResult | None:
+        if same_key and run.request_fingerprint_sha256 != fingerprint:
+            raise GenerationIdempotencyConflict(
+                "Idempotency-Key was already used with a different request"
+            )
+
+        if run.status is GenerationRunStatus.SUCCEEDED:
+            if same_key:
+                return self._result_from_run(work_id, run)
+            err = WorkGenerationAlreadyExists()
+            err.existing_generation_run_id = run.generation_run_id
+            err.existing_content_id = run.result_content_id
+            err.existing_version_id = run.result_version_id
+            raise err
+
+        if run.status is GenerationRunStatus.FAILED:
+            if same_key:
+                self._raise_failure_from_run(run)
+            return None
+
+        if run.status is GenerationRunStatus.VALIDATED:
+            # Compatibility-only status; treat as in-progress / reclaimable.
+            pass
+
+        if run.status in (
+            GenerationRunStatus.RUNNING,
+            GenerationRunStatus.VALIDATED,
+        ):
+            if _lease_fresh(run, now=decided_at):
+                raise WorkGenerationInProgress("work generation is in progress")
+
+            # Stale RUNNING: reconcile Content first (crash after materialize).
+            reconciled = self._reconcile_stale_with_content(
+                execution_tenant_id, work_id, run, now=decided_at
+            )
+            if reconciled is not None:
+                return reconciled
+
+            if same_key:
+                reclaimed = self._reclaim_lease(
+                    execution_tenant_id,
+                    run.generation_run_id,
+                    lease_expires_at=lease_expires_at,
+                    now=decided_at,
+                )
+                if reclaimed:
+                    return run.generation_run_id
+                raise WorkGenerationInProgress("work generation is in progress")
+
+            # Different key: fail-stale to release work fence, then allow retry.
+            self._mark_failed(
+                execution_tenant_id,
+                run.generation_run_id,
+                failure_code="generation_lease_expired",
+                now=decided_at,
+            )
+            return None
+
+        raise WorkGenerationInProgress("work generation is in progress")
+
+    def _reconcile_stale_with_content(
+        self,
+        execution_tenant_id: UUID,
+        work_id: WorkId,
+        run: GenerationRun,
+        *,
+        now: datetime,
+    ) -> GenerateTeachingWorkResult | None:
+        with self._content_uow_factory(execution_tenant_id) as content_uow:
+            version = find_content_version_by_generation_run_id(
+                content_uow, run.generation_run_id.value
+            )
+            if version is None:
+                return None
+            content = content_uow.contents.get(version.content_id)
+            materialization = CreateAIGeneratedContentForReviewResult(
+                content_id=version.content_id,
+                version_id=version.version_id,
+                content_type=(
+                    WORKSHEET_CONTENT_TYPE
+                    if content is None
+                    else str(content.content_type)
+                ),
+                title="" if content is None else content.title,
+                stewardship_state="IN_REVIEW",
+                aggregate_revision=(
+                    ContentAggregateRevision(0)
+                    if content is None
+                    else content.aggregate_revision
+                ),
+            )
+        return self._finalize_succeeded(
+            execution_tenant_id,
+            work_id,
+            run.generation_run_id,
+            materialization=materialization,
+            quality_summary=run.educational_quality_summary,
+            now=now,
+        )
+
+    def _reclaim_lease(
+        self,
+        execution_tenant_id: UUID,
+        run_id: GenerationRunId,
+        *,
+        lease_expires_at: datetime,
+        now: datetime,
+    ) -> bool:
+        with self._ai_uow_factory(execution_tenant_id) as ai_uow:
+            locked = ai_uow.generation_runs.get_for_update(run_id)
+            if locked is None:
+                return False
+            if locked.status is GenerationRunStatus.SUCCEEDED:
+                return False
+            if locked.status is GenerationRunStatus.FAILED:
+                return False
+            if _lease_fresh(locked, now=now):
+                return False
+            reclaimed = replace(
+                locked,
+                status=GenerationRunStatus.RUNNING,
+                lease_expires_at=lease_expires_at,
+                updated_at=now,
+                aggregate_revision=locked.aggregate_revision + 1,
+            )
+            ok = ai_uow.generation_runs.update(
+                reclaimed, expected_revision=locked.aggregate_revision
+            )
+            if ok:
+                ai_uow.commit()
+            return ok
+
+    def _finalize_succeeded(
+        self,
+        execution_tenant_id: UUID,
+        work_id: WorkId,
+        run_id: GenerationRunId,
+        *,
+        materialization: CreateAIGeneratedContentForReviewResult,
+        quality_summary: Mapping[str, object] | None,
+        now: datetime,
+    ) -> GenerateTeachingWorkResult:
         with self._ai_uow_factory(execution_tenant_id) as ai_uow:
             locked = ai_uow.generation_runs.get_for_update(run_id)
             if locked is None:
                 raise TeachingWorkNotFound("GenerationRun was not found")
+            if locked.status is GenerationRunStatus.SUCCEEDED:
+                return self._result_from_run(
+                    work_id, locked, materialization=materialization
+                )
             succeeded = replace(
                 locked,
                 status=GenerationRunStatus.SUCCEEDED,
                 result_content_id=materialization.content_id.value,
                 result_version_id=materialization.version_id.value,
                 result_content_revision=int(materialization.aggregate_revision),
-                educational_quality_summary=quality_summary,
-                aggregate_revision=2,
-                updated_at=decided_at,
-                completed_at=decided_at,
+                educational_quality_summary=(
+                    quality_summary
+                    if quality_summary is not None
+                    else locked.educational_quality_summary
+                ),
+                lease_expires_at=None,
+                aggregate_revision=locked.aggregate_revision + 1,
+                updated_at=now,
+                completed_at=now,
             )
-            if not ai_uow.generation_runs.update(succeeded, expected_revision=1):
+            if not ai_uow.generation_runs.update(
+                succeeded, expected_revision=locked.aggregate_revision
+            ):
+                # Concurrent finalizer won — re-read.
+                current = ai_uow.generation_runs.get(run_id)
+                if current is not None and current.status is GenerationRunStatus.SUCCEEDED:
+                    return self._result_from_run(
+                        work_id, current, materialization=materialization
+                    )
                 raise WorkGenerationInProgress("work generation concurrency conflict")
             ai_uow.commit()
-            return self._result_from_run(work_id, succeeded, materialization=materialization)
+            return self._result_from_run(
+                work_id, succeeded, materialization=materialization
+            )
+
+    def _raise_failure_from_run(self, run: GenerationRun) -> None:
+        code = run.failure_code or "model_generation_failed"
+        if code == "educational_quality_failed":
+            raise EducationalQualityFailedError(
+                educational_quality=_quality_view_from_summary(
+                    run.educational_quality_summary
+                )
+            )
+        if code == "model_provider_unavailable":
+            raise ModelProviderUnavailableError("model provider unavailable")
+        if code == "model_output_invalid":
+            raise ModelOutputInvalidError("model output invalid")
+        if code == "content_materialization_failed":
+            raise ContentMaterializationFailedError("content materialization failed")
+        if code == "generation_lease_expired":
+            raise WorkGenerationInProgress(
+                "prior generation lease expired; retry with a new Idempotency-Key"
+            )
+        raise ModelGenerationFailedError(code)
 
     def _mark_failed(
         self,
@@ -417,6 +726,11 @@ class GenerateTeachingWorkService:
         with self._ai_uow_factory(execution_tenant_id) as ai_uow:
             locked = ai_uow.generation_runs.get_for_update(run_id)
             if locked is None:
+                return
+            if locked.status in (
+                GenerationRunStatus.SUCCEEDED,
+                GenerationRunStatus.FAILED,
+            ):
                 return
             meta = provider_metadata
             failed = replace(
@@ -436,6 +750,7 @@ class GenerateTeachingWorkService:
                 input_tokens=getattr(meta, "input_tokens", locked.input_tokens),
                 output_tokens=getattr(meta, "output_tokens", locked.output_tokens),
                 total_tokens=getattr(meta, "total_tokens", locked.total_tokens),
+                lease_expires_at=None,
                 aggregate_revision=locked.aggregate_revision + 1,
                 updated_at=now,
                 completed_at=now,

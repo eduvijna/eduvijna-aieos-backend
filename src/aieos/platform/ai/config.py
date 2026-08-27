@@ -15,6 +15,9 @@ ENV_AI_MODEL = "AIEOS_AI_MODEL"
 ENV_OPENAI_API_KEY = "AIEOS_OPENAI_API_KEY"
 ENV_AI_MAX_OUTPUT_TOKENS = "AIEOS_AI_MAX_OUTPUT_TOKENS"
 ENV_AI_TIMEOUT_SECONDS = "AIEOS_AI_TIMEOUT_SECONDS"
+ENV_GENERATION_LEASE_SECONDS = "AIEOS_GENERATION_LEASE_SECONDS"
+
+DEFAULT_GENERATION_LEASE_SECONDS = 120
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,3 +68,20 @@ def load_openai_provider_config_from_env(
         max_output_tokens=max_tokens,
         timeout_seconds=timeout,
     )
+
+
+def load_generation_lease_seconds(
+    environ: dict[str, str] | None = None,
+) -> int:
+    """Lease duration for RUNNING GenerationRun recovery (NON_PRODUCTION default)."""
+    env = os.environ if environ is None else environ
+    raw = (
+        env.get(ENV_GENERATION_LEASE_SECONDS) or str(DEFAULT_GENERATION_LEASE_SECONDS)
+    ).strip()
+    try:
+        seconds = int(raw)
+    except ValueError as exc:
+        raise ValueError("AIEOS_GENERATION_LEASE_SECONDS must be an integer") from exc
+    if seconds < 1:
+        raise ValueError("AIEOS_GENERATION_LEASE_SECONDS must be positive")
+    return seconds

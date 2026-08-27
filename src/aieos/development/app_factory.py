@@ -33,6 +33,7 @@ from aieos.domains.teaching.infrastructure.persistence.uow import (
 from aieos.platform.ai.config import (
     DEFAULT_AI_MODEL,
     DEFAULT_AI_PROVIDER,
+    load_generation_lease_seconds,
     load_openai_provider_config_from_env,
 )
 from aieos.platform.ai.fake import FakeStructuredModelGateway
@@ -96,6 +97,7 @@ def build_development_teacher_os_app(
         ai_generation_authorization=DevelopmentAIGenerationPermit(),
         ai_provider_id=provider_id,
         ai_model_id=model_id,
+        generation_lease_seconds=load_generation_lease_seconds(),
     )
 
 

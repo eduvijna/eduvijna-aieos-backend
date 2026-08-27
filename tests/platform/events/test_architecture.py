@@ -124,6 +124,7 @@ def test_migration_chain_and_forbidden_tables() -> None:
         "saii020001_security_audit_ledger.py",
         "tosd020001_teaching_work.py",
         "tosd030001_generation_runs.py",
+    "tosd030002_generation_run_work_fence.py",
     ]
 
 

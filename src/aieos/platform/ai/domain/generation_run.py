@@ -77,6 +77,7 @@ class GenerationRun:
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None
+    lease_expires_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.generation_run_id, GenerationRunId):
@@ -116,3 +117,12 @@ class GenerationRun:
             raise InvalidGenerationRunError("updated_at must be >= created_at")
         if self.completed_at is not None and self.completed_at.tzinfo is None:
             raise InvalidGenerationRunError("completed_at must be timezone-aware")
+        if self.lease_expires_at is not None and self.lease_expires_at.tzinfo is None:
+            raise InvalidGenerationRunError("lease_expires_at must be timezone-aware")
+        if (
+            self.status is GenerationRunStatus.RUNNING
+            and self.lease_expires_at is None
+        ):
+            raise InvalidGenerationRunError(
+                "lease_expires_at is required when status is RUNNING"
+            )

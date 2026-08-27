@@ -13,6 +13,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
@@ -46,6 +47,7 @@ generation_runs_table = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     Column("completed_at", DateTime(timezone=True), nullable=True),
+    Column("lease_expires_at", DateTime(timezone=True), nullable=True),
     PrimaryKeyConstraint("generation_run_id", name="pk_ai_generation_runs"),
     UniqueConstraint(
         "tenant_id",
@@ -69,6 +71,10 @@ generation_runs_table = Table(
     CheckConstraint(
         "status IN ('RUNNING', 'VALIDATED', 'SUCCEEDED', 'FAILED')",
         name="ck_ai_generation_runs_status",
+    ),
+    CheckConstraint(
+        "status <> 'RUNNING' OR lease_expires_at IS NOT NULL",
+        name="ck_ai_generation_runs_running_requires_lease",
     ),
     CheckConstraint(
         "work_resource_type = 'teaching.work'",
@@ -106,5 +112,12 @@ generation_runs_table = Table(
         "work_resource_id",
     ),
     Index("ix_ai_generation_runs_tenant_status", "tenant_id", "status"),
+    Index(
+        "uq_ai_generation_runs_work_active_or_succeeded",
+        "tenant_id",
+        "work_resource_id",
+        unique=True,
+        postgresql_where=text("status IN ('RUNNING', 'SUCCEEDED')"),
+    ),
     schema="ai",
 )

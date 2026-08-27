@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select, text, update
+from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.engine import Connection
 
 from aieos.domains.content.application.errors import (
@@ -122,6 +122,35 @@ class SqlAlchemyContentVersionRepository:
         if not isinstance(value, Mapping):
             raise PersistenceInvariantViolation("stored provenance must be a JSON object")
         return dict(value)
+
+    def find_by_generation_run_id(
+        self, generation_run_id: UUID
+    ) -> ContentVersion | None:
+        """Locate AI ContentVersion bound to generation_run_id via provenance JSON."""
+        try:
+            row = (
+                self._connection.execute(
+                    select(content_versions_table)
+                    .where(
+                        content_versions_table.c.origin == "AI",
+                        content_versions_table.c.provenance.is_not(None),
+                        func.jsonb_extract_path_text(
+                            content_versions_table.c.provenance,
+                            "generation_run_ref",
+                            "resource_id",
+                        )
+                        == str(generation_run_id),
+                    )
+                    .limit(1)
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                return None
+            return content_version_from_row(row)
+        except Exception as exc:
+            reraise_as_application_error(exc)
 
 
 class SqlAlchemyContentRepository:

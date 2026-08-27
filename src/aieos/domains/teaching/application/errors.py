@@ -95,3 +95,7 @@ class EducationalQualityFailedError(TeachingApplicationError):
 
 class GenerationServiceUnavailable(TeachingApplicationError):
     """Generation composition is not available in this runtime."""
+
+
+class ContentMaterializationFailedError(TeachingApplicationError):
+    """Content materialization failed after model generation succeeded."""

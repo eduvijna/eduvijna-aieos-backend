@@ -14,6 +14,7 @@ from aieos.domains.content.application.errors import (
     PersistenceOperationFailed,
     ReviewAlreadyDecided,
     VersionAlreadyExists,
+    AIGenerationRunAlreadyMaterialized,
 )
 
 
@@ -35,11 +36,15 @@ def translate_infrastructure_error(
     orig = getattr(exc, "orig", None)
     is_unique = isinstance(exc, UniqueViolation) or isinstance(orig, UniqueViolation)
     if is_unique:
+        blob = _constraint_blob(exc)
+        if "uq_content_versions_ai_generation_run_id" in blob:
+            return AIGenerationRunAlreadyMaterialized(
+                "AI ContentVersion already exists for this generation_run_id"
+            )
         if unique_conflict is not None:
             return unique_conflict(
                 unique_message or "unique constraint violated"
             )
-        blob = _constraint_blob(exc)
         if "review_decisions" in blob:
             return ReviewAlreadyDecided(
                 "this ContentVersion already has a terminal ReviewDecision"

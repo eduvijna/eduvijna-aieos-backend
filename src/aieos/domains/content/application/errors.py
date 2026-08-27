@@ -34,6 +34,10 @@ class VersionAlreadyExists(ContentApplicationError):
     """A ContentVersion with the same identity or version number already exists."""
 
 
+class AIGenerationRunAlreadyMaterialized(ContentApplicationError):
+    """An AI ContentVersion is already bound to this generation_run_id."""
+
+
 class ContentAlreadyExists(ContentApplicationError):
     """A Content aggregate with the same identity already exists."""
 
