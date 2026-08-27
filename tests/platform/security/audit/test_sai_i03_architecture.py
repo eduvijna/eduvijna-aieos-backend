@@ -38,6 +38,7 @@ _EXPECTED_MIGRATIONS = [
     "pedi10b6001_asset_security_audit.py",
     "saii020001_security_audit_ledger.py",
     "tosd020001_teaching_work.py",
+    "tosd030001_generation_runs.py",
 ]
 
 
@@ -90,12 +91,16 @@ def test_canonical_helper_and_resource_types() -> None:
 
 def test_api_mutations_wire_audit_ai_and_migration_also_wired_in_i04() -> None:
     """SAI-I03 wired API; SAI-I04 advances AI/migration (see sai_i04 architecture)."""
-    for name in ("create.py", "http_append.py", "review.py", "publish.py"):
+    in_uow = (CONTENT_ROOT / "application" / "in_uow.py").read_text(encoding="utf-8")
+    assert "insert_required_content_audit" in in_uow
+    create = (CONTENT_ROOT / "application" / "create.py").read_text(encoding="utf-8")
+    assert "create_content_in_uow" in create
+    for name in ("http_append.py", "review.py", "publish.py"):
         text = (CONTENT_ROOT / "application" / name).read_text(encoding="utf-8")
         assert "insert_required_content_audit" in text, name
     ai = AI_SERVICE.read_text(encoding="utf-8")
     migration = MIGRATION_SERVICE.read_text(encoding="utf-8")
-    assert "insert_required_content_audit" in ai
+    assert "materialize_ai_version_in_uow" in ai
     assert "insert_required_content_audit" in migration
     doc = BOUNDARY_DOC.read_text(encoding="utf-8")
     assert "SAI-I04" in doc

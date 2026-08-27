@@ -71,6 +71,7 @@ _EXPECTED_MIGRATIONS = [
     "pedi10b6001_asset_security_audit.py",
     "saii020001_security_audit_ledger.py",
     "tosd020001_teaching_work.py",
+    "tosd030001_generation_runs.py",
 ]
 
 
@@ -164,15 +165,17 @@ class TestArchitectureAbuse:
         assert (MIGRATIONS / "pedi090001_security_authority.py").is_file()
         assert not (MIGRATIONS / "saii030001_security_audit_content.py").exists()
         assert not any(MIGRATIONS.glob("saii040001*"))
+        in_uow = (CONTENT_ROOT / "application" / "in_uow.py").read_text(encoding="utf-8")
+        assert "insert_required_content_audit" in in_uow
         create = (CONTENT_ROOT / "application" / "create.py").read_text(encoding="utf-8")
-        assert "insert_required_content_audit" in create
+        assert "create_content_in_uow" in create
         ai = (CONTENT_ROOT / "application" / "ai_materialization.py").read_text(
             encoding="utf-8"
         )
         migration = (CONTENT_ROOT / "application" / "migration_import.py").read_text(
             encoding="utf-8"
         )
-        assert "insert_required_content_audit" in ai
+        assert "materialize_ai_version_in_uow" in ai
         assert "insert_required_content_audit" in migration
         ports = (CONTENT_ROOT / "application" / "ports.py").read_text(encoding="utf-8")
         assert "SqlAlchemySecurityMutationAuditRepository" not in ports

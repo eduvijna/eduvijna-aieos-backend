@@ -623,6 +623,7 @@ def teacher_os_review_queue_list(
         after_content_id = ContentId(decoded.content_id)
     result = service.list(
         context.tenant_id,
+        context.principal_id,
         ListTeacherReviewQueueQuery(
             limit=page_size,
             after_submitted_at=after_submitted_at,
@@ -661,6 +662,7 @@ def teacher_os_review_queue_get(
 ) -> TeacherReviewQueueDetailResponse:
     model = service.get(
         context.tenant_id,
+        context.principal_id,
         _content_id(content_id),
         _version_id(version_id),
     )

@@ -423,6 +423,23 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                     f"TO {RUNTIME_USER}"
                 )
             )
+            # TOS-DEV03: AI GenerationRun execution SoR (no DELETE, RLS enforced).
+            conn.execute(text(f"GRANT USAGE ON SCHEMA ai TO {RUNTIME_USER}"))
+            conn.execute(
+                text(
+                    f"GRANT SELECT, INSERT, UPDATE ON ai.generation_runs "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(f"REVOKE DELETE ON ai.generation_runs FROM {RUNTIME_USER}")
+            )
+            conn.execute(
+                text(
+                    f"GRANT EXECUTE ON FUNCTION ai.current_tenant_id() "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
             conn.execute(text(f"GRANT USAGE ON SCHEMA api TO {RUNTIME_USER}"))
             conn.execute(
                 text(

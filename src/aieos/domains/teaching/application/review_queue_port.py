@@ -30,13 +30,16 @@ class ReviewQueuePendingCountAdapter:
     def __init__(self, review_queue_service: ListTeacherReviewQueueService) -> None:
         self._review_queue_service = review_queue_service
 
-    def pending_count(self, execution_tenant_id: UUID) -> int:
+    def pending_count(
+        self, execution_tenant_id: UUID, principal_id: UUID
+    ) -> int:
         total = 0
         after_submitted_at = None
         after_content_id = None
         for _ in range(MAX_PAGES):
             page = self._review_queue_service.list(
                 execution_tenant_id,
+                principal_id,
                 ListTeacherReviewQueueQuery(
                     limit=PAGE_LIMIT,
                     after_submitted_at=after_submitted_at,

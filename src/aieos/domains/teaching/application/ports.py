@@ -48,13 +48,15 @@ class TeachingWorkRepository(Protocol):
 
 
 class ReviewQueuePendingCountPort(Protocol):
-    """Pending Review Queue size for the execution tenant.
+    """Pending Review Queue size for the current teacher in the execution tenant.
 
     Teaching does not own the Review Queue. This port exists so the Mission
     projection can compose a count without importing Content persistence.
     """
 
-    def pending_count(self, execution_tenant_id: UUID) -> int: ...
+    def pending_count(
+        self, execution_tenant_id: UUID, principal_id: UUID
+    ) -> int: ...
 
 
 class TeachingClock(Protocol):

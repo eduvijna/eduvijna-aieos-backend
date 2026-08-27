@@ -624,6 +624,7 @@ class SqlAlchemyReviewQueueReadRepository:
     def list_page(
         self,
         *,
+        owner_principal_id: UUID,
         limit: int,
         after_submitted_at: datetime | None,
         after_content_id: ContentId | None,
@@ -647,6 +648,7 @@ class SqlAlchemyReviewQueueReadRepository:
             .select_from(join_from)
             .where(
                 contents_table.c.tenant_id == self._execution_tenant_id,
+                contents_table.c.owner_principal_id == owner_principal_id,
                 contents_table.c.stewardship_state == "IN_REVIEW",
                 contents_table.c.current_version_id.is_not(None),
                 ~decision_exists,
@@ -674,7 +676,11 @@ class SqlAlchemyReviewQueueReadRepository:
             reraise_as_application_error(exc)
 
     def get_item(
-        self, content_id: ContentId, version_id: ContentVersionId
+        self,
+        content_id: ContentId,
+        version_id: ContentVersionId,
+        *,
+        owner_principal_id: UUID,
     ) -> TeacherReviewQueueDetail | None:
         join_from, decision_exists = self._eligible_join()
         stmt = (
@@ -699,6 +705,7 @@ class SqlAlchemyReviewQueueReadRepository:
             .select_from(join_from)
             .where(
                 contents_table.c.tenant_id == self._execution_tenant_id,
+                contents_table.c.owner_principal_id == owner_principal_id,
                 contents_table.c.content_id == content_id.value,
                 contents_table.c.stewardship_state == "IN_REVIEW",
                 contents_table.c.current_version_id == version_id.value,

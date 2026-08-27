@@ -223,13 +223,18 @@ class ReviewQueueReadRepository(Protocol):
     def list_page(
         self,
         *,
+        owner_principal_id: UUID,
         limit: int,
         after_submitted_at: datetime | None,
         after_content_id: ContentId | None,
     ) -> list[TeacherReviewQueueItem]: ...
 
     def get_item(
-        self, content_id: ContentId, version_id: ContentVersionId
+        self,
+        content_id: ContentId,
+        version_id: ContentVersionId,
+        *,
+        owner_principal_id: UUID,
     ) -> TeacherReviewQueueDetail | None: ...
 
 

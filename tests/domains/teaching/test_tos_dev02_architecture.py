@@ -286,6 +286,8 @@ class TestOpenApiContract:
             "teaching_work_list",
             "teaching_work_get",
             "teaching_work_refine",
+            "teaching_work_generate",
+            "teaching_work_artifacts_list",
             "teacher_os_today_mission",
         } <= operations
 
@@ -317,14 +319,60 @@ class TestOpenApiContract:
 
 
 class TestNoGenerationInThisSlice:
-    def test_teaching_sources_contain_no_ai_generation_or_agent_surface(self) -> None:
-        forbidden = ("openai", "anthropic", "llm", "prompt", "mcp", "agent_")
-        offenders = []
+    """DEV03: generation orchestration is allowed in teaching application.
+
+    Provider SDKs and agent frameworks remain forbidden in teaching sources.
+    Legitimate identifiers such as ``prompt_execution_ref`` are allowed.
+    """
+
+    _FORBIDDEN_IMPORT_ROOTS = (
+        "openai",
+        "anthropic",
+        "mcp",
+        "langchain",
+        "langgraph",
+        "langsmith",
+        "autogen",
+        "crewai",
+        "semantic_kernel",
+        "haystack",
+        "llama_index",
+        "agents",
+    )
+
+    def test_generation_orchestration_lives_in_teaching_application(self) -> None:
+        generate = TEACHING_ROOT / "application" / "generate.py"
+        artifacts = TEACHING_ROOT / "application" / "artifacts.py"
+        assert generate.is_file()
+        assert artifacts.is_file()
+        generate_source = generate.read_text(encoding="utf-8")
+        artifacts_source = artifacts.read_text(encoding="utf-8")
+        assert "class GenerateTeachingWorkService" in generate_source
+        assert "prompt_execution_ref" in generate_source
+        assert "class ListTeachingWorkArtifactsService" in artifacts_source
+        routes = (TEACHING_ROOT / "api" / "v1" / "routes.py").read_text(
+            encoding="utf-8"
+        )
+        assert 'operation_id="teaching_work_generate"' in routes
+        assert 'operation_id="teaching_work_artifacts_list"' in routes
+
+    def test_teaching_sources_import_no_provider_sdk_or_agent_framework(self) -> None:
+        offenders: list[str] = []
         for path in _teaching_sources():
-            lowered = path.read_text(encoding="utf-8").lower()
-            for token in forbidden:
-                if token in lowered:
-                    offenders.append(f"{path.name}:{token}")
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                modules: list[str] = []
+                if isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        modules.append(node.module)
+                elif isinstance(node, ast.Import):
+                    modules.extend(alias.name for alias in node.names)
+                for module in modules:
+                    root = module.split(".", 1)[0]
+                    if root in self._FORBIDDEN_IMPORT_ROOTS or root.startswith(
+                        "agent_"
+                    ):
+                        offenders.append(f"{path.name}:{module}")
         assert offenders == []
 
     def test_teaching_domain_layer_imports_no_infrastructure(self) -> None:

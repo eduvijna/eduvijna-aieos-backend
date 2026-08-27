@@ -175,7 +175,7 @@ def test_no_principal_mapping_persistence_or_migration() -> None:
     versions = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
     assert "pedi090001_security_authority.py" in versions
     assert "pedi10b2001_asset_authority_sor.py" in versions
-    assert versions[-1] == "tosd020001_teaching_work.py"
+    assert versions[-1] == "tosd030001_generation_runs.py"
     for path in MIGRATIONS.rglob("*.py"):
         body = path.read_text(encoding="utf-8")
         assert "pedi080001" not in body

@@ -123,6 +123,7 @@ def test_migration_chain_and_forbidden_tables() -> None:
         "pedi10b6001_asset_security_audit.py",
         "saii020001_security_audit_ledger.py",
         "tosd020001_teaching_work.py",
+        "tosd030001_generation_runs.py",
     ]
 
 

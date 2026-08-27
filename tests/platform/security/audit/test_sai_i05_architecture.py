@@ -47,7 +47,7 @@ BOUNDARY_DOC = REPO_ROOT / "docs" / "GCI-I04-NON-PRODUCTION-MUTATION-BOUNDARY.md
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 SNAPSHOT = REPO_ROOT / "contracts" / "openapi" / "aieos-v1.json"
 EXPECTED_OPENAPI_SHA256 = (
-    "AD58AD462CB21222D03188DCF1AB5DD86BF7D648DEC4955B45660F3219E00488"
+    "BBE357612BFF091F7EAF54A4C5F1065B248BB0212A3F0DDF4AFF0685C759C4C7"
 )
 
 _EXPECTED_MIGRATIONS = [
@@ -66,6 +66,7 @@ _EXPECTED_MIGRATIONS = [
     "pedi10b6001_asset_security_audit.py",
     "saii020001_security_audit_ledger.py",
     "tosd020001_teaching_work.py",
+    "tosd030001_generation_runs.py",
 ]
 
 # Frozen SAI-I05 mutation inventory classification.
@@ -79,6 +80,7 @@ _MUTATION_INVENTORY: dict[str, str] = {
     "ReviewCommandService": "A",
     "PublishContentService": "A",
     "MaterializeAIGeneratedContentVersionService": "A",
+    "CreateAIGeneratedContentForReviewService": "A",
     "ImportMigratedContentService": "A",
     "AppendContentVersionService": "B",
     "GetContentService": "R",
@@ -90,11 +92,12 @@ _MUTATION_INVENTORY: dict[str, str] = {
 }
 
 _WIRED_AUDIT_FILES = {
-    "CreateContentService": "create.py",
+    "CreateContentService": "in_uow.py",
     "HttpAppendContentVersionService": "http_append.py",
     "ReviewCommandService": "review.py",
     "PublishContentService": "publish.py",
-    "MaterializeAIGeneratedContentVersionService": "ai_materialization.py",
+    "MaterializeAIGeneratedContentVersionService": "in_uow.py",
+    "CreateAIGeneratedContentForReviewService": "ai_for_review.py",
     "ImportMigratedContentService": "migration_import.py",
 }
 
@@ -214,9 +217,14 @@ class TestMutationInventory:
 
     def test_internal_ai_and_migration_map_to_actions(self) -> None:
         ai = (APP_ROOT / "ai_materialization.py").read_text(encoding="utf-8")
+        ai_uow = (APP_ROOT / "in_uow.py").read_text(encoding="utf-8")
+        ai_for_review = (APP_ROOT / "ai_for_review.py").read_text(encoding="utf-8")
         mig = (APP_ROOT / "migration_import.py").read_text(encoding="utf-8")
         helper = (APP_ROOT / "audit.py").read_text(encoding="utf-8")
-        assert "CONTENT_AI_MATERIALIZE" in ai
+        assert "materialize_ai_version_in_uow" in ai
+        assert "CONTENT_AI_MATERIALIZE" in ai_uow
+        assert "CreateAIGeneratedContentForReviewService" in ai_for_review
+        assert "CONTENT_REVIEW_SUBMIT" in ai_for_review
         assert "AI_MATERIALIZATION" in helper
         assert "ai_materialization_audit_provenance" in helper
         assert "CONTENT_MIGRATION_IMPORT" in mig
