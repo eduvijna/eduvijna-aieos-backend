@@ -86,3 +86,6 @@ agent-tools/
 
 # Local notes
 *.local.md
+
+# TOS-DEV01 / development reference evidence (non-secret local reports)
+tools/development/*.local.json

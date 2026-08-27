@@ -9,6 +9,12 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV01 Lane B — NON_PRODUCTION Teacher OS Review Queue development
+  reference scenario (`src/aieos/development/**`, explicit loader under
+  `tools/development/`), plus PostgreSQL-backed spine proofs in
+  `tests/development/test_tos_dev01_review_spine.py`. Reuses existing
+  Generic Content / Review Queue services and `test.generic` fixture schema;
+  no migration; no production auth/runtime composition change.
 - WPI-OCI-I01R1 Backend OCI provenance hardening + exact-head CI recovery
   (ADR-AIEOS-051): PR CI builds/validates exact `pull_request.head.sha`
   (never synthetic merge SHA); removes `--allow-dirty`; derives receipt
