@@ -15,6 +15,7 @@ from aieos.domains.education.schema import WORKSHEET_CONTENT_TYPE
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
+from aieos.platform.ai.clock import UtcNow
 from aieos.platform.ai.fake import FakeStructuredModelGateway
 from aieos.platform.ai.gateway import StructuredModelGateway
 from aieos.platform.ai.infrastructure.persistence.uow import (
@@ -55,6 +56,7 @@ def build_client(
     provider_id: str = "fake",
     model_id: str = "fake-model",
     generation_lease_seconds: int = 120,
+    generation_clock: UtcNow | None = None,
 ) -> TestClient:
     gateway = model_gateway if model_gateway is not None else build_fake_gateway()
     app = create_app(
@@ -78,6 +80,7 @@ def build_client(
         ai_provider_id=provider_id,
         ai_model_id=model_id,
         generation_lease_seconds=generation_lease_seconds,
+        generation_clock=generation_clock,
     )
     return TestClient(app, raise_server_exceptions=False)
 

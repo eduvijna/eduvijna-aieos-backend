@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Mapping
 from uuid import UUID
 
@@ -52,6 +52,7 @@ from aieos.domains.teaching.application.ports import TeachingUnitOfWorkFactory
 from aieos.domains.teaching.domain.identities import AggregateRevision, WorkId
 from aieos.platform.ai.application.errors import GenerationRunConflict
 from aieos.platform.ai.application.ports import AIUnitOfWorkFactory
+from aieos.platform.ai.clock import UtcNow, utc_now
 from aieos.platform.ai.config import DEFAULT_GENERATION_LEASE_SECONDS
 from aieos.platform.ai.domain.generation_run import (
     GenerationRun,
@@ -166,6 +167,7 @@ class GenerateTeachingWorkService:
         provider_id: str,
         model_id: str,
         lease_seconds: int = DEFAULT_GENERATION_LEASE_SECONDS,
+        clock: UtcNow | None = None,
     ) -> None:
         self._teaching_uow_factory = teaching_uow_factory
         self._ai_uow_factory = ai_uow_factory
@@ -175,6 +177,7 @@ class GenerateTeachingWorkService:
         self._provider_id = provider_id
         self._model_id = model_id
         self._lease_seconds = lease_seconds
+        self._clock = clock if clock is not None else utc_now
 
     def generate(
         self,
@@ -187,9 +190,9 @@ class GenerateTeachingWorkService:
         event_context: MutationEventContext,
         now: datetime | None = None,
     ) -> GenerateTeachingWorkResult:
-        decided_at = now if now is not None else datetime.now(UTC)
+        claim_at = now if now is not None else self._clock()
         key_hash = hash_idempotency_key(idempotency_key)
-        lease_expires_at = decided_at + timedelta(seconds=self._lease_seconds)
+        lease_expires_at = claim_at + timedelta(seconds=self._lease_seconds)
 
         with self._teaching_uow_factory(execution_tenant_id) as teaching_uow:
             work = teaching_uow.works.get(work_id)
@@ -219,7 +222,7 @@ class GenerateTeachingWorkService:
             key_hash=key_hash,
             fingerprint=fingerprint,
             lease_expires_at=lease_expires_at,
-            decided_at=decided_at,
+            now=claim_at,
         )
         if isinstance(run_id, GenerateTeachingWorkResult):
             return run_id
@@ -241,44 +244,49 @@ class GenerateTeachingWorkService:
         try:
             draft = self._worksheet_capability.execute(generation_input)
         except EducationalQualityFailed as exc:
+            failure_at = self._clock()
             self._mark_failed(
                 execution_tenant_id,
                 run_id,
                 failure_code="educational_quality_failed",
                 educational_quality_summary=exc.draft.educational_quality_result.as_summary(),
                 provider_metadata=exc.draft.provider_metadata,
-                now=decided_at,
+                now=failure_at,
             )
             raise EducationalQualityFailedError(
                 educational_quality=_quality_view(exc.draft.educational_quality_result)
             ) from exc
         except ModelProviderUnavailable as exc:
+            failure_at = self._clock()
             self._mark_failed(
                 execution_tenant_id,
                 run_id,
                 failure_code="model_provider_unavailable",
-                now=decided_at,
+                now=failure_at,
             )
             raise ModelProviderUnavailableError("model provider unavailable") from exc
         except ModelOutputInvalid as exc:
+            failure_at = self._clock()
             self._mark_failed(
                 execution_tenant_id,
                 run_id,
                 failure_code="model_output_invalid",
-                now=decided_at,
+                now=failure_at,
             )
             raise ModelOutputInvalidError("model output invalid") from exc
         except ModelGenerationFailed as exc:
+            failure_at = self._clock()
             self._mark_failed(
                 execution_tenant_id,
                 run_id,
                 failure_code="model_generation_failed",
-                now=decided_at,
+                now=failure_at,
             )
             raise ModelGenerationFailedError("model generation failed") from exc
 
         quality_summary = draft.educational_quality_result.as_summary()
         meta = draft.provider_metadata
+        heartbeat_at = self._clock()
 
         with self._ai_uow_factory(execution_tenant_id) as ai_uow:
             locked = ai_uow.generation_runs.get_for_update(run_id)
@@ -286,7 +294,7 @@ class GenerateTeachingWorkService:
                 raise TeachingWorkNotFound("GenerationRun was not found")
             if locked.status is GenerationRunStatus.SUCCEEDED:
                 return self._result_from_run(work_id, locked)
-            # Stay RUNNING; refresh provider metadata and lease in place.
+            # Stay RUNNING; refresh provider metadata and lease from current time.
             refreshed = replace(
                 locked,
                 provider_id=meta.provider_id,
@@ -296,8 +304,8 @@ class GenerateTeachingWorkService:
                 output_tokens=meta.output_tokens,
                 total_tokens=meta.total_tokens,
                 educational_quality_summary=quality_summary,
-                lease_expires_at=decided_at + timedelta(seconds=self._lease_seconds),
-                updated_at=decided_at,
+                lease_expires_at=heartbeat_at + timedelta(seconds=self._lease_seconds),
+                updated_at=heartbeat_at,
             )
             if not ai_uow.generation_runs.update(
                 refreshed, expected_revision=locked.aggregate_revision
@@ -326,6 +334,7 @@ class GenerateTeachingWorkService:
             correlation_id=event_context.correlation_id,
         )
         audit = ai_materialization_audit_provenance(principal_id)
+        materialization_at = self._clock()
         try:
             materialization = self._create_ai_content_for_review.create(
                 execution_tenant_id,
@@ -342,50 +351,54 @@ class GenerateTeachingWorkService:
                 ),
                 event_context=event_context,
                 audit_provenance=audit,
-                now=decided_at,
+                now=materialization_at,
             )
         except AIGenerationForbidden as exc:
+            failure_at = self._clock()
             self._mark_failed(
                 execution_tenant_id,
                 run_id,
                 failure_code="content_materialization_failed",
                 educational_quality_summary=quality_summary,
                 provider_metadata=meta,
-                now=decided_at,
+                now=failure_at,
             )
             raise TeachingWorkForbidden("AI content materialization is forbidden") from exc
         except ContentApplicationError as exc:
+            failure_at = self._clock()
             self._mark_failed(
                 execution_tenant_id,
                 run_id,
                 failure_code="content_materialization_failed",
                 educational_quality_summary=quality_summary,
                 provider_metadata=meta,
-                now=decided_at,
+                now=failure_at,
             )
             raise ContentMaterializationFailedError(
                 "content materialization failed"
             ) from exc
         except Exception as exc:
+            failure_at = self._clock()
             self._mark_failed(
                 execution_tenant_id,
                 run_id,
                 failure_code="content_materialization_failed",
                 educational_quality_summary=quality_summary,
                 provider_metadata=meta,
-                now=decided_at,
+                now=failure_at,
             )
             raise ContentMaterializationFailedError(
                 "content materialization failed"
             ) from exc
 
+        finalize_at = self._clock()
         return self._finalize_succeeded(
             execution_tenant_id,
             work_id,
             run_id,
             materialization=materialization,
             quality_summary=quality_summary,
-            now=decided_at,
+            now=finalize_at,
         )
 
     def _claim_or_resolve_run(
@@ -398,7 +411,7 @@ class GenerateTeachingWorkService:
         key_hash: str,
         fingerprint: str,
         lease_expires_at: datetime,
-        decided_at: datetime,
+        now: datetime,
         _attempt: int = 0,
     ) -> GenerationRunId | GenerateTeachingWorkResult:
         """Insert RUNNING under work/idempotency fences; resolve conflicts without model call."""
@@ -418,7 +431,7 @@ class GenerateTeachingWorkService:
                     fingerprint=fingerprint,
                     key_hash=key_hash,
                     lease_expires_at=lease_expires_at,
-                    decided_at=decided_at,
+                    now=now,
                     same_key=True,
                 )
                 if resolved is not None:
@@ -447,8 +460,8 @@ class GenerateTeachingWorkService:
                 result_content_revision=None,
                 failure_code=None,
                 aggregate_revision=0,
-                created_at=decided_at,
-                updated_at=decided_at,
+                created_at=now,
+                updated_at=now,
                 completed_at=None,
                 lease_expires_at=lease_expires_at,
             )
@@ -478,7 +491,7 @@ class GenerateTeachingWorkService:
                 fingerprint=fingerprint,
                 key_hash=key_hash,
                 lease_expires_at=lease_expires_at,
-                decided_at=decided_at,
+                now=now,
                 same_key=(
                     by_key is not None
                     and by_key.idempotency_key_sha256 == key_hash
@@ -496,7 +509,7 @@ class GenerateTeachingWorkService:
             key_hash=key_hash,
             fingerprint=fingerprint,
             lease_expires_at=lease_expires_at,
-            decided_at=decided_at,
+            now=now,
             _attempt=_attempt + 1,
         )
 
@@ -510,7 +523,7 @@ class GenerateTeachingWorkService:
         fingerprint: str,
         key_hash: str,
         lease_expires_at: datetime,
-        decided_at: datetime,
+        now: datetime,
         same_key: bool,
     ) -> GenerationRunId | GenerateTeachingWorkResult | None:
         if same_key and run.request_fingerprint_sha256 != fingerprint:
@@ -540,12 +553,12 @@ class GenerateTeachingWorkService:
             GenerationRunStatus.RUNNING,
             GenerationRunStatus.VALIDATED,
         ):
-            if _lease_fresh(run, now=decided_at):
+            if _lease_fresh(run, now=now):
                 raise WorkGenerationInProgress("work generation is in progress")
 
             # Stale RUNNING: reconcile Content first (crash after materialize).
             reconciled = self._reconcile_stale_with_content(
-                execution_tenant_id, work_id, run, now=decided_at
+                execution_tenant_id, work_id, run, now=now
             )
             if reconciled is not None:
                 return reconciled
@@ -555,7 +568,7 @@ class GenerateTeachingWorkService:
                     execution_tenant_id,
                     run.generation_run_id,
                     lease_expires_at=lease_expires_at,
-                    now=decided_at,
+                    now=now,
                 )
                 if reclaimed:
                     return run.generation_run_id
@@ -566,7 +579,7 @@ class GenerateTeachingWorkService:
                 execution_tenant_id,
                 run.generation_run_id,
                 failure_code="generation_lease_expired",
-                now=decided_at,
+                now=now,
             )
             return None
 

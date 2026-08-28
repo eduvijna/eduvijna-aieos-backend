@@ -413,6 +413,16 @@ class TestNoGenerationInThisSlice:
         assert offenders == []
 
 
+class TestStableTeachingWorkErrorCodes:
+    def test_teaching_work_not_found_machine_code_is_stable(self) -> None:
+        from aieos.domains.teaching.application.errors import TeachingWorkNotFound
+        from aieos.platform.api.problems import _TEACHING_PROBLEMS
+
+        status, code, _title, _detail = _TEACHING_PROBLEMS[TeachingWorkNotFound]
+        assert status == 404
+        assert code == "teaching_work_not_found"
+
+
 class TestDevelopmentSeedingIsExplicit:
     def test_scenario_is_never_invoked_from_runtime_composition(self) -> None:
         runtime_root = SRC_ROOT / "platform" / "runtime"

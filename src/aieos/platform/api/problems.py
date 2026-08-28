@@ -433,7 +433,7 @@ _APPLICATION_PROBLEMS: dict[type[ContentApplicationError], tuple[int, str, str, 
 _TEACHING_PROBLEMS: dict[type[TeachingApplicationError], tuple[int, str, str, str]] = {
     TeachingWorkNotFound: (
         404,
-        "work_not_found",
+        "teaching_work_not_found",
         "Teaching Work not found",
         "Teaching Work was not found",
     ),

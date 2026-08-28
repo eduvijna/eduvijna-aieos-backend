@@ -53,6 +53,7 @@ from aieos.domains.teaching.application.review_queue_port import (
     ReviewQueuePendingCountAdapter,
 )
 from aieos.platform.ai.application.ports import AIUnitOfWorkFactory
+from aieos.platform.ai.clock import UtcNow
 from aieos.platform.ai.config import DEFAULT_AI_MODEL, DEFAULT_AI_PROVIDER
 from aieos.platform.ai.gateway import StructuredModelGateway
 from aieos.platform.api.context import RequestContextMiddleware
@@ -94,6 +95,7 @@ def create_app(
     ai_provider_id: str = DEFAULT_AI_PROVIDER,
     ai_model_id: str = DEFAULT_AI_MODEL,
     generation_lease_seconds: int = 120,
+    generation_clock: UtcNow | None = None,
 ) -> FastAPI:
     codec = CursorCodec(cursor_signing_key)
     app = FastAPI(
@@ -181,6 +183,7 @@ def create_app(
             provider_id=ai_provider_id,
             model_id=ai_model_id,
             lease_seconds=generation_lease_seconds,
+            clock=generation_clock,
         )
         app.state.list_teaching_work_artifacts_service = ListTeachingWorkArtifactsService(
             teaching_uow_factory,

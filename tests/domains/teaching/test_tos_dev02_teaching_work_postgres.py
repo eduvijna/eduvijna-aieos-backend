@@ -365,7 +365,7 @@ class TestTeachingWorkOwnershipAndTenancy:
             f"/api/v1/teaching/works/{work_id}", headers=headers(tenant_b)
         )
         assert foreign.status_code == 404, foreign.text
-        assert foreign.json()["code"] == "work_not_found"
+        assert foreign.json()["code"] == "teaching_work_not_found"
 
         listed_b = client_b.get("/api/v1/teaching/works", headers=headers(tenant_b))
         assert listed_b.json()["items"] == []
