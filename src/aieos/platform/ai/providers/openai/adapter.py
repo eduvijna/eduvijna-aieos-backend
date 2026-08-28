@@ -2,19 +2,79 @@
 
 from __future__ import annotations
 
-from typing import Any
+import logging
+from typing import Any, Mapping
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 from pydantic import BaseModel, ValidationError
 
 from aieos.platform.ai.config import OpenAIProviderConfig
 from aieos.platform.ai.gateway import (
+    ModelAdapterContractFailed,
     ModelGenerationFailed,
     ModelOutputInvalid,
     ModelProviderUnavailable,
+    ModelRequestRejected,
     StructuredGenerationRequest,
     StructuredGenerationResult,
 )
+
+_LOGGER = logging.getLogger(__name__)
+
+_UNAVAILABLE_STATUS_CODES = frozenset({401, 403, 404, 429, 500, 502, 503, 504})
+_SAFE_SCALAR_TYPES = (str, int, float, bool)
+
+
+def _safe_scalar(value: object) -> str | int | float | bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        if isinstance(value, str) and len(value) > 128:
+            return None
+        return value
+    return None
+
+
+def _extract_provider_error_scalars(body: object) -> dict[str, str | int | float | bool]:
+    """Allowlisted scalar extractor. Never returns nested bodies or messages."""
+    out: dict[str, str | int | float | bool] = {}
+    if not isinstance(body, Mapping):
+        return out
+    error = body.get("error")
+    if not isinstance(error, Mapping):
+        return out
+    for key in ("type", "code"):
+        scalar = _safe_scalar(error.get(key))
+        if scalar is not None:
+            out[f"provider_error_{key}"] = scalar
+    return out
+
+
+def _log_failure(
+    *,
+    classification: str,
+    exception_class: str,
+    http_status: int | None = None,
+    provider_error_type: str | int | float | bool | None = None,
+    provider_error_code: str | int | float | bool | None = None,
+    provider_request_id: str | None = None,
+) -> None:
+    payload: dict[str, object] = {
+        "provider": "openai",
+        "operation": "responses.parse",
+        "classification": classification,
+        "exception_class": exception_class,
+    }
+    if http_status is not None:
+        payload["http_status"] = http_status
+    if provider_error_type is not None:
+        payload["provider_error_type"] = provider_error_type
+    if provider_error_code is not None:
+        payload["provider_error_code"] = provider_error_code
+    if provider_request_id is not None and isinstance(provider_request_id, str):
+        if len(provider_request_id) <= 128:
+            payload["provider_request_id"] = provider_request_id
+    _LOGGER.warning("openai_structured_generation_failed", extra={"aieos_ai": payload})
 
 
 class OpenAIStructuredModelGateway:
@@ -43,12 +103,65 @@ class OpenAIStructuredModelGateway:
                 tools=[],
             )
         except (APIConnectionError, APITimeoutError) as exc:
+            _log_failure(
+                classification="model_provider_unavailable",
+                exception_class=type(exc).__name__,
+            )
             raise ModelProviderUnavailable("OpenAI provider unavailable") from exc
         except APIStatusError as exc:
-            if exc.status_code in {401, 403, 404, 429, 500, 502, 503, 504}:
+            status = int(exc.status_code)
+            scalars = _extract_provider_error_scalars(getattr(exc, "body", None))
+            request_id = getattr(exc, "request_id", None)
+            if not isinstance(request_id, str):
+                request_id = None
+            if status in _UNAVAILABLE_STATUS_CODES:
+                _log_failure(
+                    classification="model_provider_unavailable",
+                    exception_class=type(exc).__name__,
+                    http_status=status,
+                    provider_error_type=scalars.get("provider_error_type"),
+                    provider_error_code=scalars.get("provider_error_code"),
+                    provider_request_id=request_id,
+                )
                 raise ModelProviderUnavailable("OpenAI provider unavailable") from exc
+            if 400 <= status < 500:
+                _log_failure(
+                    classification="model_request_rejected",
+                    exception_class=type(exc).__name__,
+                    http_status=status,
+                    provider_error_type=scalars.get("provider_error_type"),
+                    provider_error_code=scalars.get("provider_error_code"),
+                    provider_request_id=request_id,
+                )
+                raise ModelRequestRejected("OpenAI request rejected") from exc
+            _log_failure(
+                classification="model_generation_failed",
+                exception_class=type(exc).__name__,
+                http_status=status,
+                provider_error_type=scalars.get("provider_error_type"),
+                provider_error_code=scalars.get("provider_error_code"),
+                provider_request_id=request_id,
+            )
             raise ModelGenerationFailed("OpenAI generation failed") from exc
-        except Exception as exc:  # noqa: BLE001 — normalize any SDK failure
+        except ValidationError as exc:
+            _log_failure(
+                classification="model_output_invalid",
+                exception_class=type(exc).__name__,
+            )
+            raise ModelOutputInvalid("OpenAI structured output invalid") from exc
+        except (TypeError, ValueError) as exc:
+            _log_failure(
+                classification="model_adapter_contract_failed",
+                exception_class=type(exc).__name__,
+            )
+            raise ModelAdapterContractFailed(
+                "OpenAI adapter contract failed"
+            ) from exc
+        except Exception as exc:  # noqa: BLE001 — residual SDK failure
+            _log_failure(
+                classification="model_generation_failed",
+                exception_class=type(exc).__name__,
+            )
             raise ModelGenerationFailed("OpenAI generation failed") from exc
 
         parsed = getattr(response, "output_parsed", None)

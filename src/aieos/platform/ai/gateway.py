@@ -38,6 +38,14 @@ class ModelProviderUnavailable(ModelGatewayError):
     """Provider/config/network unavailable."""
 
 
+class ModelRequestRejected(ModelGatewayError):
+    """Provider rejected a completed request as a contract/4xx rejection."""
+
+
+class ModelAdapterContractFailed(ModelGatewayError):
+    """Local SDK/adapter could not invoke the configured request contract."""
+
+
 class ModelGenerationFailed(ModelGatewayError):
     """Provider returned a failure or incomplete generation."""
 

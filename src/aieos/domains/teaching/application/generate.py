@@ -60,9 +60,11 @@ from aieos.platform.ai.domain.generation_run import (
     GenerationRunStatus,
 )
 from aieos.platform.ai.gateway import (
+    ModelAdapterContractFailed,
     ModelGenerationFailed,
     ModelOutputInvalid,
     ModelProviderUnavailable,
+    ModelRequestRejected,
 )
 from aieos.platform.capabilities.models import CAPABILITY_EDUCATION_GENERATE_WORKSHEET
 from aieos.platform.education.quality_baseline import (
@@ -274,6 +276,24 @@ class GenerateTeachingWorkService:
                 now=failure_at,
             )
             raise ModelOutputInvalidError("model output invalid") from exc
+        except ModelRequestRejected as exc:
+            failure_at = self._clock()
+            self._mark_failed(
+                execution_tenant_id,
+                run_id,
+                failure_code="model_request_rejected",
+                now=failure_at,
+            )
+            raise ModelGenerationFailedError("model generation failed") from exc
+        except ModelAdapterContractFailed as exc:
+            failure_at = self._clock()
+            self._mark_failed(
+                execution_tenant_id,
+                run_id,
+                failure_code="model_adapter_contract_failed",
+                now=failure_at,
+            )
+            raise ModelGenerationFailedError("model generation failed") from exc
         except ModelGenerationFailed as exc:
             failure_at = self._clock()
             self._mark_failed(
@@ -718,13 +738,19 @@ class GenerateTeachingWorkService:
             raise ModelProviderUnavailableError("model provider unavailable")
         if code == "model_output_invalid":
             raise ModelOutputInvalidError("model output invalid")
+        if code in (
+            "model_request_rejected",
+            "model_adapter_contract_failed",
+            "model_generation_failed",
+        ):
+            raise ModelGenerationFailedError("model generation failed")
         if code == "content_materialization_failed":
             raise ContentMaterializationFailedError("content materialization failed")
         if code == "generation_lease_expired":
             raise WorkGenerationInProgress(
                 "prior generation lease expired; retry with a new Idempotency-Key"
             )
-        raise ModelGenerationFailedError(code)
+        raise ModelGenerationFailedError("model generation failed")
 
     def _mark_failed(
         self,

@@ -80,4 +80,5 @@ markers = [
     "tos_dev03: Real AI worksheet generation via Model Gateway and Educational Quality",
     "tos_dev03r1: TOS-DEV03R1 work fence, lease recovery, and materialization uniqueness",
     "tos_dev03r2: TOS-DEV03R2 stable API contract and generation lease heartbeat correction",
+    "tos_dev03r3: TOS-DEV03R3 provider failure taxonomy and sanitized diagnostics",
 ]
