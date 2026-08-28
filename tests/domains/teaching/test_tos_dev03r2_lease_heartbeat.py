@@ -141,11 +141,12 @@ class TestTosDev03R2FalseStaleAdversarial:
         contents = client.get("/api/v1/contents", headers=headers(tenant_id))
         assert len(contents.json()["items"]) == 1
 
-        versions = client.get(
-            f"/api/v1/contents/{body['artifact']['content_id']}/versions",
+        version = client.get(
+            f"/api/v1/contents/{body['artifact']['content_id']}/versions/"
+            f"{body['artifact']['version_id']}",
             headers=headers(tenant_id),
         )
-        assert len(versions.json()["items"]) == 1
+        assert version.status_code == 200, version.text
 
         queue = client.get(
             "/api/v1/teacher-os/review-queue",
