@@ -12,6 +12,30 @@ from aieos.domains.education.worksheet_v1 import (
 )
 
 
+def _require_semantic_text(value: str, *, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must not be blank")
+    return value
+
+
+def _require_semantic_text_list(value: list[str], *, label: str) -> list[str]:
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"{label} entries must not be blank")
+    return value
+
+
+def _validate_preparation_questions(
+    questions: list[WorksheetQuestionV1],
+    *,
+    component: str,
+) -> None:
+    for question in questions:
+        _require_semantic_text(question.id, label=f"{component} question id")
+        _require_semantic_text(question.prompt, label=f"{component} question prompt")
+        _require_semantic_text(question.answer, label=f"{component} question answer")
+        _require_semantic_text(question.explanation, label=f"{component} question explanation")
+
+
 class AnswerKeySourceArtifactKind(StrEnum):
     WORKSHEET = "worksheet"
     QUIZ = "quiz"
@@ -28,12 +52,15 @@ class LessonPlanSectionV1(BaseModel):
     learner_actions: str = Field(min_length=1)
     estimated_minutes: int = Field(ge=1)
 
+    @field_validator("id", "title", "teacher_actions", "learner_actions")
+    @classmethod
+    def _semantic_strings(cls, value: str) -> str:
+        return _require_semantic_text(value, label="value")
+
     @field_validator("objective_ids")
     @classmethod
     def _objective_ids_nonempty(cls, value: list[str]) -> list[str]:
-        if any(not isinstance(item, str) or not item.strip() for item in value):
-            raise ValueError("objective_ids entries must be non-empty strings")
-        return value
+        return _require_semantic_text_list(value, label="objective_ids")
 
 
 class LessonPlanDraftV1(BaseModel):
@@ -47,12 +74,22 @@ class LessonPlanDraftV1(BaseModel):
     closure: str = Field(min_length=1)
     formative_check: str = Field(min_length=1)
 
+    @field_validator("title", "opening", "closure", "formative_check")
+    @classmethod
+    def _semantic_strings(cls, value: str) -> str:
+        return _require_semantic_text(value, label="value")
+
     @field_validator("objective_ids", "materials")
     @classmethod
     def _non_empty_strings(cls, value: list[str]) -> list[str]:
-        if any(not isinstance(item, str) or not item.strip() for item in value):
-            raise ValueError("entries must be non-empty strings")
-        return value
+        return _require_semantic_text_list(value, label="value")
+
+    @model_validator(mode="after")
+    def _unique_section_ids(self) -> LessonPlanDraftV1:
+        section_ids = [section.id for section in self.sections]
+        if len(section_ids) != len(set(section_ids)):
+            raise ValueError("lesson plan section IDs must be unique")
+        return self
 
 
 class WorksheetDraftV1(BaseModel):
@@ -64,8 +101,14 @@ class WorksheetDraftV1(BaseModel):
     instructions: str = Field(min_length=1)
     questions: list[WorksheetQuestionV1] = Field(min_length=1)
 
+    @field_validator("title", "instructions")
+    @classmethod
+    def _semantic_strings(cls, value: str) -> str:
+        return _require_semantic_text(value, label="value")
+
     @model_validator(mode="after")
-    def _unique_question_ids(self) -> WorksheetDraftV1:
+    def _question_invariants(self) -> WorksheetDraftV1:
+        _validate_preparation_questions(self.questions, component="worksheet")
         question_ids = [question.id for question in self.questions]
         if len(question_ids) != len(set(question_ids)):
             raise ValueError("worksheet question IDs must be unique")
@@ -79,8 +122,14 @@ class QuickQuizDraftV1(BaseModel):
     instructions: str = Field(min_length=1)
     questions: list[WorksheetQuestionV1] = Field(min_length=1)
 
+    @field_validator("title", "instructions")
+    @classmethod
+    def _semantic_strings(cls, value: str) -> str:
+        return _require_semantic_text(value, label="value")
+
     @model_validator(mode="after")
-    def _unique_question_ids(self) -> QuickQuizDraftV1:
+    def _question_invariants(self) -> QuickQuizDraftV1:
+        _validate_preparation_questions(self.questions, component="quiz")
         question_ids = [question.id for question in self.questions]
         if len(question_ids) != len(set(question_ids)):
             raise ValueError("quiz question IDs must be unique")
@@ -94,8 +143,14 @@ class HomeworkDraftV1(BaseModel):
     instructions: str = Field(min_length=1)
     questions: list[WorksheetQuestionV1] = Field(min_length=1)
 
+    @field_validator("title", "instructions")
+    @classmethod
+    def _semantic_strings(cls, value: str) -> str:
+        return _require_semantic_text(value, label="value")
+
     @model_validator(mode="after")
-    def _unique_question_ids(self) -> HomeworkDraftV1:
+    def _question_invariants(self) -> HomeworkDraftV1:
+        _validate_preparation_questions(self.questions, component="homework")
         question_ids = [question.id for question in self.questions]
         if len(question_ids) != len(set(question_ids)):
             raise ValueError("homework question IDs must be unique")
@@ -108,12 +163,15 @@ class TeacherNotesDraftV1(BaseModel):
     title: str = Field(min_length=1)
     notes: list[str] = Field(min_length=1)
 
+    @field_validator("title")
+    @classmethod
+    def _semantic_title(cls, value: str) -> str:
+        return _require_semantic_text(value, label="title")
+
     @field_validator("notes")
     @classmethod
     def _notes_nonempty(cls, value: list[str]) -> list[str]:
-        if any(not isinstance(item, str) or not item.strip() for item in value):
-            raise ValueError("notes entries must be non-empty strings")
-        return value
+        return _require_semantic_text_list(value, label="notes")
 
 
 class AnswerKeyEntryV1(BaseModel):
@@ -124,6 +182,11 @@ class AnswerKeyEntryV1(BaseModel):
     answer: str = Field(min_length=1)
     explanation: str = Field(min_length=1)
 
+    @field_validator("source_question_id", "answer", "explanation")
+    @classmethod
+    def _semantic_strings(cls, value: str) -> str:
+        return _require_semantic_text(value, label="value")
+
 
 class AnswerKeyV1(BaseModel):
     """Governed answer-key payload contract (builder deferred to DEV04-I04)."""
@@ -132,6 +195,11 @@ class AnswerKeyV1(BaseModel):
 
     title: str = Field(min_length=1)
     entries: list[AnswerKeyEntryV1] = Field(min_length=1)
+
+    @field_validator("title")
+    @classmethod
+    def _semantic_title(cls, value: str) -> str:
+        return _require_semantic_text(value, label="title")
 
     @model_validator(mode="after")
     def _unique_source_refs(self) -> AnswerKeyV1:
@@ -156,6 +224,21 @@ class PreparationKitV1(BaseModel):
     quick_quiz: QuickQuizDraftV1
     homework: HomeworkDraftV1
     teacher_notes: TeacherNotesDraftV1
+
+    @field_validator("title", "teacher_summary")
+    @classmethod
+    def _semantic_strings(cls, value: str) -> str:
+        return _require_semantic_text(value, label="value")
+
+    @field_validator("shared_learning_objectives")
+    @classmethod
+    def _semantic_shared_objectives(
+        cls, value: list[LearningObjectiveV1]
+    ) -> list[LearningObjectiveV1]:
+        for objective in value:
+            _require_semantic_text(objective.id, label="shared learning objective id")
+            _require_semantic_text(objective.text, label="shared learning objective text")
+        return value
 
     @model_validator(mode="after")
     def _cross_field_consistency(self) -> PreparationKitV1:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -272,3 +271,97 @@ def test_preparation_contract_has_no_provider_payload_fields() -> None:
         "preparationkit aggregate",
     ):
         assert forbidden not in source
+
+
+def _kit_with_whitespace_objective_id() -> dict[str, object]:
+    whitespace_id = "   "
+    payload = valid_preparation_kit_payload()
+    payload["shared_learning_objectives"] = [{"id": whitespace_id, "text": "Objective text"}]
+    payload["lesson_plan"]["objective_ids"] = [whitespace_id]  # type: ignore[index]
+    payload["lesson_plan"]["sections"][0]["objective_ids"] = [whitespace_id]  # type: ignore[index]
+    for key in ("worksheet", "quick_quiz", "homework"):
+        for question in payload[key]["questions"]:  # type: ignore[index]
+            question["objective_ids"] = [whitespace_id]
+    return payload
+
+
+def test_duplicate_lesson_plan_section_ids_rejected() -> None:
+    payload = valid_preparation_kit_payload()
+    payload["lesson_plan"]["sections"] = [  # type: ignore[index]
+        _lesson_plan_section(sid="sec-1"),
+        _lesson_plan_section(sid="sec-1"),
+    ]
+    with pytest.raises(ValidationError):
+        PreparationKitV1.model_validate(payload)
+
+
+def test_whitespace_shared_objective_id_rejected_even_when_referenced() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        PreparationKitV1.model_validate(_kit_with_whitespace_objective_id())
+    assert "shared learning objective id" in str(exc_info.value).lower()
+
+
+def test_whitespace_shared_objective_text_rejected() -> None:
+    payload = valid_preparation_kit_payload(
+        shared_learning_objectives=[{"id": "obj-1", "text": "   "}]
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        PreparationKitV1.model_validate(payload)
+    assert "shared learning objective text" in str(exc_info.value).lower()
+
+
+@pytest.mark.parametrize(
+    "component,key",
+    [
+        ("worksheet", "worksheet"),
+        ("quiz", "quick_quiz"),
+        ("homework", "homework"),
+    ],
+)
+def test_whitespace_question_answer_rejected(component: str, key: str) -> None:
+    payload = valid_preparation_kit_payload()
+    payload[key]["questions"][0]["answer"] = "   "  # type: ignore[index]
+    with pytest.raises(ValidationError) as exc_info:
+        PreparationKitV1.model_validate(payload)
+    assert f"{component} question answer" in str(exc_info.value).lower()
+
+
+def test_whitespace_question_id_rejected() -> None:
+    payload = valid_preparation_kit_payload()
+    payload["worksheet"]["questions"][0]["id"] = "   "  # type: ignore[index]
+    with pytest.raises(ValidationError) as exc_info:
+        PreparationKitV1.model_validate(payload)
+    assert "worksheet question id" in str(exc_info.value).lower()
+
+
+def test_whitespace_answer_key_source_question_id_rejected() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        AnswerKeyEntryV1.model_validate(
+            {
+                "source_artifact_kind": AnswerKeySourceArtifactKind.WORKSHEET.value,
+                "source_question_id": "   ",
+                "answer": "1/2",
+                "explanation": "Because.",
+            }
+        )
+    assert "source_question_id" in str(exc_info.value).lower() or "blank" in str(exc_info.value).lower()
+
+
+def test_whitespace_answer_key_answer_rejected() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        AnswerKeyEntryV1.model_validate(
+            {
+                "source_artifact_kind": AnswerKeySourceArtifactKind.WORKSHEET.value,
+                "source_question_id": "ws-1",
+                "answer": "   ",
+                "explanation": "Because.",
+            }
+        )
+    assert "answer" in str(exc_info.value).lower() or "blank" in str(exc_info.value).lower()
+
+
+def test_whitespace_preparation_kit_title_rejected() -> None:
+    payload = valid_preparation_kit_payload(title="   ")
+    with pytest.raises(ValidationError) as exc_info:
+        PreparationKitV1.model_validate(payload)
+    assert "title" in str(exc_info.value).lower() or "blank" in str(exc_info.value).lower()
