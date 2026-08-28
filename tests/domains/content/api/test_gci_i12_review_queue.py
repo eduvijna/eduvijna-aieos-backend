@@ -392,10 +392,12 @@ class TestQueueTenancyAndPagination:
 
         service = ListTeacherReviewQueueService(_UnusedFactory())  # type: ignore[arg-type]
         tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
         for bad in (0, -1, 101):
             with pytest.raises(ReviewQueueInvalidRequest):
                 service.list(
                     tenant_id,
+                    principal_id,
                     ListTeacherReviewQueueQuery(limit=bad),
                 )
 

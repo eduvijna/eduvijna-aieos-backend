@@ -119,3 +119,17 @@ class DevelopmentAssetCurrentUsePermit:
         asset_refs,
     ) -> None:
         return None
+
+
+class DevelopmentAIGenerationPermit:
+    """Development-only AI materialization authorization permit."""
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        content_id,
+        capability: str,
+    ) -> None:
+        return None

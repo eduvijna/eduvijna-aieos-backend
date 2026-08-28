@@ -59,6 +59,61 @@ class TeachingWorkListResponse(BaseModel):
     has_more: bool
 
 
+class EducationalQualityCheckResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    passed: bool
+    explanation: str
+
+
+class EducationalQualityResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    checks: list[EducationalQualityCheckResponse]
+
+
+class GeneratedArtifactResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content_id: UUID
+    version_id: UUID
+    content_type: str
+    title: str
+    stewardship_state: str
+    aggregate_revision: int
+
+
+class TeachingWorkGenerateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    work_id: UUID
+    generation_run_id: UUID
+    artifact: GeneratedArtifactResponse
+    educational_quality: EducationalQualityResponse
+
+
+class WorkArtifactItemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content_id: UUID
+    version_id: UUID
+    content_type: str
+    title: str
+    origin: str
+    stewardship_state: str
+    aggregate_revision: int
+    educational_quality: EducationalQualityResponse | None = None
+
+
+class TeachingWorkArtifactsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    work_id: UUID
+    items: list[WorkArtifactItemResponse]
+
+
 class ReviewProjectionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

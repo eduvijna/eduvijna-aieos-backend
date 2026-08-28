@@ -5,31 +5,24 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from aieos.domains.content.application.audit import (
-    MutationAuditProvenance,
-    insert_required_content_audit,
-)
+from aieos.domains.content.application.audit import MutationAuditProvenance
 from aieos.domains.content.application.errors import (
     IdempotencyKeyReused,
-    InvalidContentRequest,
     PersistenceInvariantViolation,
     UnknownContentType,
 )
+from aieos.domains.content.application.in_uow import create_content_in_uow
 from aieos.domains.content.application.models import (
     ContentReadModel,
     CreateContentCommand,
     content_read_model,
 )
 from aieos.domains.content.application.ports import ContentTypeCatalog, ContentUnitOfWorkFactory
-from aieos.domains.content.domain.content import Content, ContentType
-from aieos.domains.content.domain.errors import ContentDomainError
 from aieos.domains.content.domain.identities import AggregateRevision, ContentId
 from aieos.domains.content.domain.states import StewardshipState
-from aieos.platform.events.content_events import content_created_outbox
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.idempotency.hashing import fingerprint_material, hash_idempotency_key
 from aieos.platform.idempotency.models import CONTENT_CREATE_V1, IdempotencyOutcome, IdempotencyScope
-from aieos.platform.security.audit import SecurityAuditAction
 
 
 def _create_fingerprint(command: CreateContentCommand) -> str:
@@ -114,47 +107,14 @@ class CreateContentService:
             if not self._catalog.contains(command.content_type):
                 raise UnknownContentType("content_type is not registered")
             created_at = now if now is not None else datetime.now(UTC)
-            try:
-                content = Content(
-                    content_id=ContentId.generate(),
-                    tenant_id=execution_tenant_id,
-                    owner_principal_id=principal_id,
-                    content_type=ContentType(command.content_type),
-                    title=command.title,
-                    description=command.description,
-                    locale=command.locale,
-                    stewardship_state=StewardshipState.DRAFT,
-                    current_version_id=None,
-                    published_version_id=None,
-                    aggregate_revision=AggregateRevision(0),
-                    created_at=created_at,
-                    created_by_principal_id=principal_id,
-                    updated_at=created_at,
-                    archived_at=None,
-                )
-            except ContentDomainError as exc:
-                raise InvalidContentRequest("content create request is invalid") from exc
-            uow.contents.insert(content)
-            uow.outbox.insert(
-                content_created_outbox(
-                    tenant_id=execution_tenant_id,
-                    content_id=content.content_id.value,
-                    content_type=command.content_type,
-                    context=event_context,
-                    created_at=created_at,
-                )
-            )
-            insert_required_content_audit(
+            content = create_content_in_uow(
                 uow,
-                tenant_id=execution_tenant_id,
-                action=SecurityAuditAction.CONTENT_CREATE,
-                content_id=content.content_id.value,
-                resource_revision_before=None,
-                resource_revision_after=0,
-                related_resource_refs=(),
-                mutation_event_context=event_context,
+                execution_tenant_id,
+                principal_id,
+                command,
+                event_context=event_context,
                 audit_provenance=audit_provenance,
-                occurred_at=created_at,
+                created_at=created_at,
             )
             uow.idempotency.insert(
                 IdempotencyOutcome(

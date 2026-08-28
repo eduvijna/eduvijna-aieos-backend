@@ -53,6 +53,10 @@ class ContentVersionRepository(Protocol):
         self, version_id: ContentVersionId
     ) -> Mapping[str, object] | None: ...
 
+    def find_by_generation_run_id(
+        self, generation_run_id: UUID
+    ) -> ContentVersion | None: ...
+
 
 class ContentTypeCatalog(Protocol):
     def contains(self, content_type: str) -> bool: ...
@@ -223,13 +227,18 @@ class ReviewQueueReadRepository(Protocol):
     def list_page(
         self,
         *,
+        owner_principal_id: UUID,
         limit: int,
         after_submitted_at: datetime | None,
         after_content_id: ContentId | None,
     ) -> list[TeacherReviewQueueItem]: ...
 
     def get_item(
-        self, content_id: ContentId, version_id: ContentVersionId
+        self,
+        content_id: ContentId,
+        version_id: ContentVersionId,
+        *,
+        owner_principal_id: UUID,
     ) -> TeacherReviewQueueDetail | None: ...
 
 

@@ -7,6 +7,9 @@ from datetime import timedelta
 from fastapi import FastAPI
 
 from aieos.domains.content.api.v1.routes import router as content_v1_router
+from aieos.domains.content.application.ai_for_review import (
+    CreateAIGeneratedContentForReviewService,
+)
 from aieos.domains.content.application.asset_governance import (
     ValidateVersionAssetGovernanceService,
 )
@@ -16,6 +19,7 @@ from aieos.domains.content.application.http_append import (
     HttpAppendContentVersionService,
 )
 from aieos.domains.content.application.ports import (
+    AIGenerationAuthorizationPort,
     AssetCurrentGovernancePort,
     AssetReferenceValidationPort,
     ContentTypeCatalog,
@@ -33,8 +37,11 @@ from aieos.domains.content.application.review_queue import (
     ListTeacherReviewQueueService,
 )
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
+from aieos.domains.education.application.generate_worksheet import GenerateWorksheetCapability
 from aieos.domains.teaching.api.v1.routes import router as teaching_v1_router
+from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifactsService
 from aieos.domains.teaching.application.create import CreateTeachingWorkService
+from aieos.domains.teaching.application.generate import GenerateTeachingWorkService
 from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionService
 from aieos.domains.teaching.application.ports import TeachingUnitOfWorkFactory
 from aieos.domains.teaching.application.queries import (
@@ -45,6 +52,10 @@ from aieos.domains.teaching.application.refine import RefineTeachingWorkService
 from aieos.domains.teaching.application.review_queue_port import (
     ReviewQueuePendingCountAdapter,
 )
+from aieos.platform.ai.application.ports import AIUnitOfWorkFactory
+from aieos.platform.ai.clock import UtcNow
+from aieos.platform.ai.config import DEFAULT_AI_MODEL, DEFAULT_AI_PROVIDER
+from aieos.platform.ai.gateway import StructuredModelGateway
 from aieos.platform.api.context import RequestContextMiddleware
 from aieos.platform.api.openapi import build_openapi
 from aieos.platform.api.pagination import CursorCodec
@@ -53,12 +64,12 @@ from aieos.platform.security.authenticator import RequestIdentityAuthenticator
 from aieos.platform.security.context import SecurityContextResolver
 
 _APP_DESCRIPTION = (
-    "AIEOS HTTP foundation (GCI-I12, TOS-DEV02). "
+    "AIEOS HTTP foundation (GCI-I12, TOS-DEV02, TOS-DEV03). "
     "Content create, version append, review, publish, Teacher OS Review Queue "
-    "reads, Teaching Work preparation, and Today's Mission projection reads are "
-    "development/test foundations only and MUST NOT be authorized for "
-    "production until required security-audit intent persistence is integrated "
-    "alongside the transactional outbox."
+    "reads, Teaching Work preparation, Today's Mission projection, and "
+    "AI worksheet generation are development/test foundations only and MUST NOT "
+    "be authorized for production until required security-audit intent "
+    "persistence is integrated alongside the transactional outbox."
 )
 
 
@@ -78,6 +89,13 @@ def create_app(
     publication_governance: PublicationGovernancePort,
     asset_reference_validation: AssetReferenceValidationPort,
     asset_current_governance: AssetCurrentGovernancePort,
+    ai_uow_factory: AIUnitOfWorkFactory | None = None,
+    model_gateway: StructuredModelGateway | None = None,
+    ai_generation_authorization: AIGenerationAuthorizationPort | None = None,
+    ai_provider_id: str = DEFAULT_AI_PROVIDER,
+    ai_model_id: str = DEFAULT_AI_MODEL,
+    generation_lease_seconds: int = 120,
+    generation_clock: UtcNow | None = None,
 ) -> FastAPI:
     codec = CursorCodec(cursor_signing_key)
     app = FastAPI(
@@ -138,12 +156,44 @@ def create_app(
     app.state.list_teaching_works_service = ListTeachingWorksService(
         teaching_uow_factory
     )
-    # Today's Mission is derived per request: the Review Queue projection plus
-    # durable Teaching Work rows. Nothing below persists a mission.
     app.state.teacher_os_today_mission_service = GetTeacherOsTodayMissionService(
         teaching_uow_factory,
         ReviewQueuePendingCountAdapter(list_teacher_review_queue_service),
     )
+
+    if (
+        ai_uow_factory is not None
+        and model_gateway is not None
+        and ai_generation_authorization is not None
+    ):
+        create_ai_for_review = CreateAIGeneratedContentForReviewService(
+            uow_factory,
+            content_types,
+            schema_registry,
+            asset_reference_validation,
+            ai_generation_authorization,
+        )
+        app.state.create_ai_generated_content_for_review_service = create_ai_for_review
+        app.state.generate_teaching_work_service = GenerateTeachingWorkService(
+            teaching_uow_factory,
+            ai_uow_factory,
+            uow_factory,
+            GenerateWorksheetCapability(model_gateway),
+            create_ai_for_review,
+            provider_id=ai_provider_id,
+            model_id=ai_model_id,
+            lease_seconds=generation_lease_seconds,
+            clock=generation_clock,
+        )
+        app.state.list_teaching_work_artifacts_service = ListTeachingWorkArtifactsService(
+            teaching_uow_factory,
+            ai_uow_factory,
+            uow_factory,
+        )
+    else:
+        app.state.create_ai_generated_content_for_review_service = None
+        app.state.generate_teaching_work_service = None
+        app.state.list_teaching_work_artifacts_service = None
 
     def _openapi() -> dict:
         if app.openapi_schema is None:

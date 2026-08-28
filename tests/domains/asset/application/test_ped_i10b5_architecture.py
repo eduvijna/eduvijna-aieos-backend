@@ -28,7 +28,7 @@ CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 UV_LOCK = REPO_ROOT / "uv.lock"
 EXPECTED_OPENAPI_SHA256 = (
-    "AD58AD462CB21222D03188DCF1AB5DD86BF7D648DEC4955B45660F3219E00488"
+    "BBE357612BFF091F7EAF54A4C5F1065B248BB0212A3F0DDF4AFF0685C759C4C7"
 )
 _MUTATION_IMPL = (
     APPLICATION / "mutations.py",
@@ -100,7 +100,7 @@ class TestContracts:
         assert not any(p.name.startswith("pedi10b5") for p in MIGRATIONS.glob("*.py"))
         assert (MIGRATIONS / "pedi10b2001_asset_authority_sor.py").is_file()
         assert (MIGRATIONS / "pedi10b6001_asset_security_audit.py").is_file()
-        assert EXPECTED_ALEMBIC_HEAD == "tosd020001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd030002"
 
     def test_openapi_and_lockfile_unchanged(self) -> None:
         digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest().upper()

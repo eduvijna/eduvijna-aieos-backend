@@ -6,11 +6,13 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 
 from aieos.domains.teaching.api.v1.dependencies import (
     create_teaching_work_service,
+    generate_teaching_work_service,
     get_teaching_work_service,
+    list_teaching_work_artifacts_service,
     list_teaching_works_service,
     refine_teaching_work_service,
     resolve_trusted_context,
@@ -18,17 +20,28 @@ from aieos.domains.teaching.api.v1.dependencies import (
 )
 from aieos.domains.teaching.api.v1.models import (
     ContinueWorkSummaryResponse,
+    EducationalQualityCheckResponse,
+    EducationalQualityResponse,
+    GeneratedArtifactResponse,
     HeroActionResponse,
     PreparationProjectionResponse,
     ReviewProjectionResponse,
     TeacherOsMissionResponse,
+    TeachingWorkArtifactsResponse,
     TeachingWorkCreateRequest,
+    TeachingWorkGenerateResponse,
     TeachingWorkListResponse,
     TeachingWorkRefineRequest,
     TeachingWorkResponse,
+    WorkArtifactItemResponse,
 )
+from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifactsService
 from aieos.domains.teaching.application.create import CreateTeachingWorkService
 from aieos.domains.teaching.application.errors import InvalidTeachingWorkRequest
+from aieos.domains.teaching.application.generate import (
+    GenerateTeachingWorkResult,
+    GenerateTeachingWorkService,
+)
 from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionService
 from aieos.domains.teaching.application.mission_models import TeacherOsMission
 from aieos.domains.teaching.application.models import (
@@ -49,6 +62,7 @@ from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.api.idempotency_key import parse_idempotency_key
 from aieos.platform.api.if_match import parse_if_match
 from aieos.platform.api.problems import ProblemDetails
+from aieos.platform.events.models import MutationEventContext
 from aieos.platform.security.context import TrustedSecurityContext
 
 DEFAULT_LIST_LIMIT = 50
@@ -70,6 +84,20 @@ _LIST_RESPONSES = _problem_responses(400, 401, 403, 422, 500, 503)
 _REFINE_RESPONSES = _problem_responses(
     400, 401, 403, 404, 409, 412, 422, 428, 500, 503
 )
+_GENERATE_RESPONSES = _problem_responses(
+    400, 401, 403, 404, 409, 412, 422, 428, 500, 502, 503
+)
+
+
+def _mutation_event_context(
+    request: Request, context: TrustedSecurityContext
+) -> MutationEventContext:
+    return MutationEventContext(
+        correlation_id=request.state.correlation_id,
+        causation_id=request.state.request_id,
+        actor_principal_id=context.principal_id,
+        effective_actor_id=context.principal_id,
+    )
 
 
 def _work_id(value: UUID) -> WorkId:
@@ -93,6 +121,32 @@ def _to_response(model: TeachingWorkReadModel) -> TeachingWorkResponse:
         created_at=model.created_at,
         updated_at=model.updated_at,
         archived_at=model.archived_at,
+    )
+
+
+def _to_generate_response(result: GenerateTeachingWorkResult) -> TeachingWorkGenerateResponse:
+    return TeachingWorkGenerateResponse(
+        work_id=result.work_id.value,
+        generation_run_id=result.generation_run_id.value,
+        artifact=GeneratedArtifactResponse(
+            content_id=result.artifact.content_id,
+            version_id=result.artifact.version_id,
+            content_type=result.artifact.content_type,
+            title=result.artifact.title,
+            stewardship_state=result.artifact.stewardship_state,
+            aggregate_revision=result.artifact.aggregate_revision,
+        ),
+        educational_quality=EducationalQualityResponse(
+            status=result.educational_quality.status,
+            checks=[
+                EducationalQualityCheckResponse(
+                    code=str(check["code"]),
+                    passed=bool(check["passed"]),
+                    explanation=str(check["explanation"]),
+                )
+                for check in result.educational_quality.checks
+            ],
+        ),
     )
 
 
@@ -254,6 +308,81 @@ def teaching_work_refine(
     )
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
     return _to_response(model)
+
+
+@router.post(
+    "/teaching/works/{work_id}/actions/generate",
+    response_model=TeachingWorkGenerateResponse,
+    operation_id="teaching_work_generate",
+    responses=_GENERATE_RESPONSES,
+)
+def teaching_work_generate(
+    work_id: UUID,
+    request: Request,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        GenerateTeachingWorkService, Depends(generate_teaching_work_service)
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingWorkGenerateResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    result = service.generate(
+        context.tenant_id,
+        context.principal_id,
+        work_id=_work_id(work_id),
+        expected_aggregate_revision=expected,
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+    )
+    return _to_generate_response(result)
+
+
+@router.get(
+    "/teaching/works/{work_id}/artifacts",
+    response_model=TeachingWorkArtifactsResponse,
+    operation_id="teaching_work_artifacts_list",
+    responses=_GET_RESPONSES,
+)
+def teaching_work_artifacts_list(
+    work_id: UUID,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        ListTeachingWorkArtifactsService, Depends(list_teaching_work_artifacts_service)
+    ],
+) -> TeachingWorkArtifactsResponse:
+    result = service.list(context.tenant_id, context.principal_id, _work_id(work_id))
+    return TeachingWorkArtifactsResponse(
+        work_id=result.work_id.value,
+        items=[
+            WorkArtifactItemResponse(
+                content_id=item.content_id,
+                version_id=item.version_id,
+                content_type=item.content_type,
+                title=item.title,
+                origin=item.origin,
+                stewardship_state=item.stewardship_state,
+                aggregate_revision=item.aggregate_revision,
+                educational_quality=(
+                    None
+                    if item.educational_quality is None
+                    else EducationalQualityResponse(
+                        status=item.educational_quality.status,
+                        checks=[
+                            EducationalQualityCheckResponse(
+                                code=str(check["code"]),
+                                passed=bool(check["passed"]),
+                                explanation=str(check["explanation"]),
+                            )
+                            for check in item.educational_quality.checks
+                        ],
+                    )
+                ),
+            )
+            for item in result.items
+        ],
+    )
 
 
 @router.get(

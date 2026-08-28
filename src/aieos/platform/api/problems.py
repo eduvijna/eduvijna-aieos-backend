@@ -56,16 +56,27 @@ from aieos.domains.teaching.application.errors import (
     AggregateRevisionConflict as TeachingAggregateRevisionConflict,
 )
 from aieos.domains.teaching.application.errors import (
+    ContentMaterializationFailedError,
+    EducationalQualityFailedError,
+    GenerationIdempotencyConflict,
+    GenerationServiceUnavailable,
     IdempotencyKeyReused as TeachingIdempotencyKeyReused,
 )
 from aieos.domains.teaching.application.errors import (
     InvalidTeachingWorkRequest,
+    ModelGenerationFailedError,
+    ModelOutputInvalidError,
+    ModelProviderUnavailableError,
     PersistenceInvariantViolation as TeachingPersistenceInvariantViolation,
     PersistenceOperationFailed as TeachingPersistenceOperationFailed,
     TeacherOsMissionUnavailable,
     TeachingApplicationError,
     TeachingWorkForbidden,
     TeachingWorkNotFound,
+    WorkGenerationAlreadyExists,
+    WorkGenerationInProgress,
+    WorkGenerationPreconditionRequired,
+    WorkGenerationRevisionConflict,
 )
 from aieos.platform.api.context import (
     InvalidTenantHeaderError,
@@ -437,6 +448,72 @@ _TEACHING_PROBLEMS: dict[type[TeachingApplicationError], tuple[int, str, str, st
         "resource_revision_conflict",
         "Resource revision conflict",
         "If-Match does not match the current aggregate revision",
+    ),
+    WorkGenerationRevisionConflict: (
+        412,
+        "work_generation_revision_conflict",
+        "Work generation revision conflict",
+        "If-Match does not match the current Work revision",
+    ),
+    WorkGenerationPreconditionRequired: (
+        428,
+        "work_generation_precondition_required",
+        "Work generation precondition required",
+        "If-Match is required for generation",
+    ),
+    WorkGenerationInProgress: (
+        409,
+        "work_generation_in_progress",
+        "Work generation in progress",
+        "A generation with this idempotency key is already in progress",
+    ),
+    WorkGenerationAlreadyExists: (
+        409,
+        "work_generation_already_exists",
+        "Work generation already exists",
+        "This Work already has a successful generation artifact",
+    ),
+    GenerationIdempotencyConflict: (
+        409,
+        "generation_idempotency_conflict",
+        "Generation idempotency conflict",
+        "Idempotency-Key was already used with a different request",
+    ),
+    ModelProviderUnavailableError: (
+        503,
+        "model_provider_unavailable",
+        "Model provider unavailable",
+        "The model provider is temporarily unavailable",
+    ),
+    ModelGenerationFailedError: (
+        502,
+        "model_generation_failed",
+        "Model generation failed",
+        "Model generation failed",
+    ),
+    ContentMaterializationFailedError: (
+        502,
+        "content_materialization_failed",
+        "Content materialization failed",
+        "Generated content could not be materialized for review",
+    ),
+    ModelOutputInvalidError: (
+        502,
+        "model_output_invalid",
+        "Model output invalid",
+        "Model output could not be parsed into the required schema",
+    ),
+    EducationalQualityFailedError: (
+        422,
+        "educational_quality_failed",
+        "Educational quality failed",
+        "Educational Quality Baseline rejected the generated draft",
+    ),
+    GenerationServiceUnavailable: (
+        503,
+        "generation_service_unavailable",
+        "Generation service unavailable",
+        "Teaching Work generation is not composed in this runtime",
     ),
     InvalidTeachingWorkRequest: (
         422,

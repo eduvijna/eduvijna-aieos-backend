@@ -67,7 +67,9 @@ class GetTeacherOsTodayMissionService:
         if isinstance(mission_date, bool) or not isinstance(mission_date, date):
             raise InvalidTeachingWorkRequest("mission_date must be a calendar date")
 
-        pending = self._review_queue_pending_count.pending_count(execution_tenant_id)
+        pending = self._review_queue_pending_count.pending_count(
+            execution_tenant_id, principal_id
+        )
         if pending < 0:
             raise InvalidTeachingWorkRequest("pending review count must not be negative")
 

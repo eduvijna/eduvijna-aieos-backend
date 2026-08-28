@@ -22,6 +22,7 @@ _MUTATION_IDEMPOTENCY_IDS = {
     "content_publish",
     "teaching_work_create",
     "teaching_work_refine",
+    "teaching_work_generate",
 }
 _IF_MATCH_OPERATION_IDS = {
     "content_version_append",
@@ -31,6 +32,7 @@ _IF_MATCH_OPERATION_IDS = {
     "content_review_reject",
     "content_publish",
     "teaching_work_refine",
+    "teaching_work_generate",
 }
 _GET_OPERATION_IDS = {
     "content_get",
@@ -41,6 +43,7 @@ _GET_OPERATION_IDS = {
     "teaching_work_get",
     "teaching_work_list",
     "teacher_os_today_mission",
+    "teaching_work_artifacts_list",
 }
 
 _IDEMPOTENCY_PARAM = {

@@ -1,8 +1,7 @@
 """Development-boundary Content schema fixtures.
 
-Uses the same synthetic ``test.generic`` type already employed by the
-governed test harness. Production catalog/registry remain empty and fail-closed.
-No new educational Content type architecture is introduced in TOS-DEV01.
+Registers synthetic ``test.generic`` and real ``worksheet`` for NON_PRODUCTION
+Teacher OS development composition. Production catalog/registry stay empty.
 """
 
 from __future__ import annotations
@@ -16,10 +15,12 @@ from aieos.domains.content.domain.schema import (
     SchemaId,
     SchemaVersion,
 )
+from aieos.domains.education.schema import WORKSHEET_V1_SCHEMA
 
 DEV_CONTENT_TYPE = "test.generic"
 DEV_SCHEMA_ID = "test.generic"
 DEV_SCHEMA_VERSION = 1
+DEV_WORKSHEET_CONTENT_TYPE = "worksheet"
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,4 +49,5 @@ DEV_GENERIC_V1 = DevelopmentFixtureSchema(
 def build_development_schema_registry() -> ContentSchemaRegistry:
     registry = ContentSchemaRegistry()
     registry.register(DEV_GENERIC_V1)
+    registry.register(WORKSHEET_V1_SCHEMA)
     return registry

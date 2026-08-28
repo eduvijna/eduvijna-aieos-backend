@@ -40,3 +40,62 @@ class PersistenceInvariantViolation(TeachingApplicationError):
 
 class TeacherOsMissionUnavailable(TeachingApplicationError):
     """A required Today's Mission projection input could not be composed."""
+
+
+class WorkGenerationPreconditionRequired(TeachingApplicationError):
+    """If-Match is required for generation."""
+
+
+class WorkGenerationRevisionConflict(TeachingApplicationError):
+    """If-Match does not match the current Work revision for generation."""
+
+
+class WorkGenerationInProgress(TeachingApplicationError):
+    """A generation with this idempotency key is already RUNNING."""
+
+
+class WorkGenerationAlreadyExists(TeachingApplicationError):
+    """This Work already has a successful generation artifact."""
+
+    def __init__(self, message: str = "work generation already exists") -> None:
+        super().__init__(message)
+        self.existing_generation_run_id: object | None = None
+        self.existing_content_id: object | None = None
+        self.existing_version_id: object | None = None
+
+
+class GenerationIdempotencyConflict(TeachingApplicationError):
+    """Idempotency-Key reused with a different request fingerprint."""
+
+
+class ModelProviderUnavailableError(TeachingApplicationError):
+    """Model provider is unavailable for generation."""
+
+
+class ModelGenerationFailedError(TeachingApplicationError):
+    """Model generation failed."""
+
+
+class ModelOutputInvalidError(TeachingApplicationError):
+    """Model output could not be parsed into the required schema."""
+
+
+class EducationalQualityFailedError(TeachingApplicationError):
+    """Educational Quality Baseline rejected the generated draft."""
+
+    def __init__(
+        self,
+        message: str = "educational quality baseline failed",
+        *,
+        educational_quality: object | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.educational_quality = educational_quality
+
+
+class GenerationServiceUnavailable(TeachingApplicationError):
+    """Generation composition is not available in this runtime."""
+
+
+class ContentMaterializationFailedError(TeachingApplicationError):
+    """Content materialization failed after model generation succeeded."""

@@ -202,7 +202,7 @@ class TestSaiI02SchemaAndRoles:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd020001"
+                == "tosd030002"
             )
             schema_owner = conn.execute(
                 text(
@@ -287,7 +287,7 @@ class TestSaiI02SchemaAndRoles:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd020001"
+                == "tosd030002"
             )
 
     def test_offline_sql_role_order(self) -> None:
@@ -926,15 +926,17 @@ class TestSaiI02Architecture:
 
     def test_content_api_ai_migration_audit_wired_workflow_pending(self) -> None:
         """SAI-I03/I04: API+AI+migration audit wired; workflow-origin still N/A."""
+        in_uow = (CONTENT_ROOT / "application" / "in_uow.py").read_text(encoding="utf-8")
+        assert "insert_required_content_audit" in in_uow
         create = (CONTENT_ROOT / "application" / "create.py").read_text(encoding="utf-8")
-        assert "insert_required_content_audit" in create
+        assert "create_content_in_uow" in create
         ai = (CONTENT_ROOT / "application" / "ai_materialization.py").read_text(
             encoding="utf-8"
         )
         migration = (CONTENT_ROOT / "application" / "migration_import.py").read_text(
             encoding="utf-8"
         )
-        assert "insert_required_content_audit" in ai
+        assert "materialize_ai_version_in_uow" in ai
         assert "insert_required_content_audit" in migration
         uow = (
             CONTENT_ROOT

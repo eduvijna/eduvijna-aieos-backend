@@ -231,7 +231,7 @@ class ReviewCommandService:
                         existing.result_aggregate_revision
                     ),
                 )
-            revision = self._submit_new(
+            revision = submit_for_review_in_uow(
                 uow,
                 execution_tenant_id,
                 content_id=content_id,
@@ -502,82 +502,16 @@ class ReviewCommandService:
         event_context: MutationEventContext,
         updated_at: datetime,
     ) -> AggregateRevision:
-        head = uow.contents.get_head_for_update(content_id)
-        if head is None or head.tenant_id != execution_tenant_id:
-            raise ContentNotFound("Content is not visible in the execution tenant")
-        _require_visible_version(uow, content_id, version_id)
-        if head.aggregate_revision != expected_aggregate_revision:
-            raise AggregateRevisionConflict(
-                "expected aggregate_revision does not match stored head"
-            )
-        _require_current(head, version_id)
-        if head.stewardship_state != StewardshipState.GENERATED.value:
-            raise ReviewSubmitNotAllowed(
-                "submit-for-review is not allowed in the current stewardship state"
-            )
-        if uow.reviews.get_for_version(content_id, version_id) is not None:
-            raise ReviewRequiresNewVersion(
-                "this ContentVersion already has a terminal ReviewDecision"
-            )
-        resulting = uow.contents.transition_stewardship(
+        return submit_for_review_in_uow(
+            uow,
+            execution_tenant_id,
             content_id=content_id,
-            tenant_id=execution_tenant_id,
-            expected_revision=expected_aggregate_revision,
-            expected_current_version_id=version_id,
-            expected_state=StewardshipState.GENERATED.value,
-            target_state=StewardshipState.IN_REVIEW.value,
+            version_id=version_id,
+            expected_aggregate_revision=expected_aggregate_revision,
+            event_context=event_context,
             updated_at=updated_at,
         )
-        if resulting is None:
-            raise AggregateRevisionConflict(
-                "aggregate head changed before submit could commit"
-            )
-        workflow_instance_id = WorkflowInstanceId.generate()
-        business_key = content_review_business_key(
-            content_id=str(content_id),
-            version_id=str(version_id),
-        )
-        temporal_workflow_id = content_review_temporal_workflow_id(
-            str(workflow_instance_id)
-        )
-        uow.workflow_intents.insert_start_intent(
-            WorkflowStartIntent(
-                workflow_start_intent_id=WorkflowStartIntentId.generate(),
-                tenant_id=execution_tenant_id,
-                workflow_instance_id=workflow_instance_id,
-                workflow_type=CONTENT_REVIEW_WORKFLOW_TYPE,
-                workflow_major_version=CONTENT_REVIEW_WORKFLOW_MAJOR,
-                temporal_workflow_id=temporal_workflow_id,
-                task_queue=CONTENT_REVIEW_TASK_QUEUE,
-                business_key=business_key,
-                input={
-                    "workflow_instance_id": str(workflow_instance_id),
-                    "tenant_id": str(execution_tenant_id),
-                    "content_id": str(content_id),
-                    "version_id": str(version_id),
-                    "correlation_id": str(event_context.correlation_id),
-                },
-                status=INTENT_PENDING,
-                attempt_count=0,
-                available_at=updated_at,
-                claimed_by=None,
-                claimed_until=None,
-                delivered_at=None,
-                last_error_code=None,
-                created_at=updated_at,
-            )
-        )
-        uow.outbox.insert(
-            submitted_for_review_outbox(
-                tenant_id=execution_tenant_id,
-                content_id=content_id.value,
-                version_id=version_id.value,
-                aggregate_revision=int(resulting),
-                context=event_context,
-                created_at=updated_at,
-            )
-        )
-        return resulting
+
 
     def _decide_new(
         self,
@@ -723,3 +657,93 @@ class ReviewCommandService:
             stewardship_state=frozen_state,
             aggregate_revision=AggregateRevision(existing.result_aggregate_revision),
         )
+
+
+def submit_for_review_in_uow(
+    uow: ContentUnitOfWork,
+    execution_tenant_id: UUID,
+    *,
+    content_id: ContentId,
+    version_id: ContentVersionId,
+    expected_aggregate_revision: AggregateRevision,
+    event_context: MutationEventContext,
+    updated_at: datetime,
+) -> AggregateRevision:
+    """Transition GENERATED → IN_REVIEW inside an open UoW. Caller owns commit."""
+    head = uow.contents.get_head_for_update(content_id)
+    if head is None or head.tenant_id != execution_tenant_id:
+        raise ContentNotFound("Content is not visible in the execution tenant")
+    _require_visible_version(uow, content_id, version_id)
+    if head.aggregate_revision != expected_aggregate_revision:
+        raise AggregateRevisionConflict(
+            "expected aggregate_revision does not match stored head"
+        )
+    _require_current(head, version_id)
+    if head.stewardship_state != StewardshipState.GENERATED.value:
+        raise ReviewSubmitNotAllowed(
+            "submit-for-review is not allowed in the current stewardship state"
+        )
+    if uow.reviews.get_for_version(content_id, version_id) is not None:
+        raise ReviewRequiresNewVersion(
+            "this ContentVersion already has a terminal ReviewDecision"
+        )
+    resulting = uow.contents.transition_stewardship(
+        content_id=content_id,
+        tenant_id=execution_tenant_id,
+        expected_revision=expected_aggregate_revision,
+        expected_current_version_id=version_id,
+        expected_state=StewardshipState.GENERATED.value,
+        target_state=StewardshipState.IN_REVIEW.value,
+        updated_at=updated_at,
+    )
+    if resulting is None:
+        raise AggregateRevisionConflict(
+            "aggregate head changed before submit could commit"
+        )
+    workflow_instance_id = WorkflowInstanceId.generate()
+    business_key = content_review_business_key(
+        content_id=str(content_id),
+        version_id=str(version_id),
+    )
+    temporal_workflow_id = content_review_temporal_workflow_id(
+        str(workflow_instance_id)
+    )
+    uow.workflow_intents.insert_start_intent(
+        WorkflowStartIntent(
+            workflow_start_intent_id=WorkflowStartIntentId.generate(),
+            tenant_id=execution_tenant_id,
+            workflow_instance_id=workflow_instance_id,
+            workflow_type=CONTENT_REVIEW_WORKFLOW_TYPE,
+            workflow_major_version=CONTENT_REVIEW_WORKFLOW_MAJOR,
+            temporal_workflow_id=temporal_workflow_id,
+            task_queue=CONTENT_REVIEW_TASK_QUEUE,
+            business_key=business_key,
+            input={
+                "workflow_instance_id": str(workflow_instance_id),
+                "tenant_id": str(execution_tenant_id),
+                "content_id": str(content_id),
+                "version_id": str(version_id),
+                "correlation_id": str(event_context.correlation_id),
+            },
+            status=INTENT_PENDING,
+            attempt_count=0,
+            available_at=updated_at,
+            claimed_by=None,
+            claimed_until=None,
+            delivered_at=None,
+            last_error_code=None,
+            created_at=updated_at,
+        )
+    )
+    uow.outbox.insert(
+        submitted_for_review_outbox(
+            tenant_id=execution_tenant_id,
+            content_id=content_id.value,
+            version_id=version_id.value,
+            aggregate_revision=int(resulting),
+            context=event_context,
+            created_at=updated_at,
+        )
+    )
+    return resulting
+

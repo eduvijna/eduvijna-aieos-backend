@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select, text, update
+from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.engine import Connection
 
 from aieos.domains.content.application.errors import (
@@ -122,6 +122,35 @@ class SqlAlchemyContentVersionRepository:
         if not isinstance(value, Mapping):
             raise PersistenceInvariantViolation("stored provenance must be a JSON object")
         return dict(value)
+
+    def find_by_generation_run_id(
+        self, generation_run_id: UUID
+    ) -> ContentVersion | None:
+        """Locate AI ContentVersion bound to generation_run_id via provenance JSON."""
+        try:
+            row = (
+                self._connection.execute(
+                    select(content_versions_table)
+                    .where(
+                        content_versions_table.c.origin == "AI",
+                        content_versions_table.c.provenance.is_not(None),
+                        func.jsonb_extract_path_text(
+                            content_versions_table.c.provenance,
+                            "generation_run_ref",
+                            "resource_id",
+                        )
+                        == str(generation_run_id),
+                    )
+                    .limit(1)
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                return None
+            return content_version_from_row(row)
+        except Exception as exc:
+            reraise_as_application_error(exc)
 
 
 class SqlAlchemyContentRepository:
@@ -624,6 +653,7 @@ class SqlAlchemyReviewQueueReadRepository:
     def list_page(
         self,
         *,
+        owner_principal_id: UUID,
         limit: int,
         after_submitted_at: datetime | None,
         after_content_id: ContentId | None,
@@ -647,6 +677,7 @@ class SqlAlchemyReviewQueueReadRepository:
             .select_from(join_from)
             .where(
                 contents_table.c.tenant_id == self._execution_tenant_id,
+                contents_table.c.owner_principal_id == owner_principal_id,
                 contents_table.c.stewardship_state == "IN_REVIEW",
                 contents_table.c.current_version_id.is_not(None),
                 ~decision_exists,
@@ -674,7 +705,11 @@ class SqlAlchemyReviewQueueReadRepository:
             reraise_as_application_error(exc)
 
     def get_item(
-        self, content_id: ContentId, version_id: ContentVersionId
+        self,
+        content_id: ContentId,
+        version_id: ContentVersionId,
+        *,
+        owner_principal_id: UUID,
     ) -> TeacherReviewQueueDetail | None:
         join_from, decision_exists = self._eligible_join()
         stmt = (
@@ -699,6 +734,7 @@ class SqlAlchemyReviewQueueReadRepository:
             .select_from(join_from)
             .where(
                 contents_table.c.tenant_id == self._execution_tenant_id,
+                contents_table.c.owner_principal_id == owner_principal_id,
                 contents_table.c.content_id == content_id.value,
                 contents_table.c.stewardship_state == "IN_REVIEW",
                 contents_table.c.current_version_id == version_id.value,

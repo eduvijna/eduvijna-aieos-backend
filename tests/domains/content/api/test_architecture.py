@@ -31,6 +31,8 @@ _EXPECTED_MIGRATIONS = [
     "pedi10b6001_asset_security_audit.py",
     "saii020001_security_audit_ledger.py",
     "tosd020001_teaching_work.py",
+    "tosd030001_generation_runs.py",
+    "tosd030002_generation_run_work_fence.py",
 ]
 
 
@@ -102,6 +104,8 @@ def test_no_gci_i14_or_unauthorized_structures() -> None:
     assert '"/teacher-os/review-queue/{content_id}/versions/{version_id}"' in routes
     assert '"/teacher-os/review-queue/{content_id}"' not in routes
     hits: list[str] = []
+    allowed_generation_runs = {"tosd030001_generation_runs.py",
+    "tosd030002_generation_run_work_fence.py", "env.py"}
     for path in (REPO_ROOT / "migrations").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         for needle in (
@@ -109,7 +113,6 @@ def test_no_gci_i14_or_unauthorized_structures() -> None:
             "review_queue",
             "consumer_inbox",
             "asset_archive",
-            "generation_runs",
             "prompt_executions",
             "ai_models",
             "ai_providers",
@@ -118,6 +121,8 @@ def test_no_gci_i14_or_unauthorized_structures() -> None:
         ):
             if needle in text:
                 hits.append(f"{path.name}:{needle}")
+        if "generation_runs" in text and path.name not in allowed_generation_runs:
+            hits.append(f"{path.name}:generation_runs")
     assert hits == []
     assert (
         REPO_ROOT / "migrations" / "versions" / "gcii100001_version_asset_refs.py"

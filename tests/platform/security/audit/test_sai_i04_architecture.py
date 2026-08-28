@@ -46,6 +46,8 @@ _EXPECTED_MIGRATIONS = [
     "pedi10b6001_asset_security_audit.py",
     "saii020001_security_audit_ledger.py",
     "tosd020001_teaching_work.py",
+    "tosd030001_generation_runs.py",
+    "tosd030002_generation_run_work_fence.py",
 ]
 
 
@@ -59,10 +61,12 @@ def test_migration_head_unchanged_no_saii040001() -> None:
 
 
 def test_ai_and_migration_wire_required_audit() -> None:
+    in_uow = (CONTENT_ROOT / "application" / "in_uow.py").read_text(encoding="utf-8")
     ai = AI_SERVICE.read_text(encoding="utf-8")
     migration = MIGRATION_SERVICE.read_text(encoding="utf-8")
-    assert "insert_required_content_audit" in ai
-    assert "CONTENT_AI_MATERIALIZE" in ai
+    assert "insert_required_content_audit" in in_uow
+    assert "CONTENT_AI_MATERIALIZE" in in_uow
+    assert "materialize_ai_version_in_uow" in ai
     assert "audit_provenance" in ai
     assert "insert_required_content_audit" in migration
     assert "CONTENT_MIGRATION_IMPORT" in migration
@@ -75,7 +79,11 @@ def test_ai_and_migration_wire_required_audit() -> None:
 
 
 def test_api_actions_still_wired() -> None:
-    for name in ("create.py", "http_append.py", "review.py", "publish.py"):
+    in_uow = (CONTENT_ROOT / "application" / "in_uow.py").read_text(encoding="utf-8")
+    assert "insert_required_content_audit" in in_uow
+    create = (CONTENT_ROOT / "application" / "create.py").read_text(encoding="utf-8")
+    assert "create_content_in_uow" in create
+    for name in ("http_append.py", "review.py", "publish.py"):
         text = (CONTENT_ROOT / "application" / name).read_text(encoding="utf-8")
         assert "insert_required_content_audit" in text, name
 
