@@ -17,11 +17,12 @@ from aieos.platform.education.quality_baseline import (
     EducationalQualityStatus,
     evaluate_educational_quality_baseline_v1,
 )
-from aieos.platform.ai.config import DEFAULT_MAX_OUTPUT_TOKENS
 from aieos.platform.ai.gateway import (
     StructuredGenerationRequest,
     StructuredModelGateway,
 )
+
+WORKSHEET_MAX_OUTPUT_TOKENS = 8000
 
 
 class EducationalQualityFailed(Exception):
@@ -39,7 +40,7 @@ class GenerateWorksheetCapability:
         self,
         model_gateway: StructuredModelGateway,
         *,
-        max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+        max_output_tokens: int = WORKSHEET_MAX_OUTPUT_TOKENS,
     ) -> None:
         self._model_gateway = model_gateway
         self._max_output_tokens = max_output_tokens

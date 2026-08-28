@@ -43,6 +43,8 @@ def test_provider_neutral_gateway_has_no_openai_types() -> None:
     assert "class ModelRequestRejected" in source
     assert "class ModelAdapterContractFailed" in source
     assert "class ModelOutputInvalid" in source
+    assert "class ModelOutputIncomplete" in source
+    assert "class ModelOutputMissing" in source
     assert "class ModelProviderUnavailable" in source
     assert "class ModelGenerationFailed" in source
 

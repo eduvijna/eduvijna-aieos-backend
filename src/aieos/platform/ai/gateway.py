@@ -54,6 +54,14 @@ class ModelOutputInvalid(ModelGatewayError):
     """Provider output could not be parsed into the requested schema."""
 
 
+class ModelOutputIncomplete(ModelGatewayError):
+    """Provider returned an explicitly incomplete response before structured output."""
+
+
+class ModelOutputMissing(ModelGatewayError):
+    """Provider returned without parseable structured output (not an SDK parse error)."""
+
+
 class StructuredModelGateway(Protocol):
     """Domain-facing port. Implementations may import provider SDKs; callers must not."""
 

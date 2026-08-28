@@ -16,6 +16,14 @@ Requirements:
 - Conform exactly to the WorksheetV1 structured output schema.
 - This output will be reviewed by a teacher before any learner use.
 
+Cross-field validity (enforced after generation):
+- Every learning objective id must be unique.
+- Every question id must be unique.
+- Each question objective_ids entry must reference an id present in learning_objectives.
+- multiple_choice: exactly 3–5 non-empty options; answer must exactly equal one option.
+- short_answer and true_false: options must be an empty list.
+- Use short stable machine identifiers for ids (for example obj1, q1).
+
 Do not approve your own output.
 Do not include chain-of-thought or hidden reasoning.
 """

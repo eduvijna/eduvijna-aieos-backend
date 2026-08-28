@@ -62,7 +62,9 @@ from aieos.platform.ai.domain.generation_run import (
 from aieos.platform.ai.gateway import (
     ModelAdapterContractFailed,
     ModelGenerationFailed,
+    ModelOutputIncomplete,
     ModelOutputInvalid,
+    ModelOutputMissing,
     ModelProviderUnavailable,
     ModelRequestRejected,
 )
@@ -273,6 +275,24 @@ class GenerateTeachingWorkService:
                 execution_tenant_id,
                 run_id,
                 failure_code="model_output_invalid",
+                now=failure_at,
+            )
+            raise ModelOutputInvalidError("model output invalid") from exc
+        except ModelOutputIncomplete as exc:
+            failure_at = self._clock()
+            self._mark_failed(
+                execution_tenant_id,
+                run_id,
+                failure_code="model_output_incomplete",
+                now=failure_at,
+            )
+            raise ModelOutputInvalidError("model output invalid") from exc
+        except ModelOutputMissing as exc:
+            failure_at = self._clock()
+            self._mark_failed(
+                execution_tenant_id,
+                run_id,
+                failure_code="model_output_missing",
                 now=failure_at,
             )
             raise ModelOutputInvalidError("model output invalid") from exc
@@ -736,7 +756,11 @@ class GenerateTeachingWorkService:
             )
         if code == "model_provider_unavailable":
             raise ModelProviderUnavailableError("model provider unavailable")
-        if code == "model_output_invalid":
+        if code in (
+            "model_output_invalid",
+            "model_output_incomplete",
+            "model_output_missing",
+        ):
             raise ModelOutputInvalidError("model output invalid")
         if code in (
             "model_request_rejected",
