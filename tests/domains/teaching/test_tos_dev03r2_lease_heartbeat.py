@@ -131,7 +131,10 @@ class TestTosDev03R2FalseStaleAdversarial:
         assert body["artifact"]["stewardship_state"] == "IN_REVIEW"
 
         with factory(tenant_id) as uow:
-            runs = uow.generation_runs.list_for_work(uuid.UUID(work_id))
+            runs = uow.generation_runs.list_for_work(
+                principal_id=principal_id,
+                work_resource_id=uuid.UUID(work_id),
+            )
             assert len(runs) == 1
             assert runs[0].status.value == "SUCCEEDED"
 
@@ -191,7 +194,10 @@ class TestTosDev03R2FailureTimestamp:
         heartbeat_at = T0 + timedelta(seconds=100)
         factory = SqlAlchemyAIUnitOfWorkFactory(runtime_engine)
         with factory(tenant_id) as uow:
-            runs = uow.generation_runs.list_for_work(uuid.UUID(work_id))
+            runs = uow.generation_runs.list_for_work(
+                principal_id=principal_id,
+                work_resource_id=uuid.UUID(work_id),
+            )
             assert len(runs) == 1
             run = runs[0]
             assert run.status.value == "FAILED"
