@@ -517,10 +517,18 @@ class GenerateTeachingWorkService:
                 principal_id=principal_id,
                 idempotency_key_sha256=key_hash,
             )
-            winner = ai_uow.generation_runs.find_active_or_succeeded_for_work(
+            outcome = ai_uow.generation_runs.find_outcome_for_work_revision_capability(
                 work_resource_id=work_id.value,
+                work_resource_revision=int(expected_aggregate_revision),
+                capability_id=CAPABILITY_EDUCATION_GENERATE_WORKSHEET,
             )
-            conflict_run = by_key if by_key is not None else winner
+            running = ai_uow.generation_runs.find_running_for_work_capability(
+                work_resource_id=work_id.value,
+                capability_id=CAPABILITY_EDUCATION_GENERATE_WORKSHEET,
+            )
+            conflict_run = by_key if by_key is not None else (
+                outcome if outcome is not None else running
+            )
             if conflict_run is None:
                 raise WorkGenerationInProgress("work generation concurrency conflict")
             resolved = self._resolve_existing_run(

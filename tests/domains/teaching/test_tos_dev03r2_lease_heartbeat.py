@@ -100,8 +100,9 @@ class TestTosDev03R2FalseStaleAdversarial:
                 expected_lease = heartbeat_at + timedelta(seconds=LEASE_SECONDS)
                 factory = SqlAlchemyAIUnitOfWorkFactory(runtime_engine)
                 with factory(tenant_id) as uow:
-                    active = uow.generation_runs.find_active_or_succeeded_for_work(
+                    active = uow.generation_runs.find_running_for_work_capability(
                         work_resource_id=uuid.UUID(work_id),
+                        capability_id="education.generate_worksheet",
                     )
                     assert active is not None
                     assert active.lease_expires_at == expected_lease

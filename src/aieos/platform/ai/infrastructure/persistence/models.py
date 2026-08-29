@@ -113,11 +113,21 @@ generation_runs_table = Table(
     ),
     Index("ix_ai_generation_runs_tenant_status", "tenant_id", "status"),
     Index(
-        "uq_ai_generation_runs_work_active_or_succeeded",
+        "uq_ai_generation_runs_work_revision_capability_outcome",
         "tenant_id",
         "work_resource_id",
+        "work_resource_revision",
+        "capability_id",
         unique=True,
         postgresql_where=text("status IN ('RUNNING', 'SUCCEEDED')"),
+    ),
+    Index(
+        "uq_ai_generation_runs_work_capability_running",
+        "tenant_id",
+        "work_resource_id",
+        "capability_id",
+        unique=True,
+        postgresql_where=text("status = 'RUNNING'"),
     ),
     schema="ai",
 )

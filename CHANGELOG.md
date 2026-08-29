@@ -9,6 +9,17 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I02 — multi-artifact ContentVersion uniqueness and capability/
+  revision-aware GenerationRun fences (ADR-AIEOS-052 persistence substrate).
+  Alembic `tosd040001` adds strict DB AI provenance V2 validation with a
+  version-aware dispatcher (V1+V2), replaces the V1-only ContentVersion CHECK,
+  evolves AI ContentVersion uniqueness to V1 (tenant+run) / V2
+  (tenant+run+artifact_kind), and replaces the work-only GenerationRun fence
+  with Fence A (work+revision+capability for RUNNING|SUCCEEDED) and Fence B
+  (work+capability for RUNNING). Adds plural provenance lookup by
+  GenerationRun while preserving DEV03 V1 singular query semantics. No
+  preparation capability, six-artifact materialization, API, frontend, or
+  provider call.
 - TOS-DEV04-I01 — typed `PreparationKitV1` provider-neutral structured-output
   contract with component drafts (lesson plan, worksheet, quick quiz, homework,
   teacher notes) and `AnswerKeyV1` contract-only payload; strict cross-field

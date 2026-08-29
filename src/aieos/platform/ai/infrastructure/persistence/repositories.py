@@ -223,23 +223,52 @@ class SqlAlchemyGenerationRunRepository:
             reraise_as_application_error(exc)
         return None if row is None else _row_to_run(row)
 
-    def find_active_or_succeeded_for_work(
+    def find_outcome_for_work_revision_capability(
         self,
         *,
         work_resource_id: UUID,
+        work_resource_revision: int,
+        capability_id: str,
     ) -> GenerationRun | None:
-        """Return the work-fence holder (RUNNING or SUCCEEDED), if any."""
+        """Fence A holder: RUNNING or SUCCEEDED for work+revision+capability."""
         stmt = (
             select(generation_runs_table)
             .where(
                 generation_runs_table.c.tenant_id == self._execution_tenant_id,
                 generation_runs_table.c.work_resource_id == work_resource_id,
+                generation_runs_table.c.work_resource_revision
+                == work_resource_revision,
+                generation_runs_table.c.capability_id == capability_id,
                 generation_runs_table.c.status.in_(
                     (
                         GenerationRunStatus.RUNNING.value,
                         GenerationRunStatus.SUCCEEDED.value,
                     )
                 ),
+            )
+            .order_by(generation_runs_table.c.created_at.asc())
+            .limit(1)
+        )
+        try:
+            row = self._connection.execute(stmt).mappings().one_or_none()
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return None if row is None else _row_to_run(row)
+
+    def find_running_for_work_capability(
+        self,
+        *,
+        work_resource_id: UUID,
+        capability_id: str,
+    ) -> GenerationRun | None:
+        """Fence B holder: RUNNING for work+capability across all revisions."""
+        stmt = (
+            select(generation_runs_table)
+            .where(
+                generation_runs_table.c.tenant_id == self._execution_tenant_id,
+                generation_runs_table.c.work_resource_id == work_resource_id,
+                generation_runs_table.c.capability_id == capability_id,
+                generation_runs_table.c.status == GenerationRunStatus.RUNNING.value,
             )
             .order_by(generation_runs_table.c.created_at.asc())
             .limit(1)

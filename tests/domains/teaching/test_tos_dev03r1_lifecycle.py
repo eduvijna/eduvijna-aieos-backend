@@ -592,9 +592,49 @@ class TestTosDev03R1Migration:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd030002"
+                == "tosd040001"
             )
-            fence = conn.execute(
+            fence_a = conn.execute(
+                text(
+                    """
+                    SELECT 1 FROM pg_indexes
+                    WHERE schemaname = 'ai'
+                      AND indexname = 'uq_ai_generation_runs_work_revision_capability_outcome'
+                    """
+                )
+            ).scalar_one_or_none()
+            assert fence_a == 1
+            fence_b = conn.execute(
+                text(
+                    """
+                    SELECT 1 FROM pg_indexes
+                    WHERE schemaname = 'ai'
+                      AND indexname = 'uq_ai_generation_runs_work_capability_running'
+                    """
+                )
+            ).scalar_one_or_none()
+            assert fence_b == 1
+            binding_v1 = conn.execute(
+                text(
+                    """
+                    SELECT 1 FROM pg_indexes
+                    WHERE schemaname = 'content'
+                      AND indexname = 'uq_content_versions_ai_generation_run_id_v1'
+                    """
+                )
+            ).scalar_one_or_none()
+            assert binding_v1 == 1
+            binding_v2 = conn.execute(
+                text(
+                    """
+                    SELECT 1 FROM pg_indexes
+                    WHERE schemaname = 'content'
+                      AND indexname = 'uq_content_versions_ai_generation_run_artifact_v2'
+                    """
+                )
+            ).scalar_one_or_none()
+            assert binding_v2 == 1
+            old_fence = conn.execute(
                 text(
                     """
                     SELECT 1 FROM pg_indexes
@@ -603,8 +643,8 @@ class TestTosDev03R1Migration:
                     """
                 )
             ).scalar_one_or_none()
-            assert fence == 1
-            binding = conn.execute(
+            assert old_fence is None
+            old_binding = conn.execute(
                 text(
                     """
                     SELECT 1 FROM pg_indexes
@@ -613,4 +653,4 @@ class TestTosDev03R1Migration:
                     """
                 )
             ).scalar_one_or_none()
-            assert binding == 1
+            assert old_binding is None
