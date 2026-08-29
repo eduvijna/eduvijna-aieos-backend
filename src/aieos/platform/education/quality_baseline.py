@@ -65,6 +65,20 @@ class EducationalQualityResult:
         }
 
 
+def find_unsupported_alignment_claim(text: str) -> str | None:
+    """Return the first unsupported curriculum/board claim token, if any.
+
+    Shared public policy helper for DEV03 worksheet EQ and DEV04 preparation EQ.
+    Case-insensitive whole-word match against the frozen alignment vocabulary.
+    """
+    if not isinstance(text, str) or not text:
+        return None
+    match = _ALIGNMENT_RE.search(text)
+    if match is None:
+        return None
+    return match.group(0)
+
+
 def _check(code: str, passed: bool, explanation: str) -> EducationalQualityCheck:
     return EducationalQualityCheck(code=code, passed=passed, explanation=explanation)
 
@@ -217,15 +231,15 @@ def evaluate_educational_quality_baseline_v1(
     )
 
     text_blob = _collect_text(worksheet)
-    match = _ALIGNMENT_RE.search(text_blob)
-    alignment_ok = match is None
+    claim = find_unsupported_alignment_claim(text_blob)
+    alignment_ok = claim is None
     checks.append(
         _check(
             "unsupported_alignment_claim_absent",
             alignment_ok,
             "no unsupported curriculum/board alignment claims detected"
             if alignment_ok
-            else f"unsupported alignment claim detected near {match.group(0)!r}",
+            else f"unsupported alignment claim detected near {claim!r}",
         )
     )
 

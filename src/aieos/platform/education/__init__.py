@@ -6,6 +6,7 @@ from aieos.platform.education.quality_baseline import (
     EducationalQualityStatus,
     educational_quality_from_summary,
     evaluate_educational_quality_baseline_v1,
+    find_unsupported_alignment_claim,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "EducationalQualityStatus",
     "educational_quality_from_summary",
     "evaluate_educational_quality_baseline_v1",
+    "find_unsupported_alignment_claim",
 ]
