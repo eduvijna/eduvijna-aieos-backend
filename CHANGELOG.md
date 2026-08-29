@@ -9,6 +9,17 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I05 — preparation Educational Quality V1 and cross-artifact coherence
+  baseline (ADR-AIEOS-052): provider-independent
+  `evaluate_preparation_educational_quality_v1` over final
+  `PreparationArtifactPayloadsV1` with hard checks (schema revalidation, shared
+  objectives, component mappings, question-ID integrity, Answer Key completeness
+  and reference integrity, ordered objective consistency, structural topic
+  lineage, whole-kit unsupported-alignment scan, teacher notes) plus inherited
+  prefixed DEV03 worksheet EQ. Extracts shared public
+  `find_unsupported_alignment_claim` without changing DEV03 semantics. No
+  provider call, Content materialization, GenerationRun orchestration, API,
+  frontend, migration, or capability wiring.
 - TOS-DEV04-I04 — `GeneratePreparationKitCapability` and deterministic Answer Key
   builder (ADR-AIEOS-052): one provider-neutral `StructuredModelGateway` call to
   `PreparationKitV1`, then pure transforms to LessonPlanV1 / WorksheetV1 / QuizV1 /
