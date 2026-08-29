@@ -9,6 +9,21 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I03R1 — harden final LessonPlanV1 / QuizV1 / HomeworkV1 learning-
+  objective semantic invariants: whitespace-only objective id/text are rejected
+  at the Content payload boundary without changing WorksheetV1 / LearningObjectiveV1
+  (DEV03) or the accepted I03 atomic materialization service. No migration, API,
+  frontend, or provider call.
+- TOS-DEV04-I03 — atomic six-artifact Generic Content materialization for review
+  (ADR-AIEOS-052): final LessonPlanV1 / QuizV1 / HomeworkV1 / TeacherNotesV1
+  payload contracts with education schema adapters and typed audience metadata;
+  Generic Content AI provenance materialization accepts V1 or V2; composite
+  CreateAIPreparationArtifactsForReviewService commits six Contents + versions +
+  IN_REVIEW admissions in one Content UoW / one transaction (6/6 or 0/6). Reuses
+  WorksheetV1 and AnswerKeyV1 unchanged. No migration, Answer Key builder,
+  preparation capability, Educational Quality, PrepareTeachingWorkService,
+  /actions/prepare, OpenAPI, frontend, provider call, or production Content
+  activation.
 - TOS-DEV04-I02R1 — cross-revision stale GenerationRun isolation for the DEV03
   worksheet compatibility path: a stale RUNNING run bound to Work revision R0
   may be reconciled/finalized as R0, but must never return R0 artifacts as the

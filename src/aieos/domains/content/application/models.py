@@ -19,7 +19,7 @@ from aieos.domains.content.domain.identities import (
 from aieos.domains.content.domain.version import ContentVersion
 from aieos.domains.content.domain.version_asset_ref import VersionAssetRef
 from aieos.domains.content.domain.migration_provenance import MigrationImportProvenanceV1
-from aieos.domains.content.domain.provenance import AIGenerationProvenanceV1
+from aieos.domains.content.domain.provenance import AIGenerationProvenance
 from aieos.platform.resources import ResourceRef
 
 
@@ -28,7 +28,7 @@ class AppendContentVersionCommand:
     expected_aggregate_revision: AggregateRevision
     version: ContentVersion
     provenance: (
-        AIGenerationProvenanceV1
+        AIGenerationProvenance
         | MigrationImportProvenanceV1
         | Mapping[str, object]
         | None
@@ -55,7 +55,7 @@ class AIGeneratedVersionMaterializationCommand:
     schema_id: str
     schema_version: int
     payload: Mapping[str, object]
-    provenance: AIGenerationProvenanceV1
+    provenance: AIGenerationProvenance
     asset_refs: tuple[VersionAssetAssociationSpec, ...] = ()
 
 

@@ -135,11 +135,19 @@ class AssetReferenceValidationFailed(ContentApplicationError):
 
 
 class AIProvenanceInvalid(ContentApplicationError):
-    """AI generation provenance failed the typed allow-listed V1 contract."""
+    """AI generation provenance failed the typed allow-listed contract."""
 
 
 class AIGenerationForbidden(ContentApplicationError):
     """Current principal lacks content.version.create for AI materialization."""
+
+
+class AIPreparationArtifactsAlreadyMaterialized(ContentApplicationError):
+    """GenerationRun already has preparation AI ContentVersion bindings."""
+
+
+class AIPreparationArtifactsInvalid(ContentApplicationError):
+    """Preparation six-artifact materialization request failed closed."""
 
 
 class ReviewQueueItemNotFound(ContentApplicationError):
