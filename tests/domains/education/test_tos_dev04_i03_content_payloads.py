@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from aieos.domains.content.domain.errors import InvalidPayloadError
 from aieos.domains.education.content_payloads_v1 import (
     HomeworkV1,
     LessonPlanV1,
@@ -16,6 +17,7 @@ from aieos.domains.education.schema import (
     ContentAudience,
     HOMEWORK_CONTENT_TYPE,
     LESSON_PLAN_CONTENT_TYPE,
+    LESSON_PLAN_V1_SCHEMA,
     PREPARATION_ARTIFACT_AUDIENCE,
     PREPARATION_ARTIFACT_KINDS,
     QUIZ_CONTENT_TYPE,
@@ -23,6 +25,9 @@ from aieos.domains.education.schema import (
     WORKSHEET_CONTENT_TYPE,
     build_preparation_content_schema_registry,
 )
+from aieos.domains.education.worksheet_v1 import LearningObjectiveV1, WorksheetV1
+from tests.dbutil import REPO_ROOT
+from tests.domains.teaching.worksheet_fixtures import valid_worksheet_payload
 
 pytestmark = pytest.mark.tos_dev04_i03
 
@@ -141,6 +146,51 @@ class TestLessonPlanV1:
                 valid_lesson_plan_payload(sections=[section, {**section, "title": "B"}])
             )
 
+    def test_whitespace_only_unused_objective_id_rejected(self) -> None:
+        """Invalid objective is unused by mappings — proves objective-level rejection."""
+        with pytest.raises(ValidationError):
+            LessonPlanV1.model_validate(
+                valid_lesson_plan_payload(
+                    learning_objectives=[
+                        {"id": "obj-1", "text": "Identify fraction parts"},
+                        {"id": "   ", "text": "Compare simple fractions"},
+                    ],
+                    objective_ids=["obj-1"],
+                    sections=[
+                        {
+                            "id": "sec-1",
+                            "title": "Explore",
+                            "objective_ids": ["obj-1"],
+                            "teacher_actions": "Demonstrate halves and quarters.",
+                            "learner_actions": "Build models with tiles.",
+                            "estimated_minutes": 12,
+                        }
+                    ],
+                )
+            )
+
+    def test_whitespace_only_objective_text_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            LessonPlanV1.model_validate(
+                valid_lesson_plan_payload(
+                    learning_objectives=[
+                        {"id": "obj-1", "text": "Identify fraction parts"},
+                        {"id": "obj-2", "text": "   "},
+                    ],
+                    objective_ids=["obj-1"],
+                    sections=[
+                        {
+                            "id": "sec-1",
+                            "title": "Explore",
+                            "objective_ids": ["obj-1"],
+                            "teacher_actions": "Demonstrate halves and quarters.",
+                            "learner_actions": "Build models with tiles.",
+                            "estimated_minutes": 12,
+                        }
+                    ],
+                )
+            )
+
 
 class TestQuizV1:
     def test_valid_accepted(self) -> None:
@@ -169,6 +219,36 @@ class TestQuizV1:
         with pytest.raises(ValidationError):
             QuizV1.model_validate(valid_quiz_payload(questions=[bad]))
 
+    def test_whitespace_only_unused_objective_id_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            QuizV1.model_validate(
+                valid_quiz_payload(
+                    learning_objectives=[
+                        {"id": "obj-1", "text": "Identify fraction parts"},
+                        {"id": "   ", "text": "Compare simple fractions"},
+                    ],
+                    questions=[
+                        _question(qid="q-1", objective_ids=["obj-1"]),
+                        _question(qid="q-2", objective_ids=["obj-1"]),
+                    ],
+                )
+            )
+
+    def test_whitespace_only_objective_text_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            QuizV1.model_validate(
+                valid_quiz_payload(
+                    learning_objectives=[
+                        {"id": "obj-1", "text": "Identify fraction parts"},
+                        {"id": "obj-2", "text": "   "},
+                    ],
+                    questions=[
+                        _question(qid="q-1", objective_ids=["obj-1"]),
+                        _question(qid="q-2", objective_ids=["obj-1"]),
+                    ],
+                )
+            )
+
 
 class TestHomeworkV1:
     def test_valid_accepted(self) -> None:
@@ -187,6 +267,30 @@ class TestHomeworkV1:
             HomeworkV1.model_validate(
                 valid_homework_payload(
                     questions=[_question(qid="h-1"), _question(qid="h-1")]
+                )
+            )
+
+    def test_whitespace_only_unused_objective_id_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            HomeworkV1.model_validate(
+                valid_homework_payload(
+                    learning_objectives=[
+                        {"id": "obj-1", "text": "Identify fraction parts"},
+                        {"id": "   ", "text": "Compare simple fractions"},
+                    ],
+                    questions=[_question(qid="h-1", objective_ids=["obj-1"])],
+                )
+            )
+
+    def test_whitespace_only_objective_text_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            HomeworkV1.model_validate(
+                valid_homework_payload(
+                    learning_objectives=[
+                        {"id": "obj-1", "text": "Identify fraction parts"},
+                        {"id": "obj-2", "text": "   "},
+                    ],
+                    questions=[_question(qid="h-1", objective_ids=["obj-1"])],
                 )
             )
 
@@ -231,3 +335,48 @@ class TestAudienceAndSchemas:
         for content_type, (schema_id, version) in expected.items():
             registered = registry.get(schema_id, version)
             assert registered.content_type == content_type
+
+    def test_lesson_plan_schema_rejects_whitespace_objective_id(self) -> None:
+        payload = valid_lesson_plan_payload(
+            learning_objectives=[
+                {"id": "obj-1", "text": "Identify fraction parts"},
+                {"id": "   ", "text": "Compare simple fractions"},
+            ],
+            objective_ids=["obj-1"],
+            sections=[
+                {
+                    "id": "sec-1",
+                    "title": "Explore",
+                    "objective_ids": ["obj-1"],
+                    "teacher_actions": "Demonstrate halves and quarters.",
+                    "learner_actions": "Build models with tiles.",
+                    "estimated_minutes": 12,
+                }
+            ],
+        )
+        with pytest.raises(InvalidPayloadError):
+            LESSON_PLAN_V1_SCHEMA.validate(payload)
+
+
+class TestWorksheetV1Unchanged:
+    def test_worksheet_v1_source_file_untouched_by_i03r1(self) -> None:
+        worksheet_src = (
+            REPO_ROOT / "src" / "aieos" / "domains" / "education" / "worksheet_v1.py"
+        ).read_text(encoding="utf-8")
+        assert 'id: str = Field(min_length=1)' in worksheet_src
+        assert 'text: str = Field(min_length=1)' in worksheet_src
+        assert "must not be blank" not in worksheet_src
+
+    def test_worksheet_v1_still_accepts_whitespace_only_objective_fields(self) -> None:
+        """DEV03 LearningObjectiveV1 boundary remains min_length=1 only."""
+        payload = valid_worksheet_payload()
+        payload["learning_objectives"] = [
+            {"id": "obj-1", "text": "Identify fraction parts"},
+            {"id": "   ", "text": "   "},
+        ]
+        # Questions only reference obj-1 so mapping stays valid.
+        for question in payload["questions"]:
+            question["objective_ids"] = ["obj-1"]
+        model = WorksheetV1.model_validate(payload)
+        assert any(obj.id == "   " for obj in model.learning_objectives)
+        LearningObjectiveV1.model_validate({"id": "   ", "text": "   "})

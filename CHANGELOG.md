@@ -9,6 +9,11 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I03R1 — harden final LessonPlanV1 / QuizV1 / HomeworkV1 learning-
+  objective semantic invariants: whitespace-only objective id/text are rejected
+  at the Content payload boundary without changing WorksheetV1 / LearningObjectiveV1
+  (DEV03) or the accepted I03 atomic materialization service. No migration, API,
+  frontend, or provider call.
 - TOS-DEV04-I03 — atomic six-artifact Generic Content materialization for review
   (ADR-AIEOS-052): final LessonPlanV1 / QuizV1 / HomeworkV1 / TeacherNotesV1
   payload contracts with education schema adapters and typed audience metadata;

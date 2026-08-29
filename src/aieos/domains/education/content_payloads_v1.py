@@ -31,6 +31,21 @@ __all__ = [
 ]
 
 
+def _validate_final_learning_objectives(
+    objectives: list[LearningObjectiveV1],
+) -> None:
+    """Final Content payload boundary: reject whitespace-only objective id/text.
+
+    Does not strip or rewrite values. Does not alter LearningObjectiveV1 /
+    WorksheetV1 (DEV03 remains unchanged).
+    """
+    for objective in objectives:
+        if not objective.id.strip():
+            raise ValueError("learning objective id must not be blank")
+        if not objective.text.strip():
+            raise ValueError("learning objective text must not be blank")
+
+
 class LessonPlanV1(BaseModel):
     """Self-contained lesson-plan Content payload (education.lesson_plan@1)."""
 
@@ -57,6 +72,7 @@ class LessonPlanV1(BaseModel):
 
     @model_validator(mode="after")
     def _ids_and_mappings(self) -> LessonPlanV1:
+        _validate_final_learning_objectives(self.learning_objectives)
         objective_ids = [obj.id for obj in self.learning_objectives]
         if len(objective_ids) != len(set(objective_ids)):
             raise ValueError("learning objective IDs must be unique")
@@ -89,6 +105,7 @@ class QuizV1(BaseModel):
 
     @model_validator(mode="after")
     def _ids_and_mappings(self) -> QuizV1:
+        _validate_final_learning_objectives(self.learning_objectives)
         _validate_preparation_questions(self.questions, component="quiz")
         objective_ids = [obj.id for obj in self.learning_objectives]
         if len(objective_ids) != len(set(objective_ids)):
@@ -120,6 +137,7 @@ class HomeworkV1(BaseModel):
 
     @model_validator(mode="after")
     def _ids_and_mappings(self) -> HomeworkV1:
+        _validate_final_learning_objectives(self.learning_objectives)
         _validate_preparation_questions(self.questions, component="homework")
         objective_ids = [obj.id for obj in self.learning_objectives]
         if len(objective_ids) != len(set(objective_ids)):
