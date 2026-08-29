@@ -94,24 +94,38 @@ def _clear_i02_downgrade_blockers(bootstrap_engine: Engine) -> None:
                 """
             )
         )
-        for table in (
-            "content.version_asset_refs",
-            "content.review_decisions",
-            "content.publications",
-        ):
+        conn.execute(
+            text(
+                "ALTER TABLE content.review_decisions "
+                "DISABLE TRIGGER review_decisions_immutable_delete"
+            )
+        )
+        try:
+            for table in (
+                "content.version_asset_refs",
+                "content.review_decisions",
+                "content.publications",
+            ):
+                conn.execute(
+                    text(
+                        f"""
+                        DELETE FROM {table} AS child
+                         WHERE EXISTS (
+                            SELECT 1
+                              FROM content.content_versions AS v
+                             WHERE v.version_id = child.version_id
+                               AND v.origin = 'AI'
+                               AND v.provenance IS NOT NULL
+                               AND (v.provenance->>'schema_version') = '2'
+                         )
+                        """
+                    )
+                )
+        finally:
             conn.execute(
                 text(
-                    f"""
-                    DELETE FROM {table} AS child
-                     WHERE EXISTS (
-                        SELECT 1
-                          FROM content.content_versions AS v
-                         WHERE v.version_id = child.version_id
-                           AND v.origin = 'AI'
-                           AND v.provenance IS NOT NULL
-                           AND (v.provenance->>'schema_version') = '2'
-                     )
-                    """
+                    "ALTER TABLE content.review_decisions "
+                    "ENABLE TRIGGER review_decisions_immutable_delete"
                 )
             )
         conn.execute(
@@ -157,22 +171,36 @@ def _clear_ai_versions_for_migration_cycle(bootstrap_engine: Engine) -> None:
                 """
             )
         )
-        for table in (
-            "content.version_asset_refs",
-            "content.review_decisions",
-            "content.publications",
-        ):
+        conn.execute(
+            text(
+                "ALTER TABLE content.review_decisions "
+                "DISABLE TRIGGER review_decisions_immutable_delete"
+            )
+        )
+        try:
+            for table in (
+                "content.version_asset_refs",
+                "content.review_decisions",
+                "content.publications",
+            ):
+                conn.execute(
+                    text(
+                        f"""
+                        DELETE FROM {table} AS child
+                         WHERE EXISTS (
+                            SELECT 1
+                              FROM content.content_versions AS v
+                             WHERE v.version_id = child.version_id
+                               AND v.origin = 'AI'
+                         )
+                        """
+                    )
+                )
+        finally:
             conn.execute(
                 text(
-                    f"""
-                    DELETE FROM {table} AS child
-                     WHERE EXISTS (
-                        SELECT 1
-                          FROM content.content_versions AS v
-                         WHERE v.version_id = child.version_id
-                           AND v.origin = 'AI'
-                     )
-                    """
+                    "ALTER TABLE content.review_decisions "
+                    "ENABLE TRIGGER review_decisions_immutable_delete"
                 )
             )
         conn.execute(

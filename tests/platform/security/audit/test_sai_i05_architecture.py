@@ -83,6 +83,7 @@ _MUTATION_INVENTORY: dict[str, str] = {
     "PublishContentService": "A",
     "MaterializeAIGeneratedContentVersionService": "A",
     "CreateAIGeneratedContentForReviewService": "A",
+    "CreateAIPreparationArtifactsForReviewService": "A",
     "ImportMigratedContentService": "A",
     "AppendContentVersionService": "B",
     "GetContentService": "R",
@@ -100,6 +101,7 @@ _WIRED_AUDIT_FILES = {
     "PublishContentService": "publish.py",
     "MaterializeAIGeneratedContentVersionService": "in_uow.py",
     "CreateAIGeneratedContentForReviewService": "ai_for_review.py",
+    "CreateAIPreparationArtifactsForReviewService": "ai_preparation_for_review.py",
     "ImportMigratedContentService": "migration_import.py",
 }
 
@@ -227,6 +229,10 @@ class TestMutationInventory:
         assert "CONTENT_AI_MATERIALIZE" in ai_uow
         assert "CreateAIGeneratedContentForReviewService" in ai_for_review
         assert "CONTENT_REVIEW_SUBMIT" in ai_for_review
+        prep = (APP_ROOT / "ai_preparation_for_review.py").read_text(encoding="utf-8")
+        assert "CreateAIPreparationArtifactsForReviewService" in prep
+        assert "CONTENT_REVIEW_SUBMIT" in prep
+        assert "insert_required_content_audit" in prep
         assert "AI_MATERIALIZATION" in helper
         assert "ai_materialization_audit_provenance" in helper
         assert "CONTENT_MIGRATION_IMPORT" in mig

@@ -84,4 +84,5 @@ markers = [
     "tos_dev03r4: TOS-DEV03R4 structured output completion and worksheet reliability",
     "tos_dev04_i01: TOS-DEV04-I01 preparation kit contracts and AI provenance V2",
     "tos_dev04_i02: TOS-DEV04-I02 multi-artifact persistence and generation fences",
+    "tos_dev04_i03: TOS-DEV04-I03 atomic six-artifact Content materialization",
 ]
