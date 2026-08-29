@@ -9,6 +9,13 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I01 — typed `PreparationKitV1` provider-neutral structured-output
+  contract with component drafts (lesson plan, worksheet, quick quiz, homework,
+  teacher notes) and `AnswerKeyV1` contract-only payload; strict cross-field
+  objective and question-ID validation; `AIGenerationProvenanceV2` with
+  required `artifact_kind` and version-aware provenance JSON
+  serialize/parse while preserving exact V1 compatibility. No database
+  migration, API, frontend, provider call, or Content catalog activation.
 - TOS-DEV02 Lane B — Teaching Work durable aggregate and Today's Mission
   projection. New `teaching` bounded context (`src/aieos/domains/teaching/**`)
   with the `TeachingWork` aggregate, create/refine/query/mission application

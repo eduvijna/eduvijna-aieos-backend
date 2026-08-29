@@ -82,4 +82,5 @@ markers = [
     "tos_dev03r2: TOS-DEV03R2 stable API contract and generation lease heartbeat correction",
     "tos_dev03r3: TOS-DEV03R3 provider failure taxonomy and sanitized diagnostics",
     "tos_dev03r4: TOS-DEV03R4 structured output completion and worksheet reliability",
+    "tos_dev04_i01: TOS-DEV04-I01 preparation kit contracts and AI provenance V2",
 ]
