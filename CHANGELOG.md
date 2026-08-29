@@ -9,6 +9,12 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I06 — `PrepareTeachingWorkService` orchestration and recovery
+  (ADR-AIEOS-052): GenerationRun Fence A/B claim + idempotency, I04 generation,
+  I05 whole-kit Educational Quality gate, I03 atomic six-artifact materialization,
+  Content-first exact-six crash/replay reconciliation with singular `result_*`
+  fields remaining NULL. Additive application service only — no HTTP/OpenAPI,
+  migration, runtime activation, live provider, Temporal/Agent/MCP.
 - TOS-DEV04-I05 — preparation Educational Quality V1 and cross-artifact coherence
   baseline (ADR-AIEOS-052): provider-independent
   `evaluate_preparation_educational_quality_v1` over final
