@@ -9,6 +9,12 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I02R1 — cross-revision stale GenerationRun isolation for the DEV03
+  worksheet compatibility path: a stale RUNNING run bound to Work revision R0
+  may be reconciled/finalized as R0, but must never return R0 artifacts as the
+  successful outcome of an R1 request. Fence B release then allows the R1 claim
+  under the existing bounded retry. No migration, API, frontend, or provider
+  call.
 - TOS-DEV04-I02 — multi-artifact ContentVersion uniqueness and capability/
   revision-aware GenerationRun fences (ADR-AIEOS-052 persistence substrate).
   Alembic `tosd040001` adds strict DB AI provenance V2 validation with a
