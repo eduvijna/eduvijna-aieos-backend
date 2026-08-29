@@ -9,6 +9,14 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I04 — `GeneratePreparationKitCapability` and deterministic Answer Key
+  builder (ADR-AIEOS-052): one provider-neutral `StructuredModelGateway` call to
+  `PreparationKitV1`, then pure transforms to LessonPlanV1 / WorksheetV1 / QuizV1 /
+  HomeworkV1 / AnswerKeyV1 / TeacherNotesV1 in-memory draft. Shared capability ID
+  `education.generate_preparation_kit` centralized in platform capabilities; I03
+  imports it without behavior change. No Educational Quality, Content persistence,
+  GenerationRun orchestration, PrepareTeachingWorkService, API/OpenAPI, frontend,
+  migration, live provider call, or runtime registration.
 - TOS-DEV04-I03R1 — harden final LessonPlanV1 / QuizV1 / HomeworkV1 learning-
   objective semantic invariants: whitespace-only objective id/text are rejected
   at the Content payload boundary without changing WorksheetV1 / LearningObjectiveV1
