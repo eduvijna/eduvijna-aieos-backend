@@ -1,6 +1,7 @@
 """AIEOS Capability Registry (code-controlled, not marketplace)."""
 
 from aieos.platform.capabilities.models import (
+    CAPABILITY_EDUCATION_GENERATE_PREPARATION_KIT,
     CAPABILITY_EDUCATION_GENERATE_WORKSHEET,
     GENERATE_WORKSHEET_V1,
     CapabilityContract,
@@ -15,6 +16,7 @@ from aieos.platform.capabilities.registry import (
 )
 
 __all__ = [
+    "CAPABILITY_EDUCATION_GENERATE_PREPARATION_KIT",
     "CAPABILITY_EDUCATION_GENERATE_WORKSHEET",
     "GENERATE_WORKSHEET_V1",
     "CapabilityContract",

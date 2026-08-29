@@ -74,11 +74,13 @@ from aieos.domains.education.schema import (
     WORKSHEET_SCHEMA_ID,
     WORKSHEET_SCHEMA_VERSION,
 )
+from aieos.platform.capabilities.models import (
+    CAPABILITY_EDUCATION_GENERATE_PREPARATION_KIT,
+)
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.resources import ResourceRef
 from aieos.platform.security.audit import SecurityAuditAction
 
-CAPABILITY_EDUCATION_GENERATE_PREPARATION_KIT = "education.generate_preparation_kit"
 WORK_RESOURCE_TYPE = "teaching.work"
 GENERATION_RUN_RESOURCE_TYPE = "ai.generation_run"
 
