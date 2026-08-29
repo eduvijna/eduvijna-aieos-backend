@@ -16,6 +16,9 @@ from aieos.domains.content.application.errors import (
     ReviewAlreadyDecided,
     VersionAlreadyExists,
 )
+from aieos.domains.content.application.ai_generation_bindings import (
+    ContentVersionAIGenerationBinding,
+)
 from aieos.domains.content.application.migration_models import MigrationImportRecord
 from aieos.domains.content.application.models import LockedContentHead
 from aieos.domains.content.application.review_queue_models import (
@@ -24,6 +27,7 @@ from aieos.domains.content.application.review_queue_models import (
     TeacherReviewQueueItem,
 )
 from aieos.domains.content.domain.content import Content
+from aieos.domains.content.domain.errors import InvalidAIGenerationProvenanceError
 from aieos.domains.content.domain.identities import (
     AggregateRevision,
     ContentId,
@@ -32,6 +36,7 @@ from aieos.domains.content.domain.identities import (
     ReviewDecisionId,
     VersionNumber,
 )
+from aieos.domains.content.domain.provenance import ai_generation_provenance_from_json
 from aieos.domains.content.domain.publication import Publication
 from aieos.domains.content.domain.review import ReviewDecision
 from aieos.domains.content.domain.version import ContentVersion, thaw_json_value
@@ -126,9 +131,47 @@ class SqlAlchemyContentVersionRepository:
     def find_by_generation_run_id(
         self, generation_run_id: UUID
     ) -> ContentVersion | None:
-        """Locate AI ContentVersion bound to generation_run_id via provenance JSON."""
+        """DEV03 V1 singular binding: schema_version=1 only (never an arbitrary V2)."""
         try:
             row = (
+                self._connection.execute(
+                    select(content_versions_table)
+                    .where(
+                        content_versions_table.c.origin == "AI",
+                        content_versions_table.c.provenance.is_not(None),
+                        func.jsonb_extract_path_text(
+                            content_versions_table.c.provenance,
+                            "schema_version",
+                        )
+                        == "1",
+                        func.jsonb_extract_path_text(
+                            content_versions_table.c.provenance,
+                            "generation_run_ref",
+                            "resource_id",
+                        )
+                        == str(generation_run_id),
+                    )
+                    .order_by(
+                        content_versions_table.c.created_at.asc(),
+                        content_versions_table.c.version_id.asc(),
+                    )
+                    .limit(1)
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                return None
+            return content_version_from_row(row)
+        except Exception as exc:
+            reraise_as_application_error(exc)
+
+    def find_all_by_generation_run_id(
+        self, generation_run_id: UUID
+    ) -> list[ContentVersionAIGenerationBinding]:
+        """All AI ContentVersions for a GenerationRun, ordered deterministically."""
+        try:
+            rows = (
                 self._connection.execute(
                     select(content_versions_table)
                     .where(
@@ -141,14 +184,34 @@ class SqlAlchemyContentVersionRepository:
                         )
                         == str(generation_run_id),
                     )
-                    .limit(1)
+                    .order_by(
+                        content_versions_table.c.created_at.asc(),
+                        content_versions_table.c.version_id.asc(),
+                    )
                 )
                 .mappings()
-                .one_or_none()
+                .all()
             )
-            if row is None:
-                return None
-            return content_version_from_row(row)
+            bindings: list[ContentVersionAIGenerationBinding] = []
+            for row in rows:
+                provenance_raw = row["provenance"]
+                if not isinstance(provenance_raw, Mapping):
+                    raise PersistenceInvariantViolation(
+                        "stored provenance must be a JSON object"
+                    )
+                try:
+                    parsed = ai_generation_provenance_from_json(dict(provenance_raw))
+                except InvalidAIGenerationProvenanceError as exc:
+                    raise PersistenceInvariantViolation(
+                        "stored AI provenance failed strict parse"
+                    ) from exc
+                bindings.append(
+                    ContentVersionAIGenerationBinding(
+                        version=content_version_from_row(row),
+                        provenance=parsed,
+                    )
+                )
+            return bindings
         except Exception as exc:
             reraise_as_application_error(exc)
 

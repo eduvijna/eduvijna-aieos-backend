@@ -473,6 +473,7 @@ class GenerateTeachingWorkService:
                     lease_expires_at=lease_expires_at,
                     now=now,
                     same_key=True,
+                    requested_work_revision=int(expected_aggregate_revision),
                 )
                 if resolved is not None:
                     return resolved
@@ -517,10 +518,18 @@ class GenerateTeachingWorkService:
                 principal_id=principal_id,
                 idempotency_key_sha256=key_hash,
             )
-            winner = ai_uow.generation_runs.find_active_or_succeeded_for_work(
+            outcome = ai_uow.generation_runs.find_outcome_for_work_revision_capability(
                 work_resource_id=work_id.value,
+                work_resource_revision=int(expected_aggregate_revision),
+                capability_id=CAPABILITY_EDUCATION_GENERATE_WORKSHEET,
             )
-            conflict_run = by_key if by_key is not None else winner
+            running = ai_uow.generation_runs.find_running_for_work_capability(
+                work_resource_id=work_id.value,
+                capability_id=CAPABILITY_EDUCATION_GENERATE_WORKSHEET,
+            )
+            conflict_run = by_key if by_key is not None else (
+                outcome if outcome is not None else running
+            )
             if conflict_run is None:
                 raise WorkGenerationInProgress("work generation concurrency conflict")
             resolved = self._resolve_existing_run(
@@ -536,6 +545,7 @@ class GenerateTeachingWorkService:
                     by_key is not None
                     and by_key.idempotency_key_sha256 == key_hash
                 ),
+                requested_work_revision=int(expected_aggregate_revision),
             )
             if resolved is not None:
                 return resolved
@@ -565,13 +575,19 @@ class GenerateTeachingWorkService:
         lease_expires_at: datetime,
         now: datetime,
         same_key: bool,
+        requested_work_revision: int,
     ) -> GenerationRunId | GenerateTeachingWorkResult | None:
         if same_key and run.request_fingerprint_sha256 != fingerprint:
             raise GenerationIdempotencyConflict(
                 "Idempotency-Key was already used with a different request"
             )
 
+        cross_revision = run.work_resource_revision != requested_work_revision
+
         if run.status is GenerationRunStatus.SUCCEEDED:
+            if cross_revision:
+                # Historical revision outcome must never satisfy a newer revision request.
+                return None
             if same_key:
                 return self._result_from_run(work_id, run)
             err = WorkGenerationAlreadyExists()
@@ -601,9 +617,22 @@ class GenerateTeachingWorkService:
                 execution_tenant_id, work_id, run, now=now
             )
             if reconciled is not None:
+                if cross_revision:
+                    # Finalize the old revision's run only; never return it as
+                    # the current revision's successful outcome.
+                    return None
                 return reconciled
 
             if same_key:
+                if cross_revision:
+                    # Same key cannot reclaim a different revision's execution.
+                    self._mark_failed(
+                        execution_tenant_id,
+                        run.generation_run_id,
+                        failure_code="generation_lease_expired",
+                        now=now,
+                    )
+                    return None
                 reclaimed = self._reclaim_lease(
                     execution_tenant_id,
                     run.generation_run_id,

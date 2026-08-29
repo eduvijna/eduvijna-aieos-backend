@@ -150,7 +150,7 @@ class TestAlembicCycle:
         command.upgrade(cfg, "head")
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("tosd030002")
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("tosd040001")
             api_tables = {
                 row[0]
                 for row in conn.execute(
@@ -181,4 +181,5 @@ class TestAlembicCycle:
             "tosd020001_teaching_work.py",
             "tosd030001_generation_runs.py",
     "tosd030002_generation_run_work_fence.py",
+    "tosd040001_multi_artifact_provenance_and_generation_fences.py",
         ]

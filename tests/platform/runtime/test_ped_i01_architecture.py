@@ -140,7 +140,7 @@ def test_migration_head_unchanged() -> None:
     versions = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
     assert "pedi090001_security_authority.py" in versions
     assert "pedi10b2001_asset_authority_sor.py" in versions
-    assert versions[-1] == "tosd030002_generation_run_work_fence.py"
+    assert versions[-1] == "tosd040001_multi_artifact_provenance_and_generation_fences.py"
     for path in MIGRATIONS.rglob("*.py"):
         body = path.read_text(encoding="utf-8")
         assert "pedi010001" not in body

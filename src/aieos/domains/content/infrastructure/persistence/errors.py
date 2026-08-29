@@ -37,7 +37,11 @@ def translate_infrastructure_error(
     is_unique = isinstance(exc, UniqueViolation) or isinstance(orig, UniqueViolation)
     if is_unique:
         blob = _constraint_blob(exc)
-        if "uq_content_versions_ai_generation_run_id" in blob:
+        if (
+            "uq_content_versions_ai_generation_run_id_v1" in blob
+            or "uq_content_versions_ai_generation_run_artifact_v2" in blob
+            or "uq_content_versions_ai_generation_run_id" in blob
+        ):
             return AIGenerationRunAlreadyMaterialized(
                 "AI ContentVersion already exists for this generation_run_id"
             )

@@ -8,6 +8,9 @@ from typing import Mapping, Protocol
 from uuid import UUID
 
 from aieos.domains.content.application.migration_models import MigrationImportRecord
+from aieos.domains.content.application.ai_generation_bindings import (
+    ContentVersionAIGenerationBinding,
+)
 from aieos.domains.content.application.models import LockedContentHead
 from aieos.domains.content.application.review_queue_models import (
     TeacherReviewQueueDetail,
@@ -56,6 +59,10 @@ class ContentVersionRepository(Protocol):
     def find_by_generation_run_id(
         self, generation_run_id: UUID
     ) -> ContentVersion | None: ...
+
+    def find_all_by_generation_run_id(
+        self, generation_run_id: UUID
+    ) -> list[ContentVersionAIGenerationBinding]: ...
 
 
 class ContentTypeCatalog(Protocol):
