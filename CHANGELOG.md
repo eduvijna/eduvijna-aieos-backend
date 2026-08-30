@@ -9,6 +9,12 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I08 — PostgreSQL / RLS / concurrency / recovery adversarial
+  verification for DEV04 preparation: tenant and same-tenant teacher isolation,
+  same-key and different-key concurrent prepare, GenerationRun row-lock ownership
+  through materialization, zero/exact-six/partial recovery, post-review Work
+  artifact durability, and Review Queue exactness. Test-only; no migration,
+  OpenAPI, or production behavior change. Alembic remains `tosd040001`.
 - TOS-DEV04-I07 — prepare HTTP/OpenAPI contract and six-artifact Work
   projection: additive `POST .../actions/prepare` (`teaching_work_prepare`)
   delegates to `PrepareTeachingWorkService`; extends Work artifacts list with
