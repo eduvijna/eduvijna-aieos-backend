@@ -55,7 +55,7 @@ from aieos.domains.teaching.application.errors import (
 from aieos.domains.teaching.application.ports import TeachingUnitOfWorkFactory
 from aieos.domains.teaching.domain.identities import AggregateRevision, WorkId
 from aieos.platform.ai.application.errors import GenerationRunConflict
-from aieos.platform.ai.application.ports import AIUnitOfWorkFactory
+from aieos.platform.ai.application.ports import AIUnitOfWork, AIUnitOfWorkFactory
 from aieos.platform.ai.clock import UtcNow, utc_now
 from aieos.platform.ai.config import DEFAULT_GENERATION_LEASE_SECONDS
 from aieos.platform.ai.domain.generation_run import (
@@ -446,72 +446,16 @@ class PrepareTeachingWorkService:
             provenance=provenance,
         )
 
-        try:
-            materialization = self._create_preparation_for_review.create(
-                execution_tenant_id,
-                principal_id,
-                command,
-                event_context=event_context,
-                audit_provenance=ai_materialization_audit_provenance(principal_id),
-                now=self._clock(),
-            )
-        except AIPreparationArtifactsAlreadyMaterialized:
-            finalize_at = self._clock()
-            recovered = self._require_exact_six_recovery(
-                execution_tenant_id, claimed.generation_run_id
-            )
-            return self._finalize_succeeded(
-                execution_tenant_id,
-                work_id,
-                claimed.generation_run_id,
-                artifacts=_views_from_recovery(recovered),
-                quality_summary=quality_summary,
-                expected_revision=post_quality_revision,
-                now=finalize_at,
-            )
-        except (AIGenerationForbidden, ContentApplicationError, Exception) as exc:
-            finalize_at = self._clock()
-            inspection = self._inspect_bindings(
-                execution_tenant_id, claimed.generation_run_id
-            )
-            if inspection.status is PreparationBindingRecoveryStatus.EXACT_SIX:
-                assert inspection.recovery is not None
-                return self._finalize_succeeded(
-                    execution_tenant_id,
-                    work_id,
-                    claimed.generation_run_id,
-                    artifacts=_views_from_recovery(inspection.recovery),
-                    quality_summary=quality_summary,
-                    expected_revision=post_quality_revision,
-                    now=finalize_at,
-                )
-            if inspection.status is PreparationBindingRecoveryStatus.INVALID:
-                raise PreparationRecoveryInvariantError(
-                    "preparation Content bindings are partial or corrupt"
-                ) from exc
-            owned_fail = self._mark_failed_if_owned(
-                execution_tenant_id,
-                work_id,
-                post_quality_claim,
-                failure_code="content_materialization_failed",
-                educational_quality_summary=quality_summary,
-                provider_metadata=meta,
-            )
-            if isinstance(owned_fail, PrepareTeachingWorkResult):
-                return owned_fail
-            raise ContentMaterializationFailedError(
-                "content materialization failed"
-            ) from exc
-
-        finalize_at = self._clock()
-        return self._finalize_succeeded(
+        return self._materialize_and_finalize_owned(
             execution_tenant_id,
+            principal_id,
             work_id,
-            claimed.generation_run_id,
-            artifacts=_views_from_materialization(materialization),
+            post_quality_claim,
+            fingerprint=fingerprint,
+            command=command,
             quality_summary=quality_summary,
-            expected_revision=post_quality_revision,
-            now=finalize_at,
+            provider_metadata=meta,
+            event_context=event_context,
         )
 
     def _claim_or_resolve_run(
@@ -731,7 +675,11 @@ class PrepareTeachingWorkService:
                         generation_run_id=run.generation_run_id,
                         claimed_aggregate_revision=new_revision,
                     )
-                raise WorkGenerationInProgress("work generation is in progress")
+                # Lock wait may observe concurrent SUCCEEDED/FAILED after the
+                # materialization critical section commits.
+                return self._resolve_after_reclaim_miss(
+                    execution_tenant_id, work_id, run.generation_run_id
+                )
 
             self._mark_failed(
                 execution_tenant_id,
@@ -741,6 +689,236 @@ class PrepareTeachingWorkService:
             )
             return None
 
+        raise WorkGenerationInProgress("work generation is in progress")
+
+    def _materialize_and_finalize_owned(
+        self,
+        execution_tenant_id: UUID,
+        principal_id: UUID,
+        work_id: WorkId,
+        post_quality_claim: PreparationGenerationClaim,
+        *,
+        fingerprint: str,
+        command: CreateAIPreparationArtifactsForReviewCommand,
+        quality_summary: Mapping[str, object],
+        provider_metadata: object,
+        event_context: MutationEventContext,
+    ) -> PrepareTeachingWorkResult:
+        """Hold GenerationRun FOR UPDATE through I03, then finalize on same UoW.
+
+        AI and Content commits remain separate authorities. The row lock only
+        prevents reclaim/terminalization while Content materialization uses this
+        execution epoch.
+        """
+        finalize_at = self._clock()
+        lost_ownership = False
+        result: PrepareTeachingWorkResult | None = None
+        with self._ai_uow_factory(execution_tenant_id) as ai_uow:
+            locked = ai_uow.generation_runs.get_for_update(
+                post_quality_claim.generation_run_id
+            )
+            if locked is None:
+                raise TeachingWorkNotFound("GenerationRun was not found")
+
+            owns = (
+                locked.status is GenerationRunStatus.RUNNING
+                and locked.aggregate_revision
+                == post_quality_claim.claimed_aggregate_revision
+                and locked.request_fingerprint_sha256 == fingerprint
+            )
+            if not owns:
+                lost_ownership = True
+            else:
+                try:
+                    materialization = self._create_preparation_for_review.create(
+                        execution_tenant_id,
+                        principal_id,
+                        command,
+                        event_context=event_context,
+                        audit_provenance=ai_materialization_audit_provenance(
+                            principal_id
+                        ),
+                        now=finalize_at,
+                    )
+                except AIPreparationArtifactsAlreadyMaterialized as exc:
+                    inspection = self._inspect_bindings_for_run(
+                        execution_tenant_id, locked
+                    )
+                    if (
+                        inspection.status
+                        is not PreparationBindingRecoveryStatus.EXACT_SIX
+                        or inspection.recovery is None
+                    ):
+                        raise PreparationRecoveryInvariantError(
+                            "expected exact six valid preparation Content bindings"
+                        ) from exc
+                    result = self._finalize_succeeded_on_locked(
+                        ai_uow,
+                        locked,
+                        work_id=work_id,
+                        artifacts=_views_from_recovery(inspection.recovery),
+                        quality_summary=quality_summary,
+                        now=finalize_at,
+                    )
+                except (AIGenerationForbidden, ContentApplicationError, Exception) as exc:
+                    inspection = self._inspect_bindings_for_run(
+                        execution_tenant_id, locked
+                    )
+                    if inspection.status is PreparationBindingRecoveryStatus.EXACT_SIX:
+                        assert inspection.recovery is not None
+                        result = self._finalize_succeeded_on_locked(
+                            ai_uow,
+                            locked,
+                            work_id=work_id,
+                            artifacts=_views_from_recovery(inspection.recovery),
+                            quality_summary=quality_summary,
+                            now=finalize_at,
+                        )
+                    elif (
+                        inspection.status
+                        is PreparationBindingRecoveryStatus.INVALID
+                    ):
+                        # Keep RUNNING; fail closed. Do not release Fence A/B.
+                        raise PreparationRecoveryInvariantError(
+                            "preparation Content bindings are partial or corrupt"
+                        ) from exc
+                    else:
+                        self._fail_on_locked(
+                            ai_uow,
+                            locked,
+                            failure_code="content_materialization_failed",
+                            educational_quality_summary=quality_summary,
+                            provider_metadata=provider_metadata,
+                            now=finalize_at,
+                        )
+                        raise ContentMaterializationFailedError(
+                            "content materialization failed"
+                        ) from exc
+                else:
+                    result = self._finalize_succeeded_on_locked(
+                        ai_uow,
+                        locked,
+                        work_id=work_id,
+                        artifacts=_views_from_materialization(materialization),
+                        quality_summary=quality_summary,
+                        now=finalize_at,
+                    )
+
+        if lost_ownership:
+            return self._resolve_lost_ownership(
+                execution_tenant_id,
+                work_id,
+                post_quality_claim.generation_run_id,
+            )
+        assert result is not None
+        return result
+
+    def _finalize_succeeded_on_locked(
+        self,
+        ai_uow: AIUnitOfWork,
+        locked: GenerationRun,
+        *,
+        work_id: WorkId,
+        artifacts: tuple[PreparationArtifactView, ...],
+        quality_summary: Mapping[str, object] | None,
+        now: datetime,
+    ) -> PrepareTeachingWorkResult:
+        """RUNNING → SUCCEEDED on the already locked GenerationRun (same AI UoW)."""
+        quality_view = _require_pass_quality_summary(
+            quality_summary
+            if quality_summary is not None
+            else locked.educational_quality_summary
+        )
+        if locked.status is not GenerationRunStatus.RUNNING:
+            raise WorkGenerationInProgress("work generation concurrency conflict")
+        succeeded = replace(
+            locked,
+            status=GenerationRunStatus.SUCCEEDED,
+            result_content_id=None,
+            result_version_id=None,
+            result_content_revision=None,
+            educational_quality_summary=(
+                quality_summary
+                if quality_summary is not None
+                else locked.educational_quality_summary
+            ),
+            failure_code=None,
+            lease_expires_at=None,
+            aggregate_revision=locked.aggregate_revision + 1,
+            updated_at=now,
+            completed_at=now,
+        )
+        if not ai_uow.generation_runs.update(
+            succeeded, expected_revision=locked.aggregate_revision
+        ):
+            raise WorkGenerationInProgress("work generation concurrency conflict")
+        ai_uow.commit()
+        return PrepareTeachingWorkResult(
+            work_id=work_id,
+            work_revision=succeeded.work_resource_revision,
+            generation_run_id=succeeded.generation_run_id,
+            artifacts=artifacts,
+            educational_quality=quality_view,
+        )
+
+    def _fail_on_locked(
+        self,
+        ai_uow: AIUnitOfWork,
+        locked: GenerationRun,
+        *,
+        failure_code: str,
+        educational_quality_summary: Mapping[str, object] | None,
+        provider_metadata: object | None,
+        now: datetime,
+    ) -> None:
+        """FAILED transition on the already locked GenerationRun (same AI UoW)."""
+        if locked.status is not GenerationRunStatus.RUNNING:
+            return
+        meta = provider_metadata
+        failed = replace(
+            locked,
+            status=GenerationRunStatus.FAILED,
+            failure_code=failure_code,
+            educational_quality_summary=(
+                educational_quality_summary
+                if educational_quality_summary is not None
+                else locked.educational_quality_summary
+            ),
+            provider_id=getattr(meta, "provider_id", locked.provider_id),
+            model_id=getattr(meta, "model_id", locked.model_id),
+            provider_response_id=getattr(
+                meta, "provider_response_id", locked.provider_response_id
+            ),
+            input_tokens=getattr(meta, "input_tokens", locked.input_tokens),
+            output_tokens=getattr(meta, "output_tokens", locked.output_tokens),
+            total_tokens=getattr(meta, "total_tokens", locked.total_tokens),
+            lease_expires_at=None,
+            aggregate_revision=locked.aggregate_revision + 1,
+            updated_at=now,
+            completed_at=now,
+        )
+        if not ai_uow.generation_runs.update(
+            failed, expected_revision=locked.aggregate_revision
+        ):
+            raise WorkGenerationInProgress("work generation concurrency conflict")
+        ai_uow.commit()
+
+    def _resolve_after_reclaim_miss(
+        self,
+        execution_tenant_id: UUID,
+        work_id: WorkId,
+        run_id: GenerationRunId,
+    ) -> PreparationGenerationClaim | PrepareTeachingWorkResult:
+        with self._ai_uow_factory(execution_tenant_id) as ai_uow:
+            current = ai_uow.generation_runs.get(run_id)
+            if current is None:
+                raise WorkGenerationInProgress("work generation is in progress")
+        if current.status is GenerationRunStatus.SUCCEEDED:
+            return self._result_from_succeeded_run(
+                execution_tenant_id, work_id, current
+            )
+        if current.status is GenerationRunStatus.FAILED:
+            self._raise_failure_from_run(current)
         raise WorkGenerationInProgress("work generation is in progress")
 
     def _inspect_bindings(

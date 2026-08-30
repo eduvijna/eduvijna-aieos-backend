@@ -216,3 +216,47 @@ def terminalize_running_as_lease_expired(
             failed, expected_revision=locked.aggregate_revision
         )
         ai_uow.commit()
+
+
+class PausingPreparationMaterializer:
+    """Test-only wrapper: pause inside create() while I06 holds the AI row lock."""
+
+    def __init__(
+        self,
+        inner: CreateAIPreparationArtifactsForReviewService,
+        *,
+        entered: object,
+        proceed: object,
+        after_success_raise: BaseException | None = None,
+    ) -> None:
+        self._inner = inner
+        self._entered = entered
+        self._proceed = proceed
+        self._after_success_raise = after_success_raise
+        self.create_calls = 0
+
+    def create(self, *args, **kwargs):
+        self.create_calls += 1
+        self._entered.set()  # type: ignore[attr-defined]
+        assert self._proceed.wait(timeout=30)  # type: ignore[attr-defined]
+        result = self._inner.create(*args, **kwargs)
+        if self._after_success_raise is not None:
+            raise self._after_success_raise
+        return result
+
+
+def attach_pausing_materializer(
+    service: PrepareTeachingWorkService,
+    *,
+    entered: object,
+    proceed: object,
+    after_success_raise: BaseException | None = None,
+) -> PausingPreparationMaterializer:
+    wrapper = PausingPreparationMaterializer(
+        service._create_preparation_for_review,  # noqa: SLF001 — test seam
+        entered=entered,
+        proceed=proceed,
+        after_success_raise=after_success_raise,
+    )
+    service._create_preparation_for_review = wrapper  # noqa: SLF001
+    return wrapper

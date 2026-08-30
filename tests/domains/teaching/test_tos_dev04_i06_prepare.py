@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import uuid
 from dataclasses import replace
 from datetime import timedelta
@@ -9,6 +10,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 
 from aieos.domains.teaching.application.errors import (
     ContentMaterializationFailedError,
@@ -36,6 +38,7 @@ from tests.domains.content.application.test_tos_dev04_i03_atomic_preparation imp
 from tests.domains.teaching.helpers_dev04_i06 import (
     FIXED_NOW,
     advance_running_claim_revision,
+    attach_pausing_materializer,
     build_prepare_service,
     create_teaching_work,
     event_context,
@@ -976,4 +979,381 @@ class TestExecutionOwnershipIsolation:
                 {"tid": tenant_id},
             )
             == 0
+        )
+class TestMaterializationCriticalSection:
+    """I06R2: GenerationRun FOR UPDATE held through I03 materialization."""
+
+    _STALE_NOW = FIXED_NOW + timedelta(hours=1)
+
+    def test_generation_run_row_locked_during_i03(
+        self, runtime_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        service, gateway = build_prepare_service(runtime_engine)
+        assert isinstance(gateway, FakeStructuredModelGateway)
+        work_id, revision = create_teaching_work(
+            runtime_engine, tenant_id, principal_id, idempotency_key="lock-create"
+        )
+        entered = threading.Event()
+        proceed = threading.Event()
+        attach_pausing_materializer(service, entered=entered, proceed=proceed)
+        key = "prep-lock-presence"
+        outcome: dict[str, object] = {}
+
+        def run_a() -> None:
+            try:
+                outcome["result"] = service.prepare(
+                    tenant_id,
+                    principal_id,
+                    work_id=work_id,
+                    expected_aggregate_revision=revision,
+                    idempotency_key=key,
+                    event_context=event_context(principal_id),
+                    now=FIXED_NOW,
+                )
+            except Exception as exc:  # noqa: BLE001
+                outcome["error"] = exc
+
+        thread = threading.Thread(target=run_a)
+        thread.start()
+        assert entered.wait(timeout=30)
+
+        with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+            from aieos.platform.idempotency.hashing import hash_idempotency_key
+
+            run = ai_uow.generation_runs.get_by_idempotency_key(
+                principal_id=principal_id,
+                idempotency_key_sha256=hash_idempotency_key(key),
+            )
+            assert run is not None
+            run_id = run.generation_run_id.value
+
+        probe_error: Exception | None = None
+        try:
+            with runtime_engine.connect() as conn:
+                trans = conn.begin()
+                conn.execute(
+                    text("SELECT set_config('aieos.tenant_id', :tid, true)"),
+                    {"tid": str(tenant_id)},
+                )
+                conn.execute(text("SET LOCAL lock_timeout = '250ms'"))
+                conn.execute(
+                    text(
+                        "SELECT generation_run_id FROM ai.generation_runs "
+                        "WHERE generation_run_id = :id FOR UPDATE"
+                    ),
+                    {"id": run_id},
+                )
+                trans.rollback()
+        except OperationalError as exc:
+            probe_error = exc
+
+        assert probe_error is not None
+        assert "lock" in str(probe_error).lower() or "timeout" in str(probe_error).lower()
+
+        proceed.set()
+        thread.join(timeout=60)
+        assert "error" not in outcome
+        assert outcome["result"] is not None
+
+    def test_different_key_blocked_during_materialization(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        service_a, gateway_a = build_prepare_service(runtime_engine)
+        service_b, gateway_b = build_prepare_service(runtime_engine)
+        assert isinstance(gateway_a, FakeStructuredModelGateway)
+        assert isinstance(gateway_b, FakeStructuredModelGateway)
+        work_id, revision = create_teaching_work(
+            runtime_engine, tenant_id, principal_id, idempotency_key="diff-lock-create"
+        )
+        entered = threading.Event()
+        proceed = threading.Event()
+        attach_pausing_materializer(service_a, entered=entered, proceed=proceed)
+
+        a_out: dict[str, object] = {}
+        b_out: dict[str, object] = {}
+
+        def run_a() -> None:
+            try:
+                a_out["result"] = service_a.prepare(
+                    tenant_id,
+                    principal_id,
+                    work_id=work_id,
+                    expected_aggregate_revision=revision,
+                    idempotency_key="prep-a-lock",
+                    event_context=event_context(principal_id),
+                    now=FIXED_NOW,
+                )
+            except Exception as exc:  # noqa: BLE001
+                a_out["error"] = exc
+
+        def run_b() -> None:
+            try:
+                b_out["result"] = service_b.prepare(
+                    tenant_id,
+                    principal_id,
+                    work_id=work_id,
+                    expected_aggregate_revision=revision,
+                    idempotency_key="prep-b-lock",
+                    event_context=event_context(principal_id),
+                    now=self._STALE_NOW,
+                )
+            except Exception as exc:  # noqa: BLE001
+                b_out["error"] = exc
+
+        thread_a = threading.Thread(target=run_a)
+        thread_a.start()
+        assert entered.wait(timeout=30)
+
+        thread_b = threading.Thread(target=run_b)
+        thread_b.start()
+        assert thread_b.is_alive()
+        thread_b.join(timeout=1.0)
+        assert thread_b.is_alive(), "B should block on GenerationRun FOR UPDATE"
+
+        proceed.set()
+        thread_a.join(timeout=60)
+        thread_b.join(timeout=60)
+
+        assert "error" not in a_out
+        a_result = a_out["result"]
+        assert a_result is not None
+        assert isinstance(b_out.get("error"), WorkGenerationAlreadyExists)
+        assert gateway_b.call_count == 0
+        assert gateway_a.call_count == 1
+
+        with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+            run = ai_uow.generation_runs.get(a_result.generation_run_id)  # type: ignore[attr-defined]
+            assert run is not None
+            assert run.status is GenerationRunStatus.SUCCEEDED
+            assert run.failure_code is None
+
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.contents WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 6
+        )
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.content_versions WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 6
+        )
+        assert (
+            _count(
+                bootstrap_engine,
+                """
+                SELECT count(*) FROM ai.generation_runs
+                 WHERE tenant_id = :tid
+                   AND capability_id = :cap
+                   AND status = 'SUCCEEDED'
+                """,
+                {
+                    "tid": tenant_id,
+                    "cap": CAPABILITY_EDUCATION_GENERATE_PREPARATION_KIT,
+                },
+            )
+            == 1
+        )
+
+    def test_same_key_blocked_then_replays(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        service_a, gateway_a = build_prepare_service(runtime_engine)
+        service_b, gateway_b = build_prepare_service(runtime_engine)
+        assert isinstance(gateway_a, FakeStructuredModelGateway)
+        assert isinstance(gateway_b, FakeStructuredModelGateway)
+        work_id, revision = create_teaching_work(
+            runtime_engine, tenant_id, principal_id, idempotency_key="same-lock-create"
+        )
+        entered = threading.Event()
+        proceed = threading.Event()
+        attach_pausing_materializer(service_a, entered=entered, proceed=proceed)
+        key = "prep-same-lock"
+
+        a_out: dict[str, object] = {}
+        b_out: dict[str, object] = {}
+
+        def run_a() -> None:
+            try:
+                a_out["result"] = service_a.prepare(
+                    tenant_id,
+                    principal_id,
+                    work_id=work_id,
+                    expected_aggregate_revision=revision,
+                    idempotency_key=key,
+                    event_context=event_context(principal_id),
+                    now=FIXED_NOW,
+                )
+            except Exception as exc:  # noqa: BLE001
+                a_out["error"] = exc
+
+        def run_b() -> None:
+            try:
+                b_out["result"] = service_b.prepare(
+                    tenant_id,
+                    principal_id,
+                    work_id=work_id,
+                    expected_aggregate_revision=revision,
+                    idempotency_key=key,
+                    event_context=event_context(principal_id),
+                    now=self._STALE_NOW,
+                )
+            except Exception as exc:  # noqa: BLE001
+                b_out["error"] = exc
+
+        thread_a = threading.Thread(target=run_a)
+        thread_a.start()
+        assert entered.wait(timeout=30)
+        thread_b = threading.Thread(target=run_b)
+        thread_b.start()
+        thread_b.join(timeout=1.0)
+        assert thread_b.is_alive()
+
+        proceed.set()
+        thread_a.join(timeout=60)
+        thread_b.join(timeout=60)
+
+        assert "error" not in a_out and "error" not in b_out
+        a_result = a_out["result"]
+        b_result = b_out["result"]
+        assert a_result is not None and b_result is not None
+        assert b_result.generation_run_id == a_result.generation_run_id  # type: ignore[attr-defined]
+        assert tuple(a.content_id for a in a_result.artifacts) == tuple(  # type: ignore[attr-defined]
+            b.content_id for b in b_result.artifacts  # type: ignore[attr-defined]
+        )
+        assert tuple(a.version_id for a in a_result.artifacts) == tuple(  # type: ignore[attr-defined]
+            b.version_id for b in b_result.artifacts  # type: ignore[attr-defined]
+        )
+        assert gateway_b.call_count == 0
+        assert gateway_a.call_count == 1
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.contents WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 6
+        )
+
+    def test_content_failure_under_lock_marks_failed(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        authz = FailOnNthAIGenerationAuthorization(fail_on_call=4)
+        service, gateway = build_prepare_service(runtime_engine, authz=authz)
+        assert isinstance(gateway, FakeStructuredModelGateway)
+        work_id, revision = create_teaching_work(
+            runtime_engine, tenant_id, principal_id, idempotency_key="fail-lock-create"
+        )
+        key = "prep-fail-lock"
+        with pytest.raises(ContentMaterializationFailedError):
+            service.prepare(
+                tenant_id,
+                principal_id,
+                work_id=work_id,
+                expected_aggregate_revision=revision,
+                idempotency_key=key,
+                event_context=event_context(principal_id),
+                now=FIXED_NOW,
+            )
+        assert gateway.call_count == 1
+        with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+            from aieos.platform.idempotency.hashing import hash_idempotency_key
+
+            run = ai_uow.generation_runs.get_by_idempotency_key(
+                principal_id=principal_id,
+                idempotency_key_sha256=hash_idempotency_key(key),
+            )
+            assert run is not None
+            assert run.status is GenerationRunStatus.FAILED
+            assert run.failure_code == "content_materialization_failed"
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.contents WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 0
+        )
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.content_versions WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 0
+        )
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.review_decisions WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 0
+        )
+        with pytest.raises(ContentMaterializationFailedError):
+            service.prepare(
+                tenant_id,
+                principal_id,
+                work_id=work_id,
+                expected_aggregate_revision=revision,
+                idempotency_key=key,
+                event_context=event_context(principal_id),
+                now=FIXED_NOW,
+            )
+        assert gateway.call_count == 1
+
+    def test_commit_ambiguity_under_lock_finalizes_succeeded(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        service, gateway = build_prepare_service(runtime_engine)
+        assert isinstance(gateway, FakeStructuredModelGateway)
+        work_id, revision = create_teaching_work(
+            runtime_engine, tenant_id, principal_id, idempotency_key="amb-lock-create"
+        )
+        entered = threading.Event()
+        proceed = threading.Event()
+        proceed.set()  # no pause needed; raise after Content commit
+        attach_pausing_materializer(
+            service,
+            entered=entered,
+            proceed=proceed,
+            after_success_raise=RuntimeError("commit-ambiguity after Content"),
+        )
+        result = service.prepare(
+            tenant_id,
+            principal_id,
+            work_id=work_id,
+            expected_aggregate_revision=revision,
+            idempotency_key="prep-amb-lock",
+            event_context=event_context(principal_id),
+            now=FIXED_NOW,
+        )
+        assert gateway.call_count == 1
+        assert len(result.artifacts) == 6
+        with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+            run = ai_uow.generation_runs.get(result.generation_run_id)
+            assert run is not None
+            assert run.status is GenerationRunStatus.SUCCEEDED
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.contents WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 6
         )

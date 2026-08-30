@@ -9,6 +9,10 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I06R2 — hold GenerationRun FOR UPDATE through I03 materialization
+  in `PrepareTeachingWorkService`: post-quality ownership critical section
+  prevents reclaim/terminalization while Content commits; finalize or fail on
+  the same locked AI UoW. No migration, API, I03 redesign, or DEV03 changes.
 - TOS-DEV04-I06R1 — GenerationRun execution-ownership isolation and recovery
   linkage hardening for `PrepareTeachingWorkService`: in-memory
   `PreparationGenerationClaim` (run id + claimed aggregate revision) follows the
