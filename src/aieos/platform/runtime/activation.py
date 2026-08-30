@@ -43,6 +43,7 @@ FROZEN_API_MUTATION_OPERATION_IDS: frozenset[str] = frozenset(
         "teaching_work_create",
         "teaching_work_refine",
         "teaching_work_generate",
+        "teaching_work_prepare",
     }
 )
 
