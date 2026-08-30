@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from aieos.domains.content.application.ports import ContentUnitOfWorkFactory
-from aieos.domains.content.application.preparation_recovery import (
-    PreparationBindingRecoveryStatus,
-    inspect_preparation_generation_bindings,
+from aieos.domains.content.application.preparation_read_projection import (
+    PreparationReadProjectionStatus,
+    project_preparation_generation_artifacts,
 )
 from aieos.domains.content.domain.identities import ContentId, ContentVersionId
 from aieos.domains.education.schema import (
@@ -124,21 +124,25 @@ class ListTeachingWorkArtifactsService:
         execution_tenant_id: UUID,
         run: GenerationRun,
     ) -> list[WorkArtifactItem]:
+        # Durable read projection — not I06 recovery inspection (which requires
+        # current_version match + IN_REVIEW and must remain strict for recovery).
         with self._content_uow_factory(execution_tenant_id) as content_uow:
-            inspection = inspect_preparation_generation_bindings(content_uow, run)
-        if inspection.status is PreparationBindingRecoveryStatus.INVALID:
+            projection = project_preparation_generation_artifacts(content_uow, run)
+        if projection.status is PreparationReadProjectionStatus.INVALID:
             raise PreparationRecoveryInvariantError(
                 "preparation Content bindings are partial or corrupt"
             )
         if (
-            inspection.status is not PreparationBindingRecoveryStatus.EXACT_SIX
-            or inspection.recovery is None
+            projection.status is not PreparationReadProjectionStatus.EXACT_SIX
+            or projection.projection is None
         ):
             raise PreparationRecoveryInvariantError(
                 "SUCCEEDED preparation lacks exact six Content bindings"
             )
         quality_view = _quality_view_from_run(run)
-        by_kind = {item.artifact_kind: item for item in inspection.recovery.artifacts}
+        by_kind = {
+            item.artifact_kind: item for item in projection.projection.artifacts
+        }
         ordered: list[WorkArtifactItem] = []
         for kind in PREPARATION_ARTIFACT_KINDS:
             artifact = by_kind[kind]
