@@ -296,18 +296,20 @@ class TestCrossRevision:
 
 
 class TestArchitecture:
-    def test_no_migration_and_no_api_activation(self) -> None:
+    def test_no_migration_and_prepare_is_http_composed(self) -> None:
         versions = sorted((REPO_ROOT / "migrations" / "versions").glob("*.py"))
         assert versions[-1].name.startswith("tosd040001_")
         assert not any(p.name.startswith("tosd040002_") for p in versions)
+        # I07 composes PrepareTeachingWorkService into create_app / routes.
         factory = (
-            REPO_ROOT / "src" / "aieos" / "development" / "app_factory.py"
+            REPO_ROOT / "src" / "aieos" / "platform" / "api" / "app.py"
         ).read_text(encoding="utf-8")
-        assert "PrepareTeachingWorkService" not in factory
+        assert "PrepareTeachingWorkService" in factory
         routes = (
             REPO_ROOT / "src" / "aieos" / "domains" / "teaching" / "api" / "v1" / "routes.py"
         ).read_text(encoding="utf-8")
-        assert "actions/prepare" not in routes
+        assert "actions/prepare" in routes
+        assert 'operation_id="teaching_work_prepare"' in routes
 
     def test_prepare_module_has_no_forbidden_imports(self) -> None:
         path = (
@@ -336,6 +338,7 @@ class TestArchitecture:
             assert forbidden not in imports
         source = path.read_text(encoding="utf-8").lower()
         assert "openai" not in source
+        # Application service remains HTTP-free; route owns actions/prepare.
         assert "actions/prepare" not in source
 
 

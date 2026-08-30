@@ -69,6 +69,7 @@ from aieos.domains.teaching.application.errors import (
     ModelProviderUnavailableError,
     PersistenceInvariantViolation as TeachingPersistenceInvariantViolation,
     PersistenceOperationFailed as TeachingPersistenceOperationFailed,
+    PreparationRecoveryInvariantError,
     TeacherOsMissionUnavailable,
     TeachingApplicationError,
     TeachingWorkForbidden,
@@ -508,6 +509,12 @@ _TEACHING_PROBLEMS: dict[type[TeachingApplicationError], tuple[int, str, str, st
         "educational_quality_failed",
         "Educational quality failed",
         "Educational Quality Baseline rejected the generated draft",
+    ),
+    PreparationRecoveryInvariantError: (
+        422,
+        "preparation_recovery_invariant_violation",
+        "Preparation recovery invariant violated",
+        "Preparation Content bindings are partial or corrupt",
     ),
     GenerationServiceUnavailable: (
         503,

@@ -14,6 +14,7 @@ from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifac
 from aieos.domains.teaching.application.create import CreateTeachingWorkService
 from aieos.domains.teaching.application.generate import GenerateTeachingWorkService
 from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionService
+from aieos.domains.teaching.application.prepare import PrepareTeachingWorkService
 from aieos.domains.teaching.application.queries import (
     GetTeachingWorkService,
     ListTeachingWorksService,
@@ -26,6 +27,7 @@ __all__ = [
     "get_teaching_work_service",
     "list_teaching_work_artifacts_service",
     "list_teaching_works_service",
+    "prepare_teaching_work_service",
     "refine_teaching_work_service",
     "resolve_trusted_context",
     "teacher_os_today_mission_service",
@@ -61,6 +63,17 @@ def generate_teaching_work_service(request: Request) -> GenerateTeachingWorkServ
 
         raise GenerationServiceUnavailable(
             "Teaching Work generation is not composed in this runtime"
+        )
+    return service
+
+
+def prepare_teaching_work_service(request: Request) -> PrepareTeachingWorkService:
+    service = request.app.state.prepare_teaching_work_service
+    if service is None:
+        from aieos.domains.teaching.application.errors import GenerationServiceUnavailable
+
+        raise GenerationServiceUnavailable(
+            "Teaching Work preparation is not composed in this runtime"
         )
     return service
 

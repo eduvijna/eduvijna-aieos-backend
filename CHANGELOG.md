@@ -9,6 +9,12 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I07 — prepare HTTP/OpenAPI contract and six-artifact Work
+  projection: additive `POST .../actions/prepare` (`teaching_work_prepare`)
+  delegates to `PrepareTeachingWorkService`; extends Work artifacts list with
+  exact-six preparation bindings (canonical `artifact_kind` including durable
+  `quiz`); preserves `teaching_work_generate`. No migration; Alembic remains
+  `tosd040001`. No frontend OpenAPI sync.
 - TOS-DEV04-I06R2 — hold GenerationRun FOR UPDATE through I03 materialization
   in `PrepareTeachingWorkService`: post-quality ownership critical section
   prevents reclaim/terminalization while Content commits; finalize or fail on

@@ -14,6 +14,7 @@ from aieos.domains.teaching.api.v1.dependencies import (
     get_teaching_work_service,
     list_teaching_work_artifacts_service,
     list_teaching_works_service,
+    prepare_teaching_work_service,
     refine_teaching_work_service,
     resolve_trusted_context,
     teacher_os_today_mission_service,
@@ -24,20 +25,26 @@ from aieos.domains.teaching.api.v1.models import (
     EducationalQualityResponse,
     GeneratedArtifactResponse,
     HeroActionResponse,
+    PreparationArtifactResponse,
     PreparationProjectionResponse,
+    PreparationStatusResponse,
     ReviewProjectionResponse,
     TeacherOsMissionResponse,
     TeachingWorkArtifactsResponse,
     TeachingWorkCreateRequest,
     TeachingWorkGenerateResponse,
     TeachingWorkListResponse,
+    TeachingWorkPrepareResponse,
     TeachingWorkRefineRequest,
     TeachingWorkResponse,
     WorkArtifactItemResponse,
 )
 from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifactsService
 from aieos.domains.teaching.application.create import CreateTeachingWorkService
-from aieos.domains.teaching.application.errors import InvalidTeachingWorkRequest
+from aieos.domains.teaching.application.errors import (
+    InvalidTeachingWorkRequest,
+    PreparationRecoveryInvariantError,
+)
 from aieos.domains.teaching.application.generate import (
     GenerateTeachingWorkResult,
     GenerateTeachingWorkService,
@@ -50,11 +57,16 @@ from aieos.domains.teaching.application.models import (
     RefineTeachingWorkCommand,
     TeachingWorkReadModel,
 )
+from aieos.domains.teaching.application.prepare import (
+    PrepareTeachingWorkResult,
+    PrepareTeachingWorkService,
+)
 from aieos.domains.teaching.application.queries import (
     GetTeachingWorkService,
     ListTeachingWorksService,
 )
 from aieos.domains.teaching.application.refine import RefineTeachingWorkService
+from aieos.domains.education.schema import PREPARATION_ARTIFACT_KINDS
 from aieos.domains.teaching.domain.errors import InvalidTeachingIdentityError
 from aieos.domains.teaching.domain.identities import AggregateRevision, WorkId
 from aieos.domains.teaching.domain.work import UNSET
@@ -85,6 +97,9 @@ _REFINE_RESPONSES = _problem_responses(
     400, 401, 403, 404, 409, 412, 422, 428, 500, 503
 )
 _GENERATE_RESPONSES = _problem_responses(
+    400, 401, 403, 404, 409, 412, 422, 428, 500, 502, 503
+)
+_PREPARE_RESPONSES = _problem_responses(
     400, 401, 403, 404, 409, 412, 422, 428, 500, 502, 503
 )
 
@@ -136,6 +151,48 @@ def _to_generate_response(result: GenerateTeachingWorkResult) -> TeachingWorkGen
             stewardship_state=result.artifact.stewardship_state,
             aggregate_revision=result.artifact.aggregate_revision,
         ),
+        educational_quality=EducationalQualityResponse(
+            status=result.educational_quality.status,
+            checks=[
+                EducationalQualityCheckResponse(
+                    code=str(check["code"]),
+                    passed=bool(check["passed"]),
+                    explanation=str(check["explanation"]),
+                )
+                for check in result.educational_quality.checks
+            ],
+        ),
+    )
+
+
+def _to_prepare_response(result: PrepareTeachingWorkResult) -> TeachingWorkPrepareResponse:
+    kinds = tuple(item.artifact_kind for item in result.artifacts)
+    if kinds != PREPARATION_ARTIFACT_KINDS:
+        raise PreparationRecoveryInvariantError(
+            "preparation response must contain exact six canonical artifacts"
+        )
+    run_id = result.generation_run_id.value
+    if any(item.content_id is None for item in result.artifacts):
+        raise PreparationRecoveryInvariantError(
+            "preparation response artifacts must include Content identity"
+        )
+    return TeachingWorkPrepareResponse(
+        work_id=result.work_id.value,
+        generation_run_id=run_id,
+        preparation=PreparationStatusResponse(status="ready"),
+        artifacts=[
+            PreparationArtifactResponse(
+                artifact_kind=item.artifact_kind,
+                content_id=item.content_id,
+                version_id=item.version_id,
+                content_type=item.content_type,
+                title=item.title,
+                stewardship_state=item.stewardship_state,
+                aggregate_revision=item.aggregate_revision,
+                generation_run_id=run_id,
+            )
+            for item in result.artifacts
+        ],
         educational_quality=EducationalQualityResponse(
             status=result.educational_quality.status,
             checks=[
@@ -339,6 +396,35 @@ def teaching_work_generate(
     return _to_generate_response(result)
 
 
+@router.post(
+    "/teaching/works/{work_id}/actions/prepare",
+    response_model=TeachingWorkPrepareResponse,
+    operation_id="teaching_work_prepare",
+    responses=_PREPARE_RESPONSES,
+)
+def teaching_work_prepare(
+    work_id: UUID,
+    request: Request,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        PrepareTeachingWorkService, Depends(prepare_teaching_work_service)
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingWorkPrepareResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    result = service.prepare(
+        context.tenant_id,
+        context.principal_id,
+        work_id=_work_id(work_id),
+        expected_aggregate_revision=expected,
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+    )
+    return _to_prepare_response(result)
+
+
 @router.get(
     "/teaching/works/{work_id}/artifacts",
     response_model=TeachingWorkArtifactsResponse,
@@ -379,6 +465,8 @@ def teaching_work_artifacts_list(
                         ],
                     )
                 ),
+                artifact_kind=item.artifact_kind,
+                generation_run_id=item.generation_run_id,
             )
             for item in result.items
         ],

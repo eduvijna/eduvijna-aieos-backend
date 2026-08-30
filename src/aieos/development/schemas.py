@@ -1,7 +1,8 @@
 """Development-boundary Content schema fixtures.
 
-Registers synthetic ``test.generic`` and real ``worksheet`` for NON_PRODUCTION
-Teacher OS development composition. Production catalog/registry stay empty.
+Registers synthetic ``test.generic``, real ``worksheet``, and DEV04 preparation
+content types for NON_PRODUCTION Teacher OS development composition.
+Production catalog/registry stay empty.
 """
 
 from __future__ import annotations
@@ -15,7 +16,10 @@ from aieos.domains.content.domain.schema import (
     SchemaId,
     SchemaVersion,
 )
-from aieos.domains.education.schema import WORKSHEET_V1_SCHEMA
+from aieos.domains.education.schema import (
+    PREPARATION_CONTENT_TYPES,
+    PREPARATION_V1_SCHEMAS,
+)
 
 DEV_CONTENT_TYPE = "test.generic"
 DEV_SCHEMA_ID = "test.generic"
@@ -49,5 +53,11 @@ DEV_GENERIC_V1 = DevelopmentFixtureSchema(
 def build_development_schema_registry() -> ContentSchemaRegistry:
     registry = ContentSchemaRegistry()
     registry.register(DEV_GENERIC_V1)
-    registry.register(WORKSHEET_V1_SCHEMA)
+    # PREPARATION_V1_SCHEMAS includes worksheet V1 (DEV03 + DEV04 shared).
+    for schema in PREPARATION_V1_SCHEMAS:
+        registry.register(schema)  # type: ignore[arg-type]
     return registry
+
+
+def development_content_type_names() -> set[str]:
+    return {DEV_CONTENT_TYPE, DEV_WORKSHEET_CONTENT_TYPE, *PREPARATION_CONTENT_TYPES}

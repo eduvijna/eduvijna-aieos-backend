@@ -287,6 +287,7 @@ class TestOpenApiContract:
             "teaching_work_get",
             "teaching_work_refine",
             "teaching_work_generate",
+            "teaching_work_prepare",
             "teaching_work_artifacts_list",
             "teacher_os_today_mission",
         } <= operations
@@ -304,11 +305,18 @@ class TestOpenApiContract:
         spec = _openapi()
         create = spec["paths"]["/api/v1/teaching/works"]["post"]
         refine = spec["paths"]["/api/v1/teaching/works/{work_id}"]["patch"]
+        prepare = spec["paths"]["/api/v1/teaching/works/{work_id}/actions/prepare"][
+            "post"
+        ]
         create_headers = {p["name"] for p in create.get("parameters", [])}
         refine_headers = {p["name"] for p in refine.get("parameters", [])}
+        prepare_headers = {p["name"] for p in prepare.get("parameters", [])}
         assert "Idempotency-Key" in create_headers
         assert "Idempotency-Key" in refine_headers
+        assert "Idempotency-Key" in prepare_headers
         assert "If-Match" in refine_headers
+        assert "If-Match" in prepare_headers
+        assert prepare["operationId"] == "teaching_work_prepare"
 
     def test_mission_declares_the_required_mission_date_parameter(self) -> None:
         spec = _openapi()

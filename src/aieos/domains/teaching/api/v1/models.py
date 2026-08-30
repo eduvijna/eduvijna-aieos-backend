@@ -85,12 +85,47 @@ class GeneratedArtifactResponse(BaseModel):
     aggregate_revision: int
 
 
+class PreparationArtifactResponse(BaseModel):
+    """One of the exact-six preparation Generic Content projections."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_kind: str
+    content_id: UUID
+    version_id: UUID
+    content_type: str
+    title: str
+    stewardship_state: str
+    aggregate_revision: int
+    generation_run_id: UUID
+
+
+class PreparationStatusResponse(BaseModel):
+    """Derived preparation status. No persisted preparation-status column."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+
+
 class TeachingWorkGenerateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     work_id: UUID
     generation_run_id: UUID
     artifact: GeneratedArtifactResponse
+    educational_quality: EducationalQualityResponse
+
+
+class TeachingWorkPrepareResponse(BaseModel):
+    """Additive prepare command response. Exact six artifacts required."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    work_id: UUID
+    generation_run_id: UUID
+    preparation: PreparationStatusResponse
+    artifacts: list[PreparationArtifactResponse]
     educational_quality: EducationalQualityResponse
 
 
@@ -105,6 +140,8 @@ class WorkArtifactItemResponse(BaseModel):
     stewardship_state: str
     aggregate_revision: int
     educational_quality: EducationalQualityResponse | None = None
+    artifact_kind: str | None = None
+    generation_run_id: UUID | None = None
 
 
 class TeachingWorkArtifactsResponse(BaseModel):
