@@ -142,3 +142,77 @@ def event_context(principal_id: UUID, correlation_id: UUID | None = None) -> Mut
         actor_principal_id=principal_id,
         effective_actor_id=principal_id,
     )
+
+
+def advance_running_claim_revision(
+    runtime_engine: Engine,
+    *,
+    tenant_id: UUID,
+    principal_id: UUID,
+    idempotency_key: str,
+) -> int:
+    """Simulate a mid-provider same-key reclaim (newer RUNNING aggregate revision)."""
+    from dataclasses import replace
+
+    from aieos.platform.ai.domain.generation_run import GenerationRunStatus
+    from aieos.platform.idempotency.hashing import hash_idempotency_key
+
+    with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+        run = ai_uow.generation_runs.get_by_idempotency_key(
+            principal_id=principal_id,
+            idempotency_key_sha256=hash_idempotency_key(idempotency_key),
+        )
+        assert run is not None
+        locked = ai_uow.generation_runs.get_for_update(run.generation_run_id)
+        assert locked is not None
+        assert locked.status is GenerationRunStatus.RUNNING
+        advanced = replace(
+            locked,
+            status=GenerationRunStatus.RUNNING,
+            lease_expires_at=FIXED_NOW + timedelta(seconds=600),
+            updated_at=FIXED_NOW,
+            aggregate_revision=locked.aggregate_revision + 1,
+            # Distinguish newer claimant metadata from the stale provider draft.
+            provider_response_id="newer-claimant-response",
+        )
+        assert ai_uow.generation_runs.update(
+            advanced, expected_revision=locked.aggregate_revision
+        )
+        ai_uow.commit()
+        return advanced.aggregate_revision
+
+
+def terminalize_running_as_lease_expired(
+    runtime_engine: Engine,
+    *,
+    tenant_id: UUID,
+    principal_id: UUID,
+    idempotency_key: str,
+) -> None:
+    """Simulate different-key stale resolver terminalizing the claimed run mid-provider."""
+    from dataclasses import replace
+
+    from aieos.platform.ai.domain.generation_run import GenerationRunStatus
+    from aieos.platform.idempotency.hashing import hash_idempotency_key
+
+    with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+        run = ai_uow.generation_runs.get_by_idempotency_key(
+            principal_id=principal_id,
+            idempotency_key_sha256=hash_idempotency_key(idempotency_key),
+        )
+        assert run is not None
+        locked = ai_uow.generation_runs.get_for_update(run.generation_run_id)
+        assert locked is not None
+        failed = replace(
+            locked,
+            status=GenerationRunStatus.FAILED,
+            failure_code="generation_lease_expired",
+            lease_expires_at=None,
+            completed_at=FIXED_NOW,
+            updated_at=FIXED_NOW,
+            aggregate_revision=locked.aggregate_revision + 1,
+        )
+        assert ai_uow.generation_runs.update(
+            failed, expected_revision=locked.aggregate_revision
+        )
+        ai_uow.commit()

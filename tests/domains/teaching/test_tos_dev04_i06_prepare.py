@@ -35,11 +35,13 @@ from tests.domains.content.application.test_tos_dev04_i03_atomic_preparation imp
 )
 from tests.domains.teaching.helpers_dev04_i06 import (
     FIXED_NOW,
+    advance_running_claim_revision,
     build_prepare_service,
     create_teaching_work,
     event_context,
     pass_preparation_kit,
     quality_fail_preparation_kit,
+    terminalize_running_as_lease_expired,
 )
 from tests.domains.teaching.test_tos_dev04_i02_multi_artifact_persistence import (
     _clear_i02_downgrade_blockers,
@@ -688,3 +690,290 @@ class TestRecoveryAndFences:
             run = ai_uow.generation_runs.get(first.generation_run_id)
             assert run is not None
             assert run.status is not GenerationRunStatus.SUCCEEDED
+
+
+class TestExecutionOwnershipIsolation:
+    def test_stale_provider_success_after_reclaim_does_not_mutate(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        work_id, revision = create_teaching_work(
+            runtime_engine, tenant_id, principal_id, idempotency_key="own-s-create"
+        )
+        key = "prep-own-success"
+        newer_rev = {"v": -1}
+
+        def before() -> None:
+            newer_rev["v"] = advance_running_claim_revision(
+                runtime_engine,
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                idempotency_key=key,
+            )
+
+        gateway = FakeStructuredModelGateway(
+            result_factory=lambda _r: pass_preparation_kit(),
+            before_generate=before,
+        )
+        service, _ = build_prepare_service(runtime_engine, model_gateway=gateway)
+        with pytest.raises(WorkGenerationInProgress):
+            service.prepare(
+                tenant_id,
+                principal_id,
+                work_id=work_id,
+                expected_aggregate_revision=revision,
+                idempotency_key=key,
+                event_context=event_context(principal_id),
+                now=FIXED_NOW,
+            )
+        assert gateway.call_count == 1
+        with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+            from aieos.platform.idempotency.hashing import hash_idempotency_key
+
+            run = ai_uow.generation_runs.get_by_idempotency_key(
+                principal_id=principal_id,
+                idempotency_key_sha256=hash_idempotency_key(key),
+            )
+            assert run is not None
+            assert run.status is GenerationRunStatus.RUNNING
+            assert run.aggregate_revision == newer_rev["v"]
+            assert run.provider_response_id == "newer-claimant-response"
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.contents WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 0
+        )
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.content_versions WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 0
+        )
+
+    def test_stale_provider_failure_after_reclaim_does_not_kill_newer(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        work_id, revision = create_teaching_work(
+            runtime_engine, tenant_id, principal_id, idempotency_key="own-f-create"
+        )
+        key = "prep-own-fail"
+        newer_rev = {"v": -1}
+
+        def before() -> None:
+            newer_rev["v"] = advance_running_claim_revision(
+                runtime_engine,
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                idempotency_key=key,
+            )
+
+        gateway = FakeStructuredModelGateway(
+            error=ModelProviderUnavailable("stale provider fail"),
+            before_generate=before,
+        )
+        service, _ = build_prepare_service(runtime_engine, model_gateway=gateway)
+        with pytest.raises(WorkGenerationInProgress):
+            service.prepare(
+                tenant_id,
+                principal_id,
+                work_id=work_id,
+                expected_aggregate_revision=revision,
+                idempotency_key=key,
+                event_context=event_context(principal_id),
+                now=FIXED_NOW,
+            )
+        assert gateway.call_count == 1
+        with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+            from aieos.platform.idempotency.hashing import hash_idempotency_key
+
+            run = ai_uow.generation_runs.get_by_idempotency_key(
+                principal_id=principal_id,
+                idempotency_key_sha256=hash_idempotency_key(key),
+            )
+            assert run is not None
+            assert run.status is GenerationRunStatus.RUNNING
+            assert run.aggregate_revision == newer_rev["v"]
+            assert run.failure_code is None
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.contents WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 0
+        )
+
+    def test_terminalized_during_provider_discards_success(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        work_id, revision = create_teaching_work(
+            runtime_engine, tenant_id, principal_id, idempotency_key="own-t-create"
+        )
+        key = "prep-own-term"
+
+        def before() -> None:
+            terminalize_running_as_lease_expired(
+                runtime_engine,
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                idempotency_key=key,
+            )
+
+        gateway = FakeStructuredModelGateway(
+            result_factory=lambda _r: pass_preparation_kit(),
+            before_generate=before,
+        )
+        service, _ = build_prepare_service(runtime_engine, model_gateway=gateway)
+        with pytest.raises(WorkGenerationInProgress):
+            service.prepare(
+                tenant_id,
+                principal_id,
+                work_id=work_id,
+                expected_aggregate_revision=revision,
+                idempotency_key=key,
+                event_context=event_context(principal_id),
+                now=FIXED_NOW,
+            )
+        assert gateway.call_count == 1
+        with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+            from aieos.platform.idempotency.hashing import hash_idempotency_key
+
+            run = ai_uow.generation_runs.get_by_idempotency_key(
+                principal_id=principal_id,
+                idempotency_key_sha256=hash_idempotency_key(key),
+            )
+            assert run is not None
+            assert run.status is GenerationRunStatus.FAILED
+            assert run.failure_code == "generation_lease_expired"
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.contents WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 0
+        )
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.content_versions WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 0
+        )
+
+    def test_terminalized_plus_new_run_isolation(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        work_id, revision = create_teaching_work(
+            runtime_engine, tenant_id, principal_id, idempotency_key="own-n-create"
+        )
+        old_key = "prep-own-old"
+        new_run_id = {"id": None}
+
+        def before() -> None:
+            terminalize_running_as_lease_expired(
+                runtime_engine,
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                idempotency_key=old_key,
+            )
+            from aieos.platform.ai.domain.generation_run import GenerationRun
+            from aieos.platform.idempotency.hashing import (
+                fingerprint_material,
+                hash_idempotency_key,
+            )
+
+            with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+                fingerprint = fingerprint_material(
+                    {
+                        "work_id": str(work_id),
+                        "work_revision": int(revision),
+                        "capability_id": CAPABILITY_EDUCATION_GENERATE_PREPARATION_KIT,
+                        "provider_id": "fake",
+                        "model_id": "fake-model",
+                    }
+                )
+                fresh = GenerationRun(
+                    generation_run_id=GenerationRunId.generate(),
+                    tenant_id=tenant_id,
+                    principal_id=principal_id,
+                    work_resource_type="teaching.work",
+                    work_resource_id=work_id.value,
+                    work_resource_revision=int(revision),
+                    capability_id=CAPABILITY_EDUCATION_GENERATE_PREPARATION_KIT,
+                    provider_id="fake",
+                    model_id="fake-model",
+                    status=GenerationRunStatus.RUNNING,
+                    request_fingerprint_sha256=fingerprint,
+                    idempotency_key_sha256=hash_idempotency_key("prep-own-new"),
+                    provider_response_id=None,
+                    input_tokens=None,
+                    output_tokens=None,
+                    total_tokens=None,
+                    educational_quality_summary=None,
+                    result_content_id=None,
+                    result_version_id=None,
+                    result_content_revision=None,
+                    failure_code=None,
+                    aggregate_revision=0,
+                    created_at=FIXED_NOW,
+                    updated_at=FIXED_NOW,
+                    completed_at=None,
+                    lease_expires_at=FIXED_NOW + timedelta(seconds=600),
+                )
+                ai_uow.generation_runs.insert(fresh)
+                ai_uow.commit()
+                new_run_id["id"] = fresh.generation_run_id
+
+        gateway = FakeStructuredModelGateway(
+            result_factory=lambda _r: pass_preparation_kit(),
+            before_generate=before,
+        )
+        service, _ = build_prepare_service(runtime_engine, model_gateway=gateway)
+        with pytest.raises(WorkGenerationInProgress):
+            service.prepare(
+                tenant_id,
+                principal_id,
+                work_id=work_id,
+                expected_aggregate_revision=revision,
+                idempotency_key=old_key,
+                event_context=event_context(principal_id),
+                now=FIXED_NOW,
+            )
+        assert gateway.call_count == 1
+        assert new_run_id["id"] is not None
+        with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+            from aieos.platform.idempotency.hashing import hash_idempotency_key
+
+            old = ai_uow.generation_runs.get_by_idempotency_key(
+                principal_id=principal_id,
+                idempotency_key_sha256=hash_idempotency_key(old_key),
+            )
+            assert old is not None
+            assert old.status is GenerationRunStatus.FAILED
+            assert old.failure_code == "generation_lease_expired"
+            newer = ai_uow.generation_runs.get(new_run_id["id"])
+            assert newer is not None
+            assert newer.status is GenerationRunStatus.RUNNING
+            assert newer.aggregate_revision == 0
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.contents WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == 0
+        )

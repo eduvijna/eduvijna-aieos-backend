@@ -9,6 +9,14 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV04-I06R1 — GenerationRun execution-ownership isolation and recovery
+  linkage hardening for `PrepareTeachingWorkService`: in-memory
+  `PreparationGenerationClaim` (run id + claimed aggregate revision) follows the
+  provider call; post-provider metadata/quality/finalization/failure paths are
+  claim-aware so a superseded worker cannot overwrite a newer reclaim, resurrect
+  FAILED, or materialize Content from a stale draft. Exact-six recovery requires
+  uniform non-null `generation_run_ref`, provider/model agreement with the run,
+  and ContentVersion tenant linkage. No migration, API, or DEV03 changes.
 - TOS-DEV04-I06 — `PrepareTeachingWorkService` orchestration and recovery
   (ADR-AIEOS-052): GenerationRun Fence A/B claim + idempotency, I04 generation,
   I05 whole-kit Educational Quality gate, I03 atomic six-artifact materialization,

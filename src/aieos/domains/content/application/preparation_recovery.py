@@ -1,4 +1,4 @@
-"""Read-only exact-six preparation Content recovery (TOS-DEV04-I06).
+"""Read-only exact-six preparation Content recovery (TOS-DEV04-I06/I06R1).
 
 Validates committed AI GenerationRun bindings against ADR-AIEOS-052 invariants.
 Does not mutate GenerationRun or Content.
@@ -24,6 +24,7 @@ from aieos.platform.capabilities.models import (
 from aieos.platform.resources import ResourceRef
 
 WORK_RESOURCE_TYPE = "teaching.work"
+GENERATION_RUN_RESOURCE_TYPE = "ai.generation_run"
 
 _KIND_TO_CONTENT_TYPE: dict[str, str] = dict(
     zip(PREPARATION_ARTIFACT_KINDS, PREPARATION_CONTENT_TYPES, strict=True)
@@ -54,6 +55,7 @@ class ExactSixPreparationRecovery:
     provider_id: str
     model_id: str
     work_ref: ResourceRef
+    generation_run_ref: ResourceRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +92,7 @@ def inspect_preparation_generation_bindings(
     provider_ids: set[str] = set()
     model_ids: set[str] = set()
     source_ref_tuples: set[tuple[tuple[str, str, int | None], ...]] = set()
+    generation_run_refs: list[ResourceRef] = []
     work_refs: list[ResourceRef] = []
 
     for binding in bindings:
@@ -112,15 +115,49 @@ def inspect_preparation_generation_bindings(
             )
         by_kind[kind] = binding
 
-        if provenance.generation_run_ref.resource_id != run.generation_run_id.value:
+        run_ref = provenance.generation_run_ref
+        if run_ref.resource_type != GENERATION_RUN_RESOURCE_TYPE:
             return PreparationBindingInspection(
                 status=PreparationBindingRecoveryStatus.INVALID,
-                detail="generation_run_ref mismatch",
+                detail="generation_run_ref.resource_type mismatch",
             )
+        if run_ref.resource_id != run.generation_run_id.value:
+            return PreparationBindingInspection(
+                status=PreparationBindingRecoveryStatus.INVALID,
+                detail="generation_run_ref.resource_id mismatch",
+            )
+        if run_ref.resource_revision is None:
+            return PreparationBindingInspection(
+                status=PreparationBindingRecoveryStatus.INVALID,
+                detail="generation_run_ref.resource_revision must be non-null",
+            )
+        if run_ref.resource_revision > run.aggregate_revision:
+            return PreparationBindingInspection(
+                status=PreparationBindingRecoveryStatus.INVALID,
+                detail="generation_run_ref.resource_revision exceeds run revision",
+            )
+        generation_run_refs.append(run_ref)
+
         if provenance.capability_id != CAPABILITY_EDUCATION_GENERATE_PREPARATION_KIT:
             return PreparationBindingInspection(
                 status=PreparationBindingRecoveryStatus.INVALID,
                 detail="capability_id mismatch",
+            )
+        if provenance.provider_id != run.provider_id:
+            return PreparationBindingInspection(
+                status=PreparationBindingRecoveryStatus.INVALID,
+                detail="provenance provider_id disagrees with GenerationRun",
+            )
+        if provenance.model_id != run.model_id:
+            return PreparationBindingInspection(
+                status=PreparationBindingRecoveryStatus.INVALID,
+                detail="provenance model_id disagrees with GenerationRun",
+            )
+
+        if binding.version.tenant_id != run.tenant_id:
+            return PreparationBindingInspection(
+                status=PreparationBindingRecoveryStatus.INVALID,
+                detail="ContentVersion tenant mismatch",
             )
 
         correlation_ids.add(provenance.correlation_id)
@@ -203,6 +240,18 @@ def inspect_preparation_generation_bindings(
             detail="source_refs not uniform across bindings",
         )
 
+    first_run_ref = generation_run_refs[0]
+    for run_ref in generation_run_refs[1:]:
+        if (
+            run_ref.resource_type != first_run_ref.resource_type
+            or run_ref.resource_id != first_run_ref.resource_id
+            or run_ref.resource_revision != first_run_ref.resource_revision
+        ):
+            return PreparationBindingInspection(
+                status=PreparationBindingRecoveryStatus.INVALID,
+                detail="generation_run_ref not uniform across bindings",
+            )
+
     ordered = tuple(
         next(a for a in recovered if a.artifact_kind == kind)
         for kind in PREPARATION_ARTIFACT_KINDS
@@ -215,5 +264,6 @@ def inspect_preparation_generation_bindings(
             provider_id=next(iter(provider_ids)),
             model_id=next(iter(model_ids)),
             work_ref=work_refs[0],
+            generation_run_ref=first_run_ref,
         ),
     )

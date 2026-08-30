@@ -8,6 +8,7 @@ from dataclasses import replace
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from aieos.domains.teaching.application.errors import WorkGenerationInProgress
@@ -336,3 +337,243 @@ class TestArchitecture:
         source = path.read_text(encoding="utf-8").lower()
         assert "openai" not in source
         assert "actions/prepare" not in source
+
+
+class TestExactSixRecoveryHardening:
+    def _prepare_exact_six(
+        self, runtime_engine: Engine, tenant_id: uuid.UUID, principal_id: uuid.UUID
+    ):
+        service, gateway = build_prepare_service(runtime_engine)
+        assert isinstance(gateway, FakeStructuredModelGateway)
+        work_id, revision = create_teaching_work(
+            runtime_engine, tenant_id, principal_id, idempotency_key="rec-harden-create"
+        )
+        result = service.prepare(
+            tenant_id,
+            principal_id,
+            work_id=work_id,
+            expected_aggregate_revision=revision,
+            idempotency_key="rec-harden-prep",
+            event_context=event_context(principal_id),
+            now=FIXED_NOW,
+        )
+        return result
+
+    def _inspect(self, runtime_engine: Engine, tenant_id: uuid.UUID, run_id):
+        from aieos.domains.content.application.preparation_recovery import (
+            inspect_preparation_generation_bindings,
+        )
+        from aieos.domains.content.infrastructure.persistence.uow import (
+            SqlAlchemyContentUnitOfWorkFactory,
+        )
+
+        with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+            run = ai_uow.generation_runs.get(run_id)
+            assert run is not None
+        with SqlAlchemyContentUnitOfWorkFactory(runtime_engine)(tenant_id) as cuow:
+            return inspect_preparation_generation_bindings(cuow, run)
+
+    def test_mismatched_generation_run_ref_revision_is_invalid(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        from aieos.domains.content.application.preparation_recovery import (
+            PreparationBindingRecoveryStatus,
+        )
+
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        result = self._prepare_exact_six(runtime_engine, tenant_id, principal_id)
+        with bootstrap_engine.begin() as conn:
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE content.content_versions
+                       SET provenance = jsonb_set(
+                         provenance,
+                         '{generation_run_ref,resource_revision}',
+                         '999'::jsonb,
+                         true
+                       )
+                     WHERE tenant_id = :tid
+                       AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+                       AND (provenance->>'artifact_kind') = 'quiz'
+                    """
+                ),
+                {"tid": tenant_id, "rid": str(result.generation_run_id.value)},
+            )
+        inspection = self._inspect(
+            runtime_engine, tenant_id, result.generation_run_id
+        )
+        assert inspection.status is PreparationBindingRecoveryStatus.INVALID
+        assert inspection.detail is not None
+
+    def test_wrong_generation_run_ref_type_is_invalid(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        from aieos.domains.content.application.preparation_recovery import (
+            PreparationBindingRecoveryStatus,
+        )
+
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        result = self._prepare_exact_six(runtime_engine, tenant_id, principal_id)
+        with bootstrap_engine.begin() as conn:
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE content.content_versions
+                       SET provenance = jsonb_set(
+                         provenance,
+                         '{generation_run_ref,resource_type}',
+                         '"ai.wrong_type"'::jsonb,
+                         true
+                       )
+                     WHERE tenant_id = :tid
+                       AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+                       AND (provenance->>'artifact_kind') = 'homework'
+                    """
+                ),
+                {"tid": tenant_id, "rid": str(result.generation_run_id.value)},
+            )
+        inspection = self._inspect(
+            runtime_engine, tenant_id, result.generation_run_id
+        )
+        assert inspection.status is PreparationBindingRecoveryStatus.INVALID
+
+    def test_null_generation_run_ref_revision_is_invalid(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        from aieos.domains.content.application.preparation_recovery import (
+            PreparationBindingRecoveryStatus,
+        )
+
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        result = self._prepare_exact_six(runtime_engine, tenant_id, principal_id)
+        with bootstrap_engine.begin() as conn:
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE content.content_versions
+                       SET provenance = jsonb_set(
+                         provenance,
+                         '{generation_run_ref,resource_revision}',
+                         'null'::jsonb,
+                         true
+                       )
+                     WHERE tenant_id = :tid
+                       AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+                       AND (provenance->>'artifact_kind') = 'worksheet'
+                    """
+                ),
+                {"tid": tenant_id, "rid": str(result.generation_run_id.value)},
+            )
+        inspection = self._inspect(
+            runtime_engine, tenant_id, result.generation_run_id
+        )
+        assert inspection.status is PreparationBindingRecoveryStatus.INVALID
+
+    def test_provider_id_mismatch_vs_generation_run_is_invalid(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        from aieos.domains.content.application.preparation_recovery import (
+            PreparationBindingRecoveryStatus,
+        )
+
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        result = self._prepare_exact_six(runtime_engine, tenant_id, principal_id)
+        with bootstrap_engine.begin() as conn:
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE content.content_versions
+                       SET provenance = jsonb_set(
+                         provenance,
+                         '{provider_id}',
+                         '"other-provider"'::jsonb,
+                         true
+                       )
+                     WHERE tenant_id = :tid
+                       AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+                    """
+                ),
+                {"tid": tenant_id, "rid": str(result.generation_run_id.value)},
+            )
+        inspection = self._inspect(
+            runtime_engine, tenant_id, result.generation_run_id
+        )
+        assert inspection.status is PreparationBindingRecoveryStatus.INVALID
+
+    def test_model_id_mismatch_vs_generation_run_is_invalid(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        from aieos.domains.content.application.preparation_recovery import (
+            PreparationBindingRecoveryStatus,
+        )
+
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        result = self._prepare_exact_six(runtime_engine, tenant_id, principal_id)
+        with bootstrap_engine.begin() as conn:
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE content.content_versions
+                       SET provenance = jsonb_set(
+                         provenance,
+                         '{model_id}',
+                         '"other-model"'::jsonb,
+                         true
+                       )
+                     WHERE tenant_id = :tid
+                       AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+                    """
+                ),
+                {"tid": tenant_id, "rid": str(result.generation_run_id.value)},
+            )
+        inspection = self._inspect(
+            runtime_engine, tenant_id, result.generation_run_id
+        )
+        assert inspection.status is PreparationBindingRecoveryStatus.INVALID
+
+    def test_content_version_tenant_mismatch_is_invalid(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        from aieos.domains.content.application.preparation_recovery import (
+            PreparationBindingRecoveryStatus,
+        )
+
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        other_tenant = uuid.uuid7()
+        result = self._prepare_exact_six(runtime_engine, tenant_id, principal_id)
+        with bootstrap_engine.begin() as conn:
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE content.content_versions
+                       SET tenant_id = :other
+                     WHERE tenant_id = :tid
+                       AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+                       AND (provenance->>'artifact_kind') = 'teacher_notes'
+                    """
+                ),
+                {
+                    "tid": tenant_id,
+                    "rid": str(result.generation_run_id.value),
+                    "other": other_tenant,
+                },
+            )
+        inspection = self._inspect(
+            runtime_engine, tenant_id, result.generation_run_id
+        )
+        # find_all_by_generation_run may be tenant-scoped; if the row is invisible
+        # under the run tenant the binding set becomes incomplete → INVALID.
+        assert inspection.status is PreparationBindingRecoveryStatus.INVALID

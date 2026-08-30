@@ -1,7 +1,8 @@
-"""Teaching Work → preparation kit orchestration (TOS-DEV04-I06).
+"""Teaching Work → preparation kit orchestration (TOS-DEV04-I06/I06R1).
 
 Compose I04 generation + I05 Educational Quality + I03 atomic materialization
-with GenerationRun fences, idempotency, and Content-first crash recovery.
+with GenerationRun fences, idempotency, Content-first crash recovery, and
+execution-epoch ownership isolation after the provider call.
 """
 
 from __future__ import annotations
@@ -88,6 +89,14 @@ from aieos.platform.resources import ResourceRef
 
 WORK_RESOURCE_TYPE = "teaching.work"
 GENERATION_RUN_RESOURCE_TYPE = "ai.generation_run"
+
+
+@dataclass(frozen=True, slots=True)
+class PreparationGenerationClaim:
+    """In-memory execution-epoch ownership token (not persisted, not API-exposed)."""
+
+    generation_run_id: GenerationRunId
+    claimed_aggregate_revision: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,7 +274,7 @@ class PrepareTeachingWorkService:
             model_id=self._model_id,
         )
 
-        run_id = self._claim_or_resolve_run(
+        claimed = self._claim_or_resolve_run(
             execution_tenant_id,
             principal_id,
             work_id=work_id,
@@ -275,8 +284,8 @@ class PrepareTeachingWorkService:
             lease_expires_at=lease_expires_at,
             now=claim_at,
         )
-        if isinstance(run_id, PrepareTeachingWorkResult):
-            return run_id
+        if isinstance(claimed, PrepareTeachingWorkResult):
+            return claimed
 
         generation_input = PreparationKitGenerationInput(
             work_ref=ResourceRef(
@@ -295,127 +304,125 @@ class PrepareTeachingWorkService:
         try:
             draft = self._preparation_capability.execute(generation_input)
         except PreparationArtifactBuildFailed as exc:
-            failure_at = self._clock()
-            self._mark_failed(
+            owned = self._mark_failed_if_owned(
                 execution_tenant_id,
-                run_id,
+                work_id,
+                claimed,
                 failure_code="preparation_artifact_build_failed",
-                now=failure_at,
             )
+            if isinstance(owned, PrepareTeachingWorkResult):
+                return owned
             raise ModelOutputInvalidError("model output invalid") from exc
         except ModelProviderUnavailable as exc:
-            failure_at = self._clock()
-            self._mark_failed(
+            owned = self._mark_failed_if_owned(
                 execution_tenant_id,
-                run_id,
+                work_id,
+                claimed,
                 failure_code="model_provider_unavailable",
-                now=failure_at,
             )
+            if isinstance(owned, PrepareTeachingWorkResult):
+                return owned
             raise ModelProviderUnavailableError("model provider unavailable") from exc
         except ModelOutputInvalid as exc:
-            failure_at = self._clock()
-            self._mark_failed(
+            owned = self._mark_failed_if_owned(
                 execution_tenant_id,
-                run_id,
+                work_id,
+                claimed,
                 failure_code="model_output_invalid",
-                now=failure_at,
             )
+            if isinstance(owned, PrepareTeachingWorkResult):
+                return owned
             raise ModelOutputInvalidError("model output invalid") from exc
         except ModelOutputIncomplete as exc:
-            failure_at = self._clock()
-            self._mark_failed(
+            owned = self._mark_failed_if_owned(
                 execution_tenant_id,
-                run_id,
+                work_id,
+                claimed,
                 failure_code="model_output_incomplete",
-                now=failure_at,
             )
+            if isinstance(owned, PrepareTeachingWorkResult):
+                return owned
             raise ModelOutputInvalidError("model output invalid") from exc
         except ModelOutputMissing as exc:
-            failure_at = self._clock()
-            self._mark_failed(
+            owned = self._mark_failed_if_owned(
                 execution_tenant_id,
-                run_id,
+                work_id,
+                claimed,
                 failure_code="model_output_missing",
-                now=failure_at,
             )
+            if isinstance(owned, PrepareTeachingWorkResult):
+                return owned
             raise ModelOutputInvalidError("model output invalid") from exc
         except ModelRequestRejected as exc:
-            failure_at = self._clock()
-            self._mark_failed(
+            owned = self._mark_failed_if_owned(
                 execution_tenant_id,
-                run_id,
+                work_id,
+                claimed,
                 failure_code="model_request_rejected",
-                now=failure_at,
             )
+            if isinstance(owned, PrepareTeachingWorkResult):
+                return owned
             raise ModelGenerationFailedError("model generation failed") from exc
         except ModelAdapterContractFailed as exc:
-            failure_at = self._clock()
-            self._mark_failed(
+            owned = self._mark_failed_if_owned(
                 execution_tenant_id,
-                run_id,
+                work_id,
+                claimed,
                 failure_code="model_adapter_contract_failed",
-                now=failure_at,
             )
+            if isinstance(owned, PrepareTeachingWorkResult):
+                return owned
             raise ModelGenerationFailedError("model generation failed") from exc
         except ModelGenerationFailed as exc:
-            failure_at = self._clock()
-            self._mark_failed(
+            owned = self._mark_failed_if_owned(
                 execution_tenant_id,
-                run_id,
+                work_id,
+                claimed,
                 failure_code="model_generation_failed",
-                now=failure_at,
             )
+            if isinstance(owned, PrepareTeachingWorkResult):
+                return owned
             raise ModelGenerationFailedError("model generation failed") from exc
 
         quality = evaluate_preparation_educational_quality_v1(draft.artifacts)
         meta = draft.provider_metadata
         if quality.status is not EducationalQualityStatus.PASS:
-            failure_at = self._clock()
-            self._mark_failed(
+            owned_fail = self._mark_failed_if_owned(
                 execution_tenant_id,
-                run_id,
+                work_id,
+                claimed,
                 failure_code="educational_quality_failed",
                 educational_quality_summary=quality.as_summary(),
                 provider_metadata=meta,
-                now=failure_at,
             )
+            if isinstance(owned_fail, PrepareTeachingWorkResult):
+                return owned_fail
             raise EducationalQualityFailedError(
                 educational_quality=_quality_view(quality)
             )
 
         quality_summary = quality.as_summary()
-        heartbeat_at = self._clock()
-        with self._ai_uow_factory(execution_tenant_id) as ai_uow:
-            locked = ai_uow.generation_runs.get_for_update(run_id)
-            if locked is None:
-                raise TeachingWorkNotFound("GenerationRun was not found")
-            if locked.status is GenerationRunStatus.SUCCEEDED:
-                return self._result_from_succeeded_run(
-                    execution_tenant_id, work_id, locked
-                )
-            refreshed = replace(
-                locked,
-                provider_id=meta.provider_id,
-                model_id=meta.model_id,
-                provider_response_id=meta.provider_response_id,
-                input_tokens=meta.input_tokens,
-                output_tokens=meta.output_tokens,
-                total_tokens=meta.total_tokens,
-                educational_quality_summary=quality_summary,
-                lease_expires_at=heartbeat_at + timedelta(seconds=self._lease_seconds),
-                updated_at=heartbeat_at,
-                aggregate_revision=locked.aggregate_revision + 1,
-            )
-            if not ai_uow.generation_runs.update(
-                refreshed, expected_revision=locked.aggregate_revision
-            ):
-                raise WorkGenerationInProgress("work generation concurrency conflict")
-            ai_uow.commit()
-            run_revision = refreshed.aggregate_revision
+        ownership = self._persist_provider_quality_if_owned(
+            execution_tenant_id,
+            work_id,
+            claimed,
+            fingerprint=fingerprint,
+            provider_metadata=meta,
+            quality_summary=quality_summary,
+        )
+        if isinstance(ownership, PrepareTeachingWorkResult):
+            return ownership
+        post_quality_revision = ownership
+        post_quality_claim = PreparationGenerationClaim(
+            generation_run_id=claimed.generation_run_id,
+            claimed_aggregate_revision=post_quality_revision,
+        )
 
         provenance = PreparationProvenanceContext(
             generation_run_ref=ResourceRef(
-                GENERATION_RUN_RESOURCE_TYPE, run_id.value, run_revision
+                GENERATION_RUN_RESOURCE_TYPE,
+                claimed.generation_run_id.value,
+                post_quality_revision,
             ),
             prompt_execution_ref=None,
             provider_id=meta.provider_id,
@@ -451,42 +458,47 @@ class PrepareTeachingWorkService:
         except AIPreparationArtifactsAlreadyMaterialized:
             finalize_at = self._clock()
             recovered = self._require_exact_six_recovery(
-                execution_tenant_id, run_id
+                execution_tenant_id, claimed.generation_run_id
             )
             return self._finalize_succeeded(
                 execution_tenant_id,
                 work_id,
-                run_id,
+                claimed.generation_run_id,
                 artifacts=_views_from_recovery(recovered),
                 quality_summary=quality_summary,
+                expected_revision=post_quality_revision,
                 now=finalize_at,
             )
         except (AIGenerationForbidden, ContentApplicationError, Exception) as exc:
-            # Commit-ambiguity window: Content may have committed despite exception.
             finalize_at = self._clock()
-            inspection = self._inspect_bindings(execution_tenant_id, run_id)
+            inspection = self._inspect_bindings(
+                execution_tenant_id, claimed.generation_run_id
+            )
             if inspection.status is PreparationBindingRecoveryStatus.EXACT_SIX:
                 assert inspection.recovery is not None
                 return self._finalize_succeeded(
                     execution_tenant_id,
                     work_id,
-                    run_id,
+                    claimed.generation_run_id,
                     artifacts=_views_from_recovery(inspection.recovery),
                     quality_summary=quality_summary,
+                    expected_revision=post_quality_revision,
                     now=finalize_at,
                 )
             if inspection.status is PreparationBindingRecoveryStatus.INVALID:
                 raise PreparationRecoveryInvariantError(
                     "preparation Content bindings are partial or corrupt"
                 ) from exc
-            self._mark_failed(
+            owned_fail = self._mark_failed_if_owned(
                 execution_tenant_id,
-                run_id,
+                work_id,
+                post_quality_claim,
                 failure_code="content_materialization_failed",
                 educational_quality_summary=quality_summary,
                 provider_metadata=meta,
-                now=finalize_at,
             )
+            if isinstance(owned_fail, PrepareTeachingWorkResult):
+                return owned_fail
             raise ContentMaterializationFailedError(
                 "content materialization failed"
             ) from exc
@@ -495,9 +507,10 @@ class PrepareTeachingWorkService:
         return self._finalize_succeeded(
             execution_tenant_id,
             work_id,
-            run_id,
+            claimed.generation_run_id,
             artifacts=_views_from_materialization(materialization),
             quality_summary=quality_summary,
+            expected_revision=post_quality_revision,
             now=finalize_at,
         )
 
@@ -513,7 +526,7 @@ class PrepareTeachingWorkService:
         lease_expires_at: datetime,
         now: datetime,
         _attempt: int = 0,
-    ) -> GenerationRunId | PrepareTeachingWorkResult:
+    ) -> PreparationGenerationClaim | PrepareTeachingWorkResult:
         if _attempt > 2:
             raise WorkGenerationInProgress("work generation concurrency conflict")
         with self._ai_uow_factory(execution_tenant_id) as ai_uow:
@@ -568,7 +581,10 @@ class PrepareTeachingWorkService:
             try:
                 ai_uow.generation_runs.insert(run)
                 ai_uow.commit()
-                return run.generation_run_id
+                return PreparationGenerationClaim(
+                    generation_run_id=run.generation_run_id,
+                    claimed_aggregate_revision=0,
+                )
             except GenerationRunConflict:
                 ai_uow.rollback()
 
@@ -633,7 +649,7 @@ class PrepareTeachingWorkService:
         now: datetime,
         same_key: bool,
         requested_work_revision: int,
-    ) -> GenerationRunId | PrepareTeachingWorkResult | None:
+    ) -> PreparationGenerationClaim | PrepareTeachingWorkResult | None:
         if same_key and run.request_fingerprint_sha256 != fingerprint:
             raise GenerationIdempotencyConflict(
                 "Idempotency-Key was already used with a different request"
@@ -673,6 +689,7 @@ class PrepareTeachingWorkService:
                     run.generation_run_id,
                     artifacts=_views_from_recovery(inspection.recovery),
                     quality_summary=run.educational_quality_summary,
+                    expected_revision=None,
                     now=now,
                 )
                 if cross_revision:
@@ -703,14 +720,17 @@ class PrepareTeachingWorkService:
                         now=now,
                     )
                     return None
-                reclaimed = self._reclaim_lease(
+                new_revision = self._reclaim_lease(
                     execution_tenant_id,
                     run.generation_run_id,
                     lease_expires_at=lease_expires_at,
                     now=now,
                 )
-                if reclaimed:
-                    return run.generation_run_id
+                if new_revision is not None:
+                    return PreparationGenerationClaim(
+                        generation_run_id=run.generation_run_id,
+                        claimed_aggregate_revision=new_revision,
+                    )
                 raise WorkGenerationInProgress("work generation is in progress")
 
             self._mark_failed(
@@ -764,17 +784,18 @@ class PrepareTeachingWorkService:
         *,
         lease_expires_at: datetime,
         now: datetime,
-    ) -> bool:
+    ) -> int | None:
+        """Reclaim a stale RUNNING lease. Returns the new aggregate revision."""
         with self._ai_uow_factory(execution_tenant_id) as ai_uow:
             locked = ai_uow.generation_runs.get_for_update(run_id)
             if locked is None:
-                return False
+                return None
             if locked.status is GenerationRunStatus.SUCCEEDED:
-                return False
+                return None
             if locked.status is GenerationRunStatus.FAILED:
-                return False
+                return None
             if _lease_fresh(locked, now=now):
-                return False
+                return None
             reclaimed = replace(
                 locked,
                 status=GenerationRunStatus.RUNNING,
@@ -787,7 +808,110 @@ class PrepareTeachingWorkService:
             )
             if ok:
                 ai_uow.commit()
-            return ok
+                return reclaimed.aggregate_revision
+            return None
+
+    def _persist_provider_quality_if_owned(
+        self,
+        execution_tenant_id: UUID,
+        work_id: WorkId,
+        claim: PreparationGenerationClaim,
+        *,
+        fingerprint: str,
+        provider_metadata: object,
+        quality_summary: Mapping[str, object],
+    ) -> int | PrepareTeachingWorkResult:
+        """Persist provider metadata + PASS quality only while claim owns RUNNING.
+
+        Returns the new aggregate revision on success, or an authoritative result
+        when the claim was superseded by SUCCEEDED / lost ownership resolved.
+        """
+        heartbeat_at = self._clock()
+        meta = provider_metadata
+        resolve_after: GenerationRun | None = None
+        with self._ai_uow_factory(execution_tenant_id) as ai_uow:
+            locked = ai_uow.generation_runs.get_for_update(claim.generation_run_id)
+            if locked is None:
+                raise TeachingWorkNotFound("GenerationRun was not found")
+
+            if locked.status is GenerationRunStatus.SUCCEEDED:
+                resolve_after = locked
+            elif locked.status is GenerationRunStatus.FAILED:
+                self._raise_failure_from_run(locked)
+            else:
+                owns = (
+                    locked.status is GenerationRunStatus.RUNNING
+                    and locked.aggregate_revision == claim.claimed_aggregate_revision
+                    and locked.request_fingerprint_sha256 == fingerprint
+                )
+                if owns:
+                    refreshed = replace(
+                        locked,
+                        provider_id=getattr(meta, "provider_id", locked.provider_id),
+                        model_id=getattr(meta, "model_id", locked.model_id),
+                        provider_response_id=getattr(
+                            meta, "provider_response_id", locked.provider_response_id
+                        ),
+                        input_tokens=getattr(meta, "input_tokens", locked.input_tokens),
+                        output_tokens=getattr(
+                            meta, "output_tokens", locked.output_tokens
+                        ),
+                        total_tokens=getattr(meta, "total_tokens", locked.total_tokens),
+                        educational_quality_summary=quality_summary,
+                        lease_expires_at=heartbeat_at
+                        + timedelta(seconds=self._lease_seconds),
+                        updated_at=heartbeat_at,
+                        aggregate_revision=locked.aggregate_revision + 1,
+                    )
+                    if ai_uow.generation_runs.update(
+                        refreshed, expected_revision=locked.aggregate_revision
+                    ):
+                        ai_uow.commit()
+                        return refreshed.aggregate_revision
+
+        if resolve_after is not None:
+            return self._result_from_succeeded_run(
+                execution_tenant_id, work_id, resolve_after
+            )
+        return self._resolve_lost_ownership(
+            execution_tenant_id, work_id, claim.generation_run_id
+        )
+
+    def _resolve_lost_ownership(
+        self,
+        execution_tenant_id: UUID,
+        work_id: WorkId,
+        run_id: GenerationRunId,
+    ) -> PrepareTeachingWorkResult:
+        with self._ai_uow_factory(execution_tenant_id) as ai_uow:
+            current = ai_uow.generation_runs.get(run_id)
+            if current is None:
+                raise TeachingWorkNotFound("GenerationRun was not found")
+
+        if current.status is GenerationRunStatus.SUCCEEDED:
+            return self._result_from_succeeded_run(
+                execution_tenant_id, work_id, current
+            )
+        if current.status is GenerationRunStatus.FAILED:
+            self._raise_failure_from_run(current)
+
+        inspection = self._inspect_bindings_for_run(execution_tenant_id, current)
+        if inspection.status is PreparationBindingRecoveryStatus.EXACT_SIX:
+            assert inspection.recovery is not None
+            return self._finalize_succeeded(
+                execution_tenant_id,
+                work_id,
+                run_id,
+                artifacts=_views_from_recovery(inspection.recovery),
+                quality_summary=current.educational_quality_summary,
+                expected_revision=None,
+                now=self._clock(),
+            )
+        if inspection.status is PreparationBindingRecoveryStatus.INVALID:
+            raise PreparationRecoveryInvariantError(
+                "preparation Content bindings are partial or corrupt"
+            )
+        raise WorkGenerationInProgress("work generation is in progress")
 
     def _finalize_succeeded(
         self,
@@ -797,66 +921,82 @@ class PrepareTeachingWorkService:
         *,
         artifacts: tuple[PreparationArtifactView, ...],
         quality_summary: Mapping[str, object] | None,
+        expected_revision: int | None,
         now: datetime,
     ) -> PrepareTeachingWorkResult:
         quality_view = _require_pass_quality_summary(quality_summary)
+        succeeded_snapshot: GenerationRun | None = None
+        lost = False
+        concurrent_succeeded: GenerationRun | None = None
+        result: PrepareTeachingWorkResult | None = None
         with self._ai_uow_factory(execution_tenant_id) as ai_uow:
             locked = ai_uow.generation_runs.get_for_update(run_id)
             if locked is None:
                 raise TeachingWorkNotFound("GenerationRun was not found")
             if locked.status is GenerationRunStatus.SUCCEEDED:
-                return PrepareTeachingWorkResult(
-                    work_id=work_id,
-                    work_revision=locked.work_resource_revision,
-                    generation_run_id=locked.generation_run_id,
-                    artifacts=artifacts,
-                    educational_quality=_require_pass_quality_summary(
-                        locked.educational_quality_summary
-                    ),
-                )
-            succeeded = replace(
-                locked,
-                status=GenerationRunStatus.SUCCEEDED,
-                result_content_id=None,
-                result_version_id=None,
-                result_content_revision=None,
-                educational_quality_summary=(
-                    quality_summary
-                    if quality_summary is not None
-                    else locked.educational_quality_summary
-                ),
-                failure_code=None,
-                lease_expires_at=None,
-                aggregate_revision=locked.aggregate_revision + 1,
-                updated_at=now,
-                completed_at=now,
-            )
-            if not ai_uow.generation_runs.update(
-                succeeded, expected_revision=locked.aggregate_revision
+                succeeded_snapshot = locked
+            elif locked.status is GenerationRunStatus.FAILED:
+                self._raise_failure_from_run(locked)
+            elif (
+                expected_revision is not None
+                and locked.aggregate_revision != expected_revision
             ):
-                current = ai_uow.generation_runs.get(run_id)
-                if (
-                    current is not None
-                    and current.status is GenerationRunStatus.SUCCEEDED
-                ):
-                    return PrepareTeachingWorkResult(
-                        work_id=work_id,
-                        work_revision=current.work_resource_revision,
-                        generation_run_id=current.generation_run_id,
-                        artifacts=artifacts,
-                        educational_quality=_require_pass_quality_summary(
-                            current.educational_quality_summary
-                        ),
-                    )
+                lost = True
+            elif locked.status is not GenerationRunStatus.RUNNING:
                 raise WorkGenerationInProgress("work generation concurrency conflict")
-            ai_uow.commit()
-            return PrepareTeachingWorkResult(
-                work_id=work_id,
-                work_revision=succeeded.work_resource_revision,
-                generation_run_id=succeeded.generation_run_id,
-                artifacts=artifacts,
-                educational_quality=quality_view,
+            else:
+                succeeded = replace(
+                    locked,
+                    status=GenerationRunStatus.SUCCEEDED,
+                    result_content_id=None,
+                    result_version_id=None,
+                    result_content_revision=None,
+                    educational_quality_summary=(
+                        quality_summary
+                        if quality_summary is not None
+                        else locked.educational_quality_summary
+                    ),
+                    failure_code=None,
+                    lease_expires_at=None,
+                    aggregate_revision=locked.aggregate_revision + 1,
+                    updated_at=now,
+                    completed_at=now,
+                )
+                if not ai_uow.generation_runs.update(
+                    succeeded, expected_revision=locked.aggregate_revision
+                ):
+                    current = ai_uow.generation_runs.get(run_id)
+                    if (
+                        current is not None
+                        and current.status is GenerationRunStatus.SUCCEEDED
+                    ):
+                        concurrent_succeeded = current
+                    else:
+                        raise WorkGenerationInProgress(
+                            "work generation concurrency conflict"
+                        )
+                else:
+                    ai_uow.commit()
+                    result = PrepareTeachingWorkResult(
+                        work_id=work_id,
+                        work_revision=succeeded.work_resource_revision,
+                        generation_run_id=succeeded.generation_run_id,
+                        artifacts=artifacts,
+                        educational_quality=quality_view,
+                    )
+
+        if succeeded_snapshot is not None:
+            return self._result_from_succeeded_run(
+                execution_tenant_id, work_id, succeeded_snapshot
             )
+        if concurrent_succeeded is not None:
+            return self._result_from_succeeded_run(
+                execution_tenant_id, work_id, concurrent_succeeded
+            )
+        if lost:
+            return self._resolve_lost_ownership(execution_tenant_id, work_id, run_id)
+        assert result is not None
+        return result
 
     def _result_from_succeeded_run(
         self,
@@ -912,6 +1052,83 @@ class PrepareTeachingWorkService:
             )
         raise ModelGenerationFailedError("model generation failed")
 
+    def _mark_failed_if_owned(
+        self,
+        execution_tenant_id: UUID,
+        work_id: WorkId,
+        claim: PreparationGenerationClaim,
+        *,
+        failure_code: str,
+        educational_quality_summary: Mapping[str, object] | None = None,
+        provider_metadata: object | None = None,
+    ) -> PrepareTeachingWorkResult | None:
+        """Transition to FAILED only when claim still owns RUNNING revision.
+
+        Returns None when this claim was marked FAILED.
+        Returns PrepareTeachingWorkResult when a concurrent SUCCEEDED is observed.
+        Raises for durable FAILED replay, in-progress, or corrupt Content.
+        """
+        now = self._clock()
+        succeeded_snapshot: GenerationRun | None = None
+        lost = False
+        with self._ai_uow_factory(execution_tenant_id) as ai_uow:
+            locked = ai_uow.generation_runs.get_for_update(claim.generation_run_id)
+            if locked is None:
+                raise TeachingWorkNotFound("GenerationRun was not found")
+
+            if locked.status is GenerationRunStatus.SUCCEEDED:
+                succeeded_snapshot = locked
+            elif locked.status is GenerationRunStatus.FAILED:
+                self._raise_failure_from_run(locked)
+            else:
+                owns = (
+                    locked.status is GenerationRunStatus.RUNNING
+                    and locked.aggregate_revision == claim.claimed_aggregate_revision
+                )
+                if not owns:
+                    lost = True
+                else:
+                    meta = provider_metadata
+                    failed = replace(
+                        locked,
+                        status=GenerationRunStatus.FAILED,
+                        failure_code=failure_code,
+                        educational_quality_summary=(
+                            educational_quality_summary
+                            if educational_quality_summary is not None
+                            else locked.educational_quality_summary
+                        ),
+                        provider_id=getattr(meta, "provider_id", locked.provider_id),
+                        model_id=getattr(meta, "model_id", locked.model_id),
+                        provider_response_id=getattr(
+                            meta, "provider_response_id", locked.provider_response_id
+                        ),
+                        input_tokens=getattr(meta, "input_tokens", locked.input_tokens),
+                        output_tokens=getattr(
+                            meta, "output_tokens", locked.output_tokens
+                        ),
+                        total_tokens=getattr(meta, "total_tokens", locked.total_tokens),
+                        lease_expires_at=None,
+                        aggregate_revision=locked.aggregate_revision + 1,
+                        updated_at=now,
+                        completed_at=now,
+                    )
+                    if not ai_uow.generation_runs.update(
+                        failed, expected_revision=locked.aggregate_revision
+                    ):
+                        lost = True
+                    else:
+                        ai_uow.commit()
+                        return None
+
+        if succeeded_snapshot is not None:
+            return self._result_from_succeeded_run(
+                execution_tenant_id, work_id, succeeded_snapshot
+            )
+        return self._resolve_lost_ownership(
+            execution_tenant_id, work_id, claim.generation_run_id
+        )
+
     def _mark_failed(
         self,
         execution_tenant_id: UUID,
@@ -922,6 +1139,11 @@ class PrepareTeachingWorkService:
         provider_metadata: object | None = None,
         now: datetime,
     ) -> None:
+        """Pre-provider fence release (stale different-key / cross-revision).
+
+        Must not be used for post-provider failure paths — those use
+        ``_mark_failed_if_owned``.
+        """
         with self._ai_uow_factory(execution_tenant_id) as ai_uow:
             locked = ai_uow.generation_runs.get_for_update(run_id)
             if locked is None:
