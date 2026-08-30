@@ -87,4 +87,5 @@ markers = [
     "tos_dev04_i03: TOS-DEV04-I03 atomic six-artifact Content materialization",
     "tos_dev04_i04: TOS-DEV04-I04 preparation-kit generation and deterministic answer key",
     "tos_dev04_i05: TOS-DEV04-I05 preparation educational quality coherence baseline",
+    "tos_dev04_i06: TOS-DEV04-I06 Prepare Work orchestration and recovery",
 ]

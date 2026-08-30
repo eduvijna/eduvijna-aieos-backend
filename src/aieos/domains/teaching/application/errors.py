@@ -99,3 +99,7 @@ class GenerationServiceUnavailable(TeachingApplicationError):
 
 class ContentMaterializationFailedError(TeachingApplicationError):
     """Content materialization failed after model generation succeeded."""
+
+
+class PreparationRecoveryInvariantError(TeachingApplicationError):
+    """Partial or corrupt preparation Content bindings violate the exact-six invariant."""
