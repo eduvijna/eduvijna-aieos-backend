@@ -19,9 +19,8 @@ from aieos.development.auth_adapters import (
     DevelopmentTenantSecurityResolver,
 )
 from aieos.development.schemas import (
-    DEV_CONTENT_TYPE,
-    DEV_WORKSHEET_CONTENT_TYPE,
     build_development_schema_registry,
+    development_content_type_names,
 )
 from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.content.infrastructure.persistence.uow import (
@@ -80,9 +79,7 @@ def build_development_teacher_os_app(
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
         request_identity_authenticator=DevelopmentPrincipalAuthenticator(principal_id),
         security_resolver=DevelopmentTenantSecurityResolver(tenant_id, principal_id),
-        content_types=StaticContentTypeCatalog(
-            {DEV_CONTENT_TYPE, DEV_WORKSHEET_CONTENT_TYPE}
-        ),
+        content_types=StaticContentTypeCatalog(development_content_type_names()),
         cursor_signing_key=CURSOR_KEY,
         schema_registry=build_development_schema_registry(),
         idempotency_retention=IDEMPOTENCY_RETENTION,

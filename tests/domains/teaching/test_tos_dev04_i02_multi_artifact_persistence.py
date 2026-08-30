@@ -118,6 +118,18 @@ def _clear_i02_downgrade_blockers(bootstrap_engine: Engine) -> None:
                                AND v.provenance IS NOT NULL
                                AND (v.provenance->>'schema_version') = '2'
                          )
+                         OR EXISTS (
+                            SELECT 1
+                              FROM content.content_versions AS descendant
+                              JOIN content.content_versions AS parent
+                                ON parent.tenant_id = descendant.tenant_id
+                               AND parent.content_id = descendant.content_id
+                               AND parent.version_id = descendant.parent_version_id
+                             WHERE descendant.version_id = child.version_id
+                               AND parent.origin = 'AI'
+                               AND parent.provenance IS NOT NULL
+                               AND (parent.provenance->>'schema_version') = '2'
+                         )
                         """
                     )
                 )
@@ -132,6 +144,26 @@ def _clear_i02_downgrade_blockers(bootstrap_engine: Engine) -> None:
             text(
                 "ALTER TABLE content.content_versions "
                 "DISABLE TRIGGER content_versions_immutable_delete"
+            )
+        )
+        # Child ContentVersions that parent to AI V2 must be removed first
+        # (append-after-approve leaves HUMAN descendants that RESTRICT parents).
+        conn.execute(
+            text(
+                """
+                DELETE FROM content.content_versions AS child
+                 WHERE child.parent_version_id IS NOT NULL
+                   AND EXISTS (
+                    SELECT 1
+                      FROM content.content_versions AS parent
+                     WHERE parent.tenant_id = child.tenant_id
+                       AND parent.content_id = child.content_id
+                       AND parent.version_id = child.parent_version_id
+                       AND parent.origin = 'AI'
+                       AND parent.provenance IS NOT NULL
+                       AND (parent.provenance->>'schema_version') = '2'
+                   )
+                """
             )
         )
         conn.execute(

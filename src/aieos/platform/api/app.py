@@ -10,6 +10,9 @@ from aieos.domains.content.api.v1.routes import router as content_v1_router
 from aieos.domains.content.application.ai_for_review import (
     CreateAIGeneratedContentForReviewService,
 )
+from aieos.domains.content.application.ai_preparation_for_review import (
+    CreateAIPreparationArtifactsForReviewService,
+)
 from aieos.domains.content.application.asset_governance import (
     ValidateVersionAssetGovernanceService,
 )
@@ -37,6 +40,9 @@ from aieos.domains.content.application.review_queue import (
     ListTeacherReviewQueueService,
 )
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
+from aieos.domains.education.application.generate_preparation_kit import (
+    GeneratePreparationKitCapability,
+)
 from aieos.domains.education.application.generate_worksheet import GenerateWorksheetCapability
 from aieos.domains.teaching.api.v1.routes import router as teaching_v1_router
 from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifactsService
@@ -44,6 +50,7 @@ from aieos.domains.teaching.application.create import CreateTeachingWorkService
 from aieos.domains.teaching.application.generate import GenerateTeachingWorkService
 from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionService
 from aieos.domains.teaching.application.ports import TeachingUnitOfWorkFactory
+from aieos.domains.teaching.application.prepare import PrepareTeachingWorkService
 from aieos.domains.teaching.application.queries import (
     GetTeachingWorkService,
     ListTeachingWorksService,
@@ -64,12 +71,13 @@ from aieos.platform.security.authenticator import RequestIdentityAuthenticator
 from aieos.platform.security.context import SecurityContextResolver
 
 _APP_DESCRIPTION = (
-    "AIEOS HTTP foundation (GCI-I12, TOS-DEV02, TOS-DEV03). "
+    "AIEOS HTTP foundation (GCI-I12, TOS-DEV02, TOS-DEV03, TOS-DEV04). "
     "Content create, version append, review, publish, Teacher OS Review Queue "
-    "reads, Teaching Work preparation, Today's Mission projection, and "
-    "AI worksheet generation are development/test foundations only and MUST NOT "
-    "be authorized for production until required security-audit intent "
-    "persistence is integrated alongside the transactional outbox."
+    "reads, Teaching Work preparation, Today's Mission projection, AI worksheet "
+    "generation, and preparation-kit prepare are development/test foundations "
+    "only and MUST NOT be authorized for production until required "
+    "security-audit intent persistence is integrated alongside the "
+    "transactional outbox."
 )
 
 
@@ -173,6 +181,13 @@ def create_app(
             asset_reference_validation,
             ai_generation_authorization,
         )
+        create_preparation_for_review = CreateAIPreparationArtifactsForReviewService(
+            uow_factory,
+            content_types,
+            schema_registry,
+            asset_reference_validation,
+            ai_generation_authorization,
+        )
         app.state.create_ai_generated_content_for_review_service = create_ai_for_review
         app.state.generate_teaching_work_service = GenerateTeachingWorkService(
             teaching_uow_factory,
@@ -180,6 +195,17 @@ def create_app(
             uow_factory,
             GenerateWorksheetCapability(model_gateway),
             create_ai_for_review,
+            provider_id=ai_provider_id,
+            model_id=ai_model_id,
+            lease_seconds=generation_lease_seconds,
+            clock=generation_clock,
+        )
+        app.state.prepare_teaching_work_service = PrepareTeachingWorkService(
+            teaching_uow_factory,
+            ai_uow_factory,
+            uow_factory,
+            GeneratePreparationKitCapability(model_gateway),
+            create_preparation_for_review,
             provider_id=ai_provider_id,
             model_id=ai_model_id,
             lease_seconds=generation_lease_seconds,
@@ -193,6 +219,7 @@ def create_app(
     else:
         app.state.create_ai_generated_content_for_review_service = None
         app.state.generate_teaching_work_service = None
+        app.state.prepare_teaching_work_service = None
         app.state.list_teaching_work_artifacts_service = None
 
     def _openapi() -> dict:

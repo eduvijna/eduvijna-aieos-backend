@@ -7,11 +7,14 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 
+from aieos.development.schemas import (
+    build_development_schema_registry,
+    development_content_type_names,
+)
 from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
 )
-from aieos.domains.education.schema import WORKSHEET_CONTENT_TYPE
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
@@ -35,7 +38,6 @@ from tests.fakes import (
     FixedPrincipalAuthenticator,
     StubSecurityContextResolver,
 )
-from aieos.development.schemas import build_development_schema_registry
 
 CURSOR_KEY = b"tos-dev03-lane-b-test-cursor-key"
 
@@ -64,7 +66,7 @@ def build_client(
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
-        content_types=StaticContentTypeCatalog({"test.generic", WORKSHEET_CONTENT_TYPE}),
+        content_types=StaticContentTypeCatalog(development_content_type_names()),
         cursor_signing_key=CURSOR_KEY,
         schema_registry=build_development_schema_registry(),
         idempotency_retention=IDEMPOTENCY_RETENTION,
@@ -103,8 +105,11 @@ def create_work(
     client: TestClient,
     tenant_id: UUID,
     *,
-    goal_text: str,
-    target_date: str,
+    goal_text: str = (
+        "Tomorrow my Grade 5 students need to understand fractions "
+        "using visual examples."
+    ),
+    target_date: str = "2026-09-01",
     idempotency_key: str,
     class_label: str | None = "Grade 5-A",
     subject: str | None = "Mathematics",
