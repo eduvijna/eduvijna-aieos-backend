@@ -20,7 +20,7 @@ from aieos.domains.content.application.preparation_recovery import (
     PreparationBindingRecoveryStatus,
     inspect_preparation_generation_bindings,
 )
-from aieos.domains.content.domain.identities import ContentId
+from aieos.domains.content.domain.identities import ContentId, ContentVersionId
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
 )
@@ -171,6 +171,8 @@ class TestTenantRlsIsolation:
         body = prepared.json()
         run_id = body["generation_run_id"]
         content_ids = {a["content_id"] for a in body["artifacts"]}
+        version_ids = {a["version_id"] for a in body["artifacts"]}
+        assert len(version_ids) == 6
 
         client_b = build_client(
             runtime_engine, tenant_b, principal, model_gateway=_prepare_gateway()
@@ -212,7 +214,10 @@ class TestTenantRlsIsolation:
         with SqlAlchemyContentUnitOfWorkFactory(runtime_engine)(tenant_b) as cuow:
             for cid in content_ids:
                 assert cuow.contents.get(ContentId(uuid.UUID(cid))) is None
-
+            for vid in version_ids:
+                assert (
+                    cuow.versions.get(ContentVersionId(uuid.UUID(vid))) is None
+                )
         # Bootstrap inspection still sees Tenant A rows (setup authority only).
         assert (
             _count(
@@ -549,6 +554,24 @@ class TestDifferentKeyConcurrency:
         assert isinstance(b_out.get("error"), WorkGenerationAlreadyExists)
         assert gateway_a.call_count == 1
         assert gateway_b.call_count == 0
+
+        total_runs = _count(
+            bootstrap_engine,
+            """
+            SELECT count(*) FROM ai.generation_runs
+             WHERE tenant_id = :tid
+               AND capability_id = :cap
+            """,
+            {
+                "tid": tenant_id,
+                "cap": CAPABILITY_EDUCATION_GENERATE_PREPARATION_KIT,
+            },
+        )
+        if total_runs != 1:
+            raise AssertionError(
+                "TOS-DEV04-I08R1 DEFECT FOUND — DIFFERENT-KEY CONCURRENCY "
+                f"CREATED EXTRA GENERATIONRUN (total={total_runs})"
+            )
         assert (
             _count(
                 bootstrap_engine,
@@ -573,6 +596,26 @@ class TestDifferentKeyConcurrency:
             )
             == 6
         )
+        assert (
+            _count(
+                bootstrap_engine,
+                """
+                SELECT count(*) FROM content.content_versions
+                 WHERE tenant_id = :tid AND origin = 'AI'
+                """,
+                {"tid": tenant_id},
+            )
+            == 6
+        )
+
+        client = build_client(
+            runtime_engine, tenant_id, principal_id, model_gateway=_prepare_gateway()
+        )
+        queue = client.get(
+            "/api/v1/teacher-os/review-queue", headers=headers(tenant_id)
+        )
+        assert queue.status_code == 200
+        assert len(queue.json()["items"]) == 6
 
 
 class TestIdempotencyFingerprintConflict:
@@ -903,8 +946,6 @@ class TestRecoveryClean:
         # Corrupt SUCCEEDED partial must not silently rematerialize.
         gateway = _prepare_gateway()
         service, _ = build_prepare_service(runtime_engine, model_gateway=gateway)
-        gateway = _prepare_gateway()
-        service, _ = build_prepare_service(runtime_engine, model_gateway=gateway)
         with SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)(tenant_id) as tuow:
             work = tuow.works.get(WorkId(uuid.UUID(work_id)))
             assert work is not None
@@ -931,6 +972,170 @@ class TestRecoveryClean:
                 {"tid": tenant_id, "rid": run_id},
             )
             == 5
+        )
+
+
+class TestRemainingCorruptionFamilies:
+    """I08R1: remaining distinct provenance invariant families (not I06 duplicates)."""
+
+    @pytest.mark.parametrize(
+        ("label", "sql_fragment", "sql_params"),
+        [
+            (
+                "unknown_artifact_kind",
+                """
+                UPDATE content.content_versions
+                   SET provenance = jsonb_set(
+                     provenance,
+                     '{artifact_kind}',
+                     '"not_a_canonical_kind"'::jsonb,
+                     true
+                   )
+                 WHERE tenant_id = :tid
+                   AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+                   AND (provenance->>'artifact_kind') = 'quiz'
+                """,
+                {},
+            ),
+            (
+                "wrong_capability_id",
+                """
+                UPDATE content.content_versions
+                   SET provenance = jsonb_set(
+                     provenance,
+                     '{capability_id}',
+                     '"education.generate_worksheet"'::jsonb,
+                     true
+                   )
+                 WHERE tenant_id = :tid
+                   AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+                   AND (provenance->>'artifact_kind') = 'quiz'
+                """,
+                {},
+            ),
+            (
+                "wrong_work_source_revision",
+                """
+                UPDATE content.content_versions
+                   SET provenance = jsonb_set(
+                     provenance,
+                     '{source_refs}',
+                     (
+                       SELECT jsonb_agg(
+                         CASE
+                           WHEN elem->>'resource_type' = 'teaching.work'
+                           THEN jsonb_set(elem, '{resource_revision}', '999'::jsonb, true)
+                           ELSE elem
+                         END
+                       )
+                       FROM jsonb_array_elements(provenance->'source_refs') AS elem
+                     ),
+                     true
+                   )
+                 WHERE tenant_id = :tid
+                   AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+                   AND (provenance->>'artifact_kind') = 'quiz'
+                """,
+                {},
+            ),
+        ],
+        ids=["unknown_artifact_kind", "wrong_capability", "wrong_work_source_revision"],
+    )
+    def test_corrupt_provenance_families_fail_closed(
+        self,
+        runtime_engine: Engine,
+        bootstrap_engine: Engine,
+        label: str,
+        sql_fragment: str,
+        sql_params: dict,
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        client = build_client(
+            runtime_engine, tenant_id, principal_id, model_gateway=_prepare_gateway()
+        )
+        work_id, _created, prepared = _http_prepare(
+            client,
+            tenant_id,
+            create_key=f"i08r1-{label}-c",
+            prep_key=f"i08r1-{label}-p",
+        )
+        run_id = prepared.json()["generation_run_id"]
+        contents_before = _count(
+            bootstrap_engine,
+            "SELECT count(*) FROM content.contents WHERE tenant_id = :tid",
+            {"tid": tenant_id},
+        )
+        versions_before = _count(
+            bootstrap_engine,
+            """
+            SELECT count(*) FROM content.content_versions
+             WHERE tenant_id = :tid AND origin = 'AI'
+               AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+            """,
+            {"tid": tenant_id, "rid": run_id},
+        )
+        assert contents_before == 6
+        assert versions_before == 6
+
+        with bootstrap_engine.begin() as conn:
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            conn.execute(
+                text(sql_fragment),
+                {"tid": tenant_id, "rid": run_id, **sql_params},
+            )
+
+        with SqlAlchemyAIUnitOfWorkFactory(runtime_engine)(tenant_id) as ai_uow:
+            run = ai_uow.generation_runs.get(GenerationRunId(uuid.UUID(run_id)))
+            assert run is not None
+            run_snapshot = run
+        with SqlAlchemyContentUnitOfWorkFactory(runtime_engine)(tenant_id) as cuow:
+            inspection = inspect_preparation_generation_bindings(cuow, run_snapshot)
+        assert inspection.status is PreparationBindingRecoveryStatus.INVALID
+
+        listed = client.get(
+            f"/api/v1/teaching/works/{work_id}/artifacts",
+            headers=headers(tenant_id),
+        )
+        assert listed.status_code == 422, listed.text
+        assert listed.json()["code"] == "preparation_recovery_invariant_violation"
+
+        gateway = _prepare_gateway()
+        service, _ = build_prepare_service(runtime_engine, model_gateway=gateway)
+        with SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)(tenant_id) as tuow:
+            work = tuow.works.get(WorkId(uuid.UUID(work_id)))
+            assert work is not None
+            current_revision = work.aggregate_revision
+        with pytest.raises(PreparationRecoveryInvariantError):
+            service.prepare(
+                tenant_id,
+                principal_id,
+                work_id=WorkId(uuid.UUID(work_id)),
+                expected_aggregate_revision=current_revision,
+                idempotency_key=f"i08r1-{label}-p",
+                event_context=event_context(principal_id),
+                now=FIXED_NOW,
+            )
+        assert gateway.call_count == 0
+        assert (
+            _count(
+                bootstrap_engine,
+                "SELECT count(*) FROM content.contents WHERE tenant_id = :tid",
+                {"tid": tenant_id},
+            )
+            == contents_before
+        )
+        assert (
+            _count(
+                bootstrap_engine,
+                """
+                SELECT count(*) FROM content.content_versions
+                 WHERE tenant_id = :tid AND origin = 'AI'
+                   AND provenance #>> '{generation_run_ref,resource_id}' = :rid
+                """,
+                {"tid": tenant_id, "rid": run_id},
+            )
+            == versions_before
         )
 
 
