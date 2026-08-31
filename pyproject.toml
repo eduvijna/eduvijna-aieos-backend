@@ -92,4 +92,5 @@ markers = [
     "tos_dev04_i08: TOS-DEV04-I08 PostgreSQL/RLS/concurrency/recovery adversarial verification",
     "tos_dev06_i01: TOS-DEV06-I01 School Context ClassRef read contract",
     "tos_dev06_i02: TOS-DEV06-I02 TeachingAssignment domain and PostgreSQL persistence/RLS",
+    "tos_dev06_i03: TOS-DEV06-I03 TeachingAssignment application/API/events/audit",
 ]

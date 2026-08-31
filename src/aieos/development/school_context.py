@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from aieos.domains.teaching.application.school_context import AssignableClassRef
+from aieos.domains.teaching.application.school_context import (
+    AssignableClassRef,
+    SchoolContextClassAuthorityService,
+)
 
 _SYNTHETIC_CLASSES: tuple[AssignableClassRef, ...] = (
     AssignableClassRef(class_ref="class-5a", display_label="Grade 5A"),
@@ -43,3 +46,17 @@ class DevelopmentSchoolContextClassReader:
         ):
             return ()
         return _SYNTHETIC_CLASSES
+
+
+def development_class_authority(
+    *,
+    tenant_id: UUID,
+    teacher_principal_id: UUID,
+) -> SchoolContextClassAuthorityService:
+    """NON_PRODUCTION ClassRef authority for TeachingAssignment CREATE."""
+    return SchoolContextClassAuthorityService(
+        DevelopmentSchoolContextClassReader(
+            tenant_id=tenant_id,
+            teacher_principal_id=teacher_principal_id,
+        )
+    )

@@ -14,6 +14,7 @@ from typing import Protocol
 from uuid import UUID
 
 from aieos.domains.teaching.application.errors import (
+    ClassRefNotAssignable,
     SchoolContextContractError,
     SchoolContextUnavailable,
 )
@@ -99,6 +100,41 @@ def _validate_provider_items(
             AssignableClassRef(class_ref=class_ref, display_label=display_label)
         )
     return tuple(validated)
+
+
+class SchoolContextClassAuthority(Protocol):
+    """Current ClassRef authority for TeachingAssignment CREATE."""
+
+    def require_assignable_class_ref(
+        self,
+        tenant_id: UUID,
+        teacher_principal_id: UUID,
+        class_ref: str,
+    ) -> AssignableClassRef: ...
+
+
+class SchoolContextClassAuthorityService:
+    """Revalidates current ClassRef authority via the School Context port."""
+
+    def __init__(self, reader: SchoolContextClassReader) -> None:
+        self._reader = reader
+
+    def require_assignable_class_ref(
+        self,
+        tenant_id: UUID,
+        teacher_principal_id: UUID,
+        class_ref: str,
+    ) -> AssignableClassRef:
+        items = ListAssignableSchoolClassesService(self._reader).list(
+            tenant_id, teacher_principal_id
+        )
+        normalized = class_ref.strip()
+        for item in items:
+            if item.class_ref == normalized:
+                return item
+        raise ClassRefNotAssignable(
+            "requested ClassRef is not currently assignable for this teacher"
+        )
 
 
 def _extract_fields(item: object) -> tuple[str, str]:

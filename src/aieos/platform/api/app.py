@@ -46,6 +46,18 @@ from aieos.domains.education.application.generate_preparation_kit import (
 from aieos.domains.education.application.generate_worksheet import GenerateWorksheetCapability
 from aieos.domains.teaching.api.v1.routes import router as teaching_v1_router
 from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifactsService
+from aieos.domains.teaching.application.assignment_create import (
+    CreateTeachingAssignmentService,
+)
+from aieos.domains.teaching.application.assignment_mutations import (
+    CancelTeachingAssignmentService,
+    CloseTeachingAssignmentService,
+    UpdateTeachingAssignmentDueService,
+)
+from aieos.domains.teaching.application.assignment_queries import (
+    GetTeachingAssignmentService,
+    ListTeachingAssignmentsService,
+)
 from aieos.domains.teaching.application.create import CreateTeachingWorkService
 from aieos.domains.teaching.application.generate import GenerateTeachingWorkService
 from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionService
@@ -61,6 +73,7 @@ from aieos.domains.teaching.application.review_queue_port import (
 )
 from aieos.domains.teaching.application.school_context import (
     ListAssignableSchoolClassesService,
+    SchoolContextClassAuthorityService,
     SchoolContextClassReader,
 )
 from aieos.platform.ai.application.ports import AIUnitOfWorkFactory
@@ -174,11 +187,47 @@ def create_app(
         ReviewQueuePendingCountAdapter(list_teacher_review_queue_service),
     )
     if school_context_class_reader is not None:
+        class_authority = SchoolContextClassAuthorityService(
+            school_context_class_reader
+        )
         app.state.list_assignable_school_classes_service = (
             ListAssignableSchoolClassesService(school_context_class_reader)
         )
+        app.state.school_context_class_authority = class_authority
+        app.state.create_teaching_assignment_service = CreateTeachingAssignmentService(
+            teaching_uow_factory,
+            class_authority,
+            idempotency_retention=idempotency_retention,
+        )
+        app.state.update_teaching_assignment_due_service = (
+            UpdateTeachingAssignmentDueService(
+                teaching_uow_factory,
+                idempotency_retention=idempotency_retention,
+            )
+        )
+        app.state.close_teaching_assignment_service = CloseTeachingAssignmentService(
+            teaching_uow_factory,
+            idempotency_retention=idempotency_retention,
+        )
+        app.state.cancel_teaching_assignment_service = (
+            CancelTeachingAssignmentService(
+                teaching_uow_factory,
+                idempotency_retention=idempotency_retention,
+            )
+        )
     else:
         app.state.list_assignable_school_classes_service = None
+        app.state.school_context_class_authority = None
+        app.state.create_teaching_assignment_service = None
+        app.state.update_teaching_assignment_due_service = None
+        app.state.close_teaching_assignment_service = None
+        app.state.cancel_teaching_assignment_service = None
+    app.state.get_teaching_assignment_service = GetTeachingAssignmentService(
+        teaching_uow_factory
+    )
+    app.state.list_teaching_assignment_service = ListTeachingAssignmentsService(
+        teaching_uow_factory
+    )
 
     if (
         ai_uow_factory is not None

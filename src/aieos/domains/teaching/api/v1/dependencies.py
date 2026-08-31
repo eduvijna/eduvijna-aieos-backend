@@ -11,6 +11,18 @@ from fastapi import Request
 
 from aieos.domains.content.api.v1.dependencies import resolve_trusted_context
 from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifactsService
+from aieos.domains.teaching.application.assignment_create import (
+    CreateTeachingAssignmentService,
+)
+from aieos.domains.teaching.application.assignment_mutations import (
+    CancelTeachingAssignmentService,
+    CloseTeachingAssignmentService,
+    UpdateTeachingAssignmentDueService,
+)
+from aieos.domains.teaching.application.assignment_queries import (
+    GetTeachingAssignmentService,
+    ListTeachingAssignmentsService,
+)
 from aieos.domains.teaching.application.create import CreateTeachingWorkService
 from aieos.domains.teaching.application.generate import GenerateTeachingWorkService
 from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionService
@@ -25,16 +37,22 @@ from aieos.domains.teaching.application.school_context import (
 )
 
 __all__ = [
+    "cancel_teaching_assignment_service",
+    "close_teaching_assignment_service",
+    "create_teaching_assignment_service",
     "create_teaching_work_service",
     "generate_teaching_work_service",
+    "get_teaching_assignment_service",
     "get_teaching_work_service",
     "list_assignable_school_classes_service",
+    "list_teaching_assignment_service",
     "list_teaching_work_artifacts_service",
     "list_teaching_works_service",
     "prepare_teaching_work_service",
     "refine_teaching_work_service",
     "resolve_trusted_context",
     "teacher_os_today_mission_service",
+    "update_teaching_assignment_due_service",
 ]
 
 
@@ -104,5 +122,79 @@ def list_assignable_school_classes_service(
 
         raise SchoolContextUnavailable(
             "School Context is not composed in this runtime"
+        )
+    return service
+
+
+def _require_assignment_services(request: Request) -> None:
+    if request.app.state.school_context_class_authority is None:
+        from aieos.domains.teaching.application.errors import SchoolContextUnavailable
+
+        raise SchoolContextUnavailable(
+            "School Context is not composed in this runtime"
+        )
+
+
+def create_teaching_assignment_service(
+    request: Request,
+) -> CreateTeachingAssignmentService:
+    _require_assignment_services(request)
+    service = request.app.state.create_teaching_assignment_service
+    if service is None:
+        from aieos.domains.teaching.application.errors import SchoolContextUnavailable
+
+        raise SchoolContextUnavailable(
+            "TeachingAssignment commands are not composed in this runtime"
+        )
+    return service
+
+
+def get_teaching_assignment_service(
+    request: Request,
+) -> GetTeachingAssignmentService:
+    return request.app.state.get_teaching_assignment_service
+
+
+def list_teaching_assignment_service(
+    request: Request,
+) -> ListTeachingAssignmentsService:
+    return request.app.state.list_teaching_assignment_service
+
+
+def update_teaching_assignment_due_service(
+    request: Request,
+) -> UpdateTeachingAssignmentDueService:
+    service = request.app.state.update_teaching_assignment_due_service
+    if service is None:
+        from aieos.domains.teaching.application.errors import SchoolContextUnavailable
+
+        raise SchoolContextUnavailable(
+            "TeachingAssignment commands are not composed in this runtime"
+        )
+    return service
+
+
+def close_teaching_assignment_service(
+    request: Request,
+) -> CloseTeachingAssignmentService:
+    service = request.app.state.close_teaching_assignment_service
+    if service is None:
+        from aieos.domains.teaching.application.errors import SchoolContextUnavailable
+
+        raise SchoolContextUnavailable(
+            "TeachingAssignment commands are not composed in this runtime"
+        )
+    return service
+
+
+def cancel_teaching_assignment_service(
+    request: Request,
+) -> CancelTeachingAssignmentService:
+    service = request.app.state.cancel_teaching_assignment_service
+    if service is None:
+        from aieos.domains.teaching.application.errors import SchoolContextUnavailable
+
+        raise SchoolContextUnavailable(
+            "TeachingAssignment commands are not composed in this runtime"
         )
     return service

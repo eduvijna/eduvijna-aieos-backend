@@ -9,6 +9,15 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV06-I03 — TeachingAssignment application/API/events/audit on amended
+  head `tosd060001`: CREATE/due-update/close/cancel command services with
+  Idempotency-Key, If-Match, dual CREATE gates (School Context ClassRef
+  authority + published learner Content lock), transactional outbox
+  (`io.eduvijna.aieos.teaching.assignment.*.v1`), security audit
+  (`teaching.assignment.*`), HTTP routes under `/api/v1/teaching/assignments`,
+  Teaching UoW outbox/audit/content-eligibility wiring, and
+  `PRODUCTION_EVENT_PUBLISH_PREFIXES` (Content + Teaching). No new Alembic
+  revision; no Frontend/Architecture/Infrastructure/Product changes.
 - TOS-DEV06-I02 — TeachingAssignment domain + PostgreSQL persistence/RLS:
   `AssignmentId` (UUIDv7), `TeachingAssignment` aggregate with ACTIVE/CLOSED/
   CANCELLED lifecycle, `teaching.assignments` table (`tosd060001`), ContentVersion

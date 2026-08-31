@@ -21,6 +21,31 @@ EVENT_CONTENT_REVIEW_REJECTED_V1 = "io.eduvijna.aieos.content.content.review_rej
 EVENT_CONTENT_PUBLISHED_V1 = "io.eduvijna.aieos.content.content.published.v1"
 EVENT_CONTENT_ARCHIVED_V1 = "io.eduvijna.aieos.content.content.archived.v1"
 
+CLOUDEVENTS_TEACHING_SOURCE = "urn:eduvijna:aieos:teaching"
+AGGREGATE_TYPE_TEACHING_ASSIGNMENT = "teaching.assignment"
+
+EVENT_TEACHING_ASSIGNMENT_CREATED_V1 = (
+    "io.eduvijna.aieos.teaching.assignment.created.v1"
+)
+EVENT_TEACHING_ASSIGNMENT_DUE_UPDATED_V1 = (
+    "io.eduvijna.aieos.teaching.assignment.due_updated.v1"
+)
+EVENT_TEACHING_ASSIGNMENT_CLOSED_V1 = (
+    "io.eduvijna.aieos.teaching.assignment.closed.v1"
+)
+EVENT_TEACHING_ASSIGNMENT_CANCELLED_V1 = (
+    "io.eduvijna.aieos.teaching.assignment.cancelled.v1"
+)
+
+EMITTED_TEACHING_EVENT_TYPES = frozenset(
+    {
+        EVENT_TEACHING_ASSIGNMENT_CREATED_V1,
+        EVENT_TEACHING_ASSIGNMENT_DUE_UPDATED_V1,
+        EVENT_TEACHING_ASSIGNMENT_CLOSED_V1,
+        EVENT_TEACHING_ASSIGNMENT_CANCELLED_V1,
+    }
+)
+
 EMITTED_CONTENT_EVENT_TYPES = frozenset(
     {
         EVENT_CONTENT_CREATED_V1,
@@ -51,8 +76,16 @@ TEST_STREAM_SUBJECTS = ("io.eduvijna.aieos.>",)
 # ADR-AIEOS-046 production event-plane contract.
 PRODUCTION_EVENT_STREAM_NAME = "AIEOS_EVENTS_PROD"
 PRODUCTION_EVENT_STREAM_SUBJECTS = ("io.eduvijna.aieos.>",)
-PRODUCTION_EVENT_PUBLISH_PREFIX = "io.eduvijna.aieos.content."
+PRODUCTION_EVENT_PUBLISH_PREFIXES = (
+    "io.eduvijna.aieos.content.",
+    "io.eduvijna.aieos.teaching.",
+)
+PRODUCTION_EVENT_PUBLISH_PREFIX = PRODUCTION_EVENT_PUBLISH_PREFIXES[0]
 
 
 def content_subject(content_id: str) -> str:
     return f"content/{content_id}"
+
+
+def teaching_assignment_subject(assignment_id: str) -> str:
+    return f"teaching/assignment/{assignment_id}"

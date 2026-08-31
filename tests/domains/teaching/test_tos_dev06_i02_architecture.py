@@ -3,19 +3,13 @@
 from __future__ import annotations
 
 import ast
-import hashlib
-import json
 from pathlib import Path
 
 import pytest
 
 from aieos.domains.teaching.infrastructure.persistence.models import assignments_table
-from aieos.platform.runtime.activation import (
-    FROZEN_API_MUTATION_OPERATION_IDS,
-    READ_ONLY_OPERATION_IDS,
-)
 from aieos.platform.runtime.readiness import EXPECTED_ALEMBIC_HEAD
-from tools.release.common import EXPECTED_MIGRATION_HEAD, EXPECTED_OPENAPI_SHA256
+from tools.release.common import EXPECTED_MIGRATION_HEAD
 
 pytestmark = pytest.mark.tos_dev06_i02
 
@@ -23,7 +17,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SRC_ROOT = REPO_ROOT / "src" / "aieos"
 TEACHING_ROOT = SRC_ROOT / "domains" / "teaching"
 MIGRATIONS = REPO_ROOT / "migrations" / "versions"
-OPENAPI = REPO_ROOT / "contracts" / "openapi" / "aieos-v1.json"
 MIGRATION = MIGRATIONS / "tosd060001_teaching_assignments.py"
 
 
@@ -130,20 +123,11 @@ class TestI02ArchitectureGuards:
         assert "class_ref: str" in source
         assert "TeachingWork.class_label" in source  # explicit non-identity note
 
-    def test_no_api_route_or_openapi_change(self) -> None:
-        routes = (TEACHING_ROOT / "api" / "v1" / "routes.py").read_text(encoding="utf-8")
-        assert "/assignments" not in routes
-        assert 'operation_id="teaching_assignment' not in routes
-        schema = json.loads(OPENAPI.read_text(encoding="utf-8"))
-        assert "/api/v1/teaching/assignments" not in schema["paths"]
-        digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest().upper()
-        assert digest == EXPECTED_OPENAPI_SHA256
-        assert digest == "230FBDC9323D5C22D6BA7027E74AF977FC7C2EE8C75927D81C5D18C60457B297"
-        assert not any("assignment" in op for op in FROZEN_API_MUTATION_OPERATION_IDS)
-        assert not any(
-            "assignment" in op and "school_context" not in op
-            for op in READ_ONLY_OPERATION_IDS
-        )
+    def test_i02_persistence_contract_under_amended_head(self) -> None:
+        """I02 table/RLS contract remains on head tosd060001 (I03 amends audit only)."""
+        text = MIGRATION.read_text(encoding="utf-8")
+        assert "CREATE TABLE teaching.assignments" in text
+        assert "teaching_assignments_tenant_isolation" in text
 
     def test_no_lms_provider_imports(self) -> None:
         offenders: list[str] = []

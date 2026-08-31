@@ -326,3 +326,28 @@ class SqlAlchemyTeachingAssignmentRepository:
         except Exception as exc:
             reraise_as_application_error(exc)
         return result.rowcount == 1
+
+    def list_for_teacher(
+        self,
+        *,
+        teacher_principal_id: UUID,
+        limit: int,
+        lifecycle_state: str | None = None,
+    ) -> list[TeachingAssignment]:
+        statement = select(assignments_table).where(
+            assignments_table.c.tenant_id == self._execution_tenant_id,
+            assignments_table.c.teacher_principal_id == teacher_principal_id,
+        )
+        if lifecycle_state is not None:
+            statement = statement.where(
+                assignments_table.c.lifecycle_state == lifecycle_state
+            )
+        statement = statement.order_by(
+            assignments_table.c.updated_at.desc(),
+            assignments_table.c.assignment_id.desc(),
+        ).limit(limit)
+        try:
+            rows = self._connection.execute(statement).mappings().all()
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return [teaching_assignment_from_row(row) for row in rows]

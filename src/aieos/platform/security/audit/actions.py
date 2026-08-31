@@ -27,6 +27,10 @@ class SecurityAuditAction(StrEnum):
     ASSET_QUARANTINE_CLEAR = "asset.quarantine.clear"
     ASSET_SAFETY_PASS = "asset.safety.pass"
     ASSET_SAFETY_FAIL = "asset.safety.fail"
+    TEACHING_ASSIGNMENT_CREATE = "teaching.assignment.create"
+    TEACHING_ASSIGNMENT_DUE_UPDATE = "teaching.assignment.due_update"
+    TEACHING_ASSIGNMENT_CLOSE = "teaching.assignment.close"
+    TEACHING_ASSIGNMENT_CANCEL = "teaching.assignment.cancel"
 
 
 class SecurityAuditExecutionChannel(StrEnum):
@@ -70,6 +74,14 @@ _ASSET_INCREMENT_ACTIONS = frozenset(
         SecurityAuditAction.ASSET_SAFETY_FAIL,
     }
 )
+_TEACHING_CREATE_ACTIONS = frozenset({SecurityAuditAction.TEACHING_ASSIGNMENT_CREATE})
+_TEACHING_INCREMENT_ACTIONS = frozenset(
+    {
+        SecurityAuditAction.TEACHING_ASSIGNMENT_DUE_UPDATE,
+        SecurityAuditAction.TEACHING_ASSIGNMENT_CLOSE,
+        SecurityAuditAction.TEACHING_ASSIGNMENT_CANCEL,
+    }
+)
 
 
 def is_content_create_action(action: SecurityAuditAction) -> bool:
@@ -110,6 +122,18 @@ def is_content_audit_action(action: SecurityAuditAction) -> bool:
         or is_content_migration_import_action(action)
         or is_content_increment_action(action)
     )
+
+
+def is_teaching_create_action(action: SecurityAuditAction) -> bool:
+    return action in _TEACHING_CREATE_ACTIONS
+
+
+def is_teaching_increment_action(action: SecurityAuditAction) -> bool:
+    return action in _TEACHING_INCREMENT_ACTIONS
+
+
+def is_teaching_audit_action(action: SecurityAuditAction) -> bool:
+    return is_teaching_create_action(action) or is_teaching_increment_action(action)
 
 
 def is_create_action(action: SecurityAuditAction) -> bool:
