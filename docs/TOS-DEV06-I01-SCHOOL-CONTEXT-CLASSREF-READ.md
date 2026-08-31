@@ -69,7 +69,8 @@ Semantics:
 
 - Production `compose_api_application` does **not** inject a School Context reader → endpoint fails closed `503`
 - Teacher OS development factory injects `DevelopmentSchoolContextClassReader` only
-- Development adapter is NON_PRODUCTION, synthetic, offline, and must not be imported by production runtime
+- Development adapter is NON_PRODUCTION, synthetic, offline, tenant- and
+  principal-scoped, and must not be imported by production runtime
 
 ## Explicit non-goals (I01)
 

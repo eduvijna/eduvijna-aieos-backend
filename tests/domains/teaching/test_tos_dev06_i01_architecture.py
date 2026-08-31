@@ -140,6 +140,9 @@ class TestSchoolContextPortBoundary:
         assert "NON_PRODUCTION" in text
         assert "class-5a" in text
         assert "Grade 5A" in text
+        assert "teacher_principal_id" in text
+        # Constructor binds both tenant and teacher principal.
+        assert "def __init__(self, *, tenant_id: UUID, teacher_principal_id: UUID)" in text
 
 
 class TestOpenApiSchoolContextContract:

@@ -18,10 +18,15 @@ _SYNTHETIC_CLASSES: tuple[AssignableClassRef, ...] = (
 
 
 class DevelopmentSchoolContextClassReader:
-    """Tenant-scoped NON_PRODUCTION ClassRef reader. Not ERP/SIS authority."""
+    """Tenant- and principal-scoped NON_PRODUCTION ClassRef reader.
 
-    def __init__(self, *, tenant_id: UUID) -> None:
+    Synthetic authority is bound to the exact configured tenant + teacher
+    principal. Not ERP/SIS authority.
+    """
+
+    def __init__(self, *, tenant_id: UUID, teacher_principal_id: UUID) -> None:
         self._tenant_id = tenant_id
+        self._teacher_principal_id = teacher_principal_id
         self.call_count = 0
         self.calls: list[tuple[UUID, UUID]] = []
 
@@ -32,9 +37,9 @@ class DevelopmentSchoolContextClassReader:
     ) -> tuple[AssignableClassRef, ...]:
         self.call_count += 1
         self.calls.append((tenant_id, teacher_principal_id))
-        if tenant_id != self._tenant_id:
+        if (
+            tenant_id != self._tenant_id
+            or teacher_principal_id != self._teacher_principal_id
+        ):
             return ()
-        # Principal is recorded for scoping/audit in tests; synthetic set is
-        # deterministic for any teacher inside the composed development tenant.
-        _ = teacher_principal_id
         return _SYNTHETIC_CLASSES

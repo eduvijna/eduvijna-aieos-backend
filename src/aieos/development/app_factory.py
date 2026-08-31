@@ -97,7 +97,8 @@ def build_development_teacher_os_app(
         ai_model_id=model_id,
         generation_lease_seconds=load_generation_lease_seconds(),
         school_context_class_reader=DevelopmentSchoolContextClassReader(
-            tenant_id=tenant_id
+            tenant_id=tenant_id,
+            teacher_principal_id=principal_id,
         ),
     )
 

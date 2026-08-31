@@ -9,6 +9,10 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV06-I01R1 — principal-scope the NON_PRODUCTION School Context reader
+  (`tenant_id` + `teacher_principal_id`) and classify
+  `teacher_os_school_context_classes_list` as PED-I03 read-only. No OpenAPI
+  contract change; Alembic remains `tosd040001`.
 - TOS-DEV06-I01 — School Context ClassRef read contract: Teaching application
   port `SchoolContextClassReader` + `ListAssignableSchoolClassesService`;
   Teacher OS `GET /api/v1/teacher-os/school-context/classes`
