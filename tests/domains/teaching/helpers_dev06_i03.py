@@ -134,6 +134,7 @@ def republish_content_to_new_version(
     *,
     tenant_id: UUID,
     content_id: UUID,
+    parent_version_id: UUID,
     owner_id: UUID,
 ) -> UUID:
     """Insert version 2 and move published pointer off version 1 (race CASE A)."""
@@ -148,7 +149,7 @@ def republish_content_to_new_version(
                     schema_id, schema_version, payload, payload_sha256, origin,
                     provenance, created_at, created_by_principal_id
                 ) VALUES (
-                    :vid, :tid, :cid, 2, NULL,
+                    :vid, :tid, :cid, 2, :parent,
                     'education.worksheet', 1, CAST(:payload AS jsonb),
                     :sha, 'HUMAN',
                     CAST(:prov AS jsonb), :now, :actor
@@ -159,6 +160,7 @@ def republish_content_to_new_version(
                 "vid": version_v2,
                 "tid": tenant_id,
                 "cid": content_id,
+                "parent": parent_version_id,
                 "payload": canonical_payload_json(payload.body),
                 "sha": payload.sha256.value,
                 "prov": json.dumps({}),

@@ -107,6 +107,7 @@ class TestAssignmentCreatePostgres:
             bootstrap_engine,
             tenant_id=tenant_id,
             content_id=content_id,
+            parent_version_id=version_v1,
             owner_id=uuid.uuid7(),
         )
         factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
