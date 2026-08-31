@@ -20,9 +20,9 @@ def set_tenant(conn, tenant_id: uuid.UUID) -> None:
 def clear_asset_audit_rows_for_schema_downgrade(engine) -> None:
     """TEST-ONLY isolation for historical Alembic cycle tests.
 
-    Production PED-I10B6 downgrade remains fail-closed and never deletes
-    Asset audit evidence. The shared pytest PostgreSQL is session-scoped;
-    immutable asset.* rows would otherwise block unrelated pre-B6 downgrades.
+    Production downgrade paths remain fail-closed and never delete audit
+    evidence. The shared pytest PostgreSQL is session-scoped; immutable
+    asset.* and teaching.* rows would otherwise block unrelated downgrades.
     """
     with engine.begin() as conn:
         exists = conn.execute(
@@ -43,7 +43,8 @@ def clear_asset_audit_rows_for_schema_downgrade(engine) -> None:
         )
         conn.execute(
             text(
-                "DELETE FROM security.audit_records WHERE action LIKE 'asset.%'"
+                "DELETE FROM security.audit_records "
+                "WHERE action LIKE 'asset.%' OR action LIKE 'teaching.%'"
             )
         )
         conn.execute(

@@ -24,6 +24,7 @@ from aieos.platform.events.models import MutationEventContext
 from tests.domains.teaching.helpers_dev06_i03 import (
     FIXED_NOW,
     IDEMPOTENCY_RETENTION,
+    republish_content_to_new_version,
     seed_published_worksheet,
 )
 
@@ -102,24 +103,12 @@ class TestAssignmentCreatePostgres:
         content_id, version_v1 = seed_published_worksheet(
             bootstrap_engine, tenant_id=tenant_id
         )
-        version_v2 = uuid.uuid7()
-        with bootstrap_engine.begin() as conn:
-            conn.execute(
-                text(
-                    """
-                    UPDATE content.contents
-                    SET published_version_id = :v2,
-                        current_version_id = :v2,
-                        aggregate_revision = aggregate_revision + 1
-                    WHERE tenant_id = :tid AND content_id = :cid
-                    """
-                ),
-                {
-                    "v2": version_v2,
-                    "tid": tenant_id,
-                    "cid": content_id,
-                },
-            )
+        republish_content_to_new_version(
+            bootstrap_engine,
+            tenant_id=tenant_id,
+            content_id=content_id,
+            owner_id=uuid.uuid7(),
+        )
         factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
         service = CreateTeachingAssignmentService(
             factory,

@@ -127,3 +127,61 @@ def seed_published_worksheet(
             },
         )
     return content_id, version_id
+
+
+def republish_content_to_new_version(
+    bootstrap_engine: Engine,
+    *,
+    tenant_id: UUID,
+    content_id: UUID,
+    owner_id: UUID,
+) -> UUID:
+    """Insert version 2 and move published pointer off version 1 (race CASE A)."""
+    version_v2 = uuid.uuid7()
+    payload = ContentPayload.from_mapping({"marker": "i03-assignment-v2"})
+    with bootstrap_engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO content.content_versions (
+                    version_id, tenant_id, content_id, version_number, parent_version_id,
+                    schema_id, schema_version, payload, payload_sha256, origin,
+                    provenance, created_at, created_by_principal_id
+                ) VALUES (
+                    :vid, :tid, :cid, 2, NULL,
+                    'education.worksheet', 1, CAST(:payload AS jsonb),
+                    :sha, 'HUMAN',
+                    CAST(:prov AS jsonb), :now, :actor
+                )
+                """
+            ),
+            {
+                "vid": version_v2,
+                "tid": tenant_id,
+                "cid": content_id,
+                "payload": canonical_payload_json(payload.body),
+                "sha": payload.sha256.value,
+                "prov": json.dumps({}),
+                "now": FIXED_NOW,
+                "actor": owner_id,
+            },
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE content.contents
+                SET published_version_id = :v2,
+                    current_version_id = :v2,
+                    aggregate_revision = aggregate_revision + 1,
+                    updated_at = :now
+                WHERE tenant_id = :tid AND content_id = :cid
+                """
+            ),
+            {
+                "v2": version_v2,
+                "tid": tenant_id,
+                "cid": content_id,
+                "now": FIXED_NOW,
+            },
+        )
+    return version_v2
