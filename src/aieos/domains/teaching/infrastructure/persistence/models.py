@@ -14,6 +14,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    ForeignKeyConstraint,
     Index,
     PrimaryKeyConstraint,
     Table,
@@ -146,6 +147,22 @@ assignments_table = Table(
     CheckConstraint(
         "updated_at >= created_at",
         name="ck_teaching_assignments_updated_after_created",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "content_id", "content_version_id"],
+        [
+            "content.content_versions.tenant_id",
+            "content.content_versions.content_id",
+            "content.content_versions.version_id",
+        ],
+        name="fk_teaching_assignments_content_version",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "source_work_id"],
+        ["teaching.works.tenant_id", "teaching.works.work_id"],
+        name="fk_teaching_assignments_source_work",
+        ondelete="RESTRICT",
     ),
     Index(
         "ix_teaching_assignments_tenant_teacher",

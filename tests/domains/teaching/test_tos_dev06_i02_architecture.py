@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from aieos.domains.teaching.infrastructure.persistence.models import assignments_table
 from aieos.platform.runtime.activation import (
     FROZEN_API_MUTATION_OPERATION_IDS,
     READ_ONLY_OPERATION_IDS,
@@ -61,6 +62,58 @@ class TestI02ArchitectureGuards:
         assert "unique (tenant_id, teacher_principal_id" not in sql
         assert "unique (teacher_principal_id, content_id" not in sql
         assert "unique (tenant_id, content_id, content_version_id, class_ref" not in sql
+
+    def test_assignments_table_foreign_key_metadata_matches_migration(self) -> None:
+        fks = {fk.name: fk for fk in assignments_table.foreign_key_constraints}
+        assert set(fks) == {
+            "fk_teaching_assignments_content_version",
+            "fk_teaching_assignments_source_work",
+        }
+
+        content_fk = fks["fk_teaching_assignments_content_version"]
+        assert tuple(content_fk.column_keys) == (
+            "tenant_id",
+            "content_id",
+            "content_version_id",
+        )
+        assert tuple(elem.target_fullname for elem in content_fk.elements) == (
+            "content.content_versions.tenant_id",
+            "content.content_versions.content_id",
+            "content.content_versions.version_id",
+        )
+        assert content_fk.ondelete == "RESTRICT"
+
+        work_fk = fks["fk_teaching_assignments_source_work"]
+        assert tuple(work_fk.column_keys) == ("tenant_id", "source_work_id")
+        assert tuple(elem.target_fullname for elem in work_fk.elements) == (
+            "teaching.works.tenant_id",
+            "teaching.works.work_id",
+        )
+        assert work_fk.ondelete == "RESTRICT"
+
+        remote_targets = {
+            elem.target_fullname
+            for fk in assignments_table.foreign_key_constraints
+            for elem in fk.elements
+        }
+        assert remote_targets == {
+            "content.content_versions.tenant_id",
+            "content.content_versions.content_id",
+            "content.content_versions.version_id",
+            "teaching.works.tenant_id",
+            "teaching.works.work_id",
+        }
+        for forbidden in (
+            "class_ref",
+            "classes",
+            "roster",
+            "enrollment",
+            "users",
+            "principal",
+            "lms",
+            "external_assignment",
+        ):
+            assert not any(forbidden in target for target in remote_targets)
 
     def test_domain_has_no_school_context_or_content_imports(self) -> None:
         path = TEACHING_ROOT / "domain" / "assignment.py"
