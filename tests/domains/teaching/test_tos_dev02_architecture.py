@@ -263,13 +263,18 @@ class TestTeachingWorkIsDurable:
 
     def test_class_label_is_not_a_foreign_key(self) -> None:
         migration = _migration_sql()
-        models = (
-            TEACHING_ROOT / "infrastructure" / "persistence" / "models.py"
-        ).read_text(encoding="utf-8")
+        models_path = TEACHING_ROOT / "infrastructure" / "persistence" / "models.py"
+        models = models_path.read_text(encoding="utf-8")
         assert "foreign key" not in migration
         assert "references" not in migration
-        assert "ForeignKey" not in models
         assert "class_label" in models
+        from aieos.domains.teaching.infrastructure.persistence.models import (
+            assignments_table,
+            works_table,
+        )
+
+        assert not works_table.c.class_label.foreign_keys
+        assert not assignments_table.c.class_ref.foreign_keys
 
 
 class TestOpenApiContract:
