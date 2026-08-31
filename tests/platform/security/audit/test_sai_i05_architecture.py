@@ -47,7 +47,7 @@ BOUNDARY_DOC = REPO_ROOT / "docs" / "GCI-I04-NON-PRODUCTION-MUTATION-BOUNDARY.md
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 SNAPSHOT = REPO_ROOT / "contracts" / "openapi" / "aieos-v1.json"
 EXPECTED_OPENAPI_SHA256 = (
-    "230FBDC9323D5C22D6BA7027E74AF977FC7C2EE8C75927D81C5D18C60457B297"
+    "0E90C562DA0DDF46B91832F543AE0BC5BF2F7D6E725B9708330F5CF6D8971FA2"
 )
 
 _EXPECTED_MIGRATIONS = [
@@ -261,6 +261,10 @@ class TestMutationInventory:
             "asset.quarantine.clear",
             "asset.safety.pass",
             "asset.safety.fail",
+            "teaching.assignment.create",
+            "teaching.assignment.due_update",
+            "teaching.assignment.close",
+            "teaching.assignment.cancel",
         }
         assert _FROZEN_ACTIONS == expected
         assert SecurityAuditExecutionChannel.WORKFLOW_ACTIVITY.value == "WORKFLOW_ACTIVITY"

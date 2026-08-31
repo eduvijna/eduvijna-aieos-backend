@@ -130,6 +130,10 @@ class TestActionsAndChannels:
             "asset.quarantine.clear",
             "asset.safety.pass",
             "asset.safety.fail",
+            "teaching.assignment.create",
+            "teaching.assignment.due_update",
+            "teaching.assignment.close",
+            "teaching.assignment.cancel",
         }
         assert "content.archive" not in {a.value for a in SecurityAuditAction}
         assert "asset.purge" not in {a.value for a in SecurityAuditAction}
