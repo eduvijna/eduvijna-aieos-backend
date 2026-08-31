@@ -124,8 +124,16 @@ class TestTeachingWorkScenarioLoader:
                 ),
                 {"tid": str(tenant_id)},
             ).scalar_one()
-        assert tables == {"works"}
+            assignments = conn.execute(
+                text(
+                    "SELECT count(*) FROM teaching.assignments "
+                    "WHERE tenant_id = :tid"
+                ),
+                {"tid": str(tenant_id)},
+            ).scalar_one()
+        assert tables == {"works", "assignments"}
         assert works == len(WORK_SPECS)
+        assert assignments == 0
 
     def test_report_is_written_as_non_secret_json(
         self, runtime_engine, tmp_path

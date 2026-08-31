@@ -489,7 +489,7 @@ class TestArchitectureGuards:
 
     def test_no_new_migration(self) -> None:
         versions = sorted((REPO_ROOT / "migrations" / "versions").glob("*.py"))
-        assert versions[-1].name.startswith("tosd040001_")
+        assert versions[-1].name.startswith("tosd060001_")
         assert not any(p.name.startswith("tosd040002_") for p in versions)
 
     def test_app_factory_untouched(self) -> None:

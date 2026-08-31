@@ -6,7 +6,12 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from aieos.domains.teaching.domain.identities import AggregateRevision, WorkId
+from aieos.domains.teaching.domain.assignment import TeachingAssignment
+from aieos.domains.teaching.domain.identities import (
+    AggregateRevision,
+    AssignmentId,
+    WorkId,
+)
 from aieos.domains.teaching.domain.work import TeachingWork
 from aieos.platform.idempotency.ports import IdempotencyRepository
 
@@ -47,6 +52,25 @@ class TeachingWorkRepository(Protocol):
     def count_active_for_teacher(self, *, teacher_principal_id: UUID) -> int: ...
 
 
+class TeachingAssignmentRepository(Protocol):
+    """Durable persistence for the teacher-owned TeachingAssignment aggregate."""
+
+    def insert(self, assignment: TeachingAssignment) -> None: ...
+
+    def get(self, assignment_id: AssignmentId) -> TeachingAssignment | None: ...
+
+    def get_for_update(
+        self, assignment_id: AssignmentId
+    ) -> TeachingAssignment | None: ...
+
+    def update(
+        self,
+        assignment: TeachingAssignment,
+        *,
+        expected_revision: AggregateRevision,
+    ) -> bool: ...
+
+
 class ReviewQueuePendingCountPort(Protocol):
     """Pending Review Queue size for the current teacher in the execution tenant.
 
@@ -65,6 +89,7 @@ class TeachingClock(Protocol):
 
 class TeachingUnitOfWork(Protocol):
     works: TeachingWorkRepository
+    assignments: TeachingAssignmentRepository
     idempotency: IdempotencyRepository
 
     def __enter__(self) -> TeachingUnitOfWork: ...

@@ -9,6 +9,12 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV06-I02 — TeachingAssignment domain + PostgreSQL persistence/RLS:
+  `AssignmentId` (UUIDv7), `TeachingAssignment` aggregate with ACTIVE/CLOSED/
+  CANCELLED lifecycle, `teaching.assignments` table (`tosd060001`), ContentVersion
+  and optional TeachingWork composite FKs, tenant RLS, repository + Teaching UoW
+  composition. No assignment HTTP/API, CREATE publication/ClassRef gates,
+  events/audit, Class/Roster SoR, or OpenAPI change. Alembic head `tosd060001`.
 - TOS-DEV06-I01R1 — principal-scope the NON_PRODUCTION School Context reader
   (`tenant_id` + `teacher_principal_id`) and classify
   `teacher_os_school_context_classes_list` as PED-I03 read-only. No OpenAPI

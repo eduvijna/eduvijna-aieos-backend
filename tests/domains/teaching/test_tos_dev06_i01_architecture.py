@@ -32,28 +32,23 @@ def _openapi() -> dict:
 
 
 class TestNoClassRosterOrAssignmentPersistence:
-    def test_alembic_head_unchanged(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd040001"
-        assert EXPECTED_MIGRATION_HEAD == "tosd040001"
+    def test_alembic_head_is_current(self) -> None:
+        assert EXPECTED_ALEMBIC_HEAD == "tosd060001"
+        assert EXPECTED_MIGRATION_HEAD == "tosd060001"
         versions = sorted(
             path.name
             for path in MIGRATIONS.glob("*.py")
             if path.name != "__init__.py"
         )
-        assert versions[-1].startswith("tosd040001_")
-        assert not any("tosd06" in name.lower() for name in versions)
+        assert versions[-1].startswith("tosd060001_")
         assert not any("school_context" in name.lower() for name in versions)
-        assert not any("teaching_assignment" in name.lower() for name in versions)
 
-    def test_no_class_roster_assignment_sqlalchemy_tables(self) -> None:
+    def test_no_class_roster_sqlalchemy_tables(self) -> None:
         forbidden_tokens = (
             "classes",
-            "class_ref",
             "roster",
             "enrollment",
             "teacher_class",
-            "teaching_assignment",
-            "assignments",
         )
         offenders: list[str] = []
         models = TEACHING_ROOT / "infrastructure" / "persistence" / "models.py"
@@ -71,33 +66,6 @@ class TestNoClassRosterOrAssignmentPersistence:
                 if any(token in table for token in forbidden_tokens):
                     offenders.append(table)
         assert offenders == []
-
-    def test_no_teaching_assignment_implementation_in_teaching_sources(self) -> None:
-        offenders: list[str] = []
-        for path in _teaching_sources():
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ClassDef) and "TeachingAssignment" in node.name:
-                    offenders.append(f"{path.name}:class:{node.name}")
-                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-                    if "teaching_assignment" in node.name.lower():
-                        offenders.append(f"{path.name}:fn:{node.name}")
-                if isinstance(node, ast.Assign):
-                    for target in node.targets:
-                        if (
-                            isinstance(target, ast.Name)
-                            and "teaching_assignment" in target.id.lower()
-                        ):
-                            offenders.append(f"{path.name}:assign:{target.id}")
-        assert offenders == []
-
-    def test_i01_delta_has_no_assignment_persistence_module(self) -> None:
-        forbidden = (
-            TEACHING_ROOT / "application" / "assignment.py",
-            TEACHING_ROOT / "domain" / "assignment.py",
-            TEACHING_ROOT / "infrastructure" / "persistence" / "assignment.py",
-        )
-        assert [str(p) for p in forbidden if p.exists()] == []
 
 
 class TestSchoolContextPortBoundary:

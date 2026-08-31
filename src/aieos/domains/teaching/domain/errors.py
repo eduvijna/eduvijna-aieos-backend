@@ -21,3 +21,7 @@ class InvalidIntentTypeError(TeachingDomainError):
 
 class InvalidTeachingWorkError(TeachingDomainError):
     """A TeachingWork aggregate field failed validation."""
+
+
+class InvalidTeachingAssignmentError(TeachingDomainError):
+    """A TeachingAssignment aggregate field or lifecycle transition failed."""

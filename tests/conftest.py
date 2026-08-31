@@ -419,6 +419,15 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
             conn.execute(text(f"REVOKE DELETE ON teaching.works FROM {RUNTIME_USER}"))
             conn.execute(
                 text(
+                    f"GRANT SELECT, INSERT, UPDATE ON teaching.assignments "
+                    f"TO {RUNTIME_USER}"
+                )
+            )
+            conn.execute(
+                text(f"REVOKE DELETE ON teaching.assignments FROM {RUNTIME_USER}")
+            )
+            conn.execute(
+                text(
                     f"GRANT EXECUTE ON FUNCTION teaching.current_tenant_id() "
                     f"TO {RUNTIME_USER}"
                 )
