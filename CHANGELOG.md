@@ -9,6 +9,16 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV06-I01 — School Context ClassRef read contract: Teaching application
+  port `SchoolContextClassReader` + `ListAssignableSchoolClassesService`;
+  Teacher OS `GET /api/v1/teacher-os/school-context/classes`
+  (`teacher_os_school_context_classes_list`) returns opaque `class_ref` +
+  `display_label` from trusted tenant/principal context only; fail-closed 503
+  when School Context is unavailable/uncomposed; NON_PRODUCTION development
+  adapter for local Teacher OS demos. Advisory current-authority read only —
+  not durable TeachingAssignment CREATE authorization. No Class/Roster SoR,
+  no TeachingAssignment, no migration; Alembic remains `tosd040001`. No
+  Frontend / Product / Architecture change. No ERP/SIS vendor selected.
 - TOS-DEV04-I08 — PostgreSQL / RLS / concurrency / recovery adversarial
   verification for DEV04 preparation: tenant and same-tenant teacher isolation,
   same-key and different-key concurrent prepare, GenerationRun row-lock ownership

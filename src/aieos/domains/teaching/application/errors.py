@@ -97,6 +97,14 @@ class GenerationServiceUnavailable(TeachingApplicationError):
     """Generation composition is not available in this runtime."""
 
 
+class SchoolContextUnavailable(TeachingApplicationError):
+    """School Context provider is unavailable or not composed in this runtime."""
+
+
+class SchoolContextContractError(TeachingApplicationError):
+    """School Context provider returned a structurally invalid response."""
+
+
 class ContentMaterializationFailedError(TeachingApplicationError):
     """Content materialization failed after model generation succeeded."""
 

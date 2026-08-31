@@ -22,6 +22,7 @@ from aieos.development.schemas import (
     build_development_schema_registry,
     development_content_type_names,
 )
+from aieos.development.school_context import DevelopmentSchoolContextClassReader
 from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
@@ -95,6 +96,9 @@ def build_development_teacher_os_app(
         ai_provider_id=provider_id,
         ai_model_id=model_id,
         generation_lease_seconds=load_generation_lease_seconds(),
+        school_context_class_reader=DevelopmentSchoolContextClassReader(
+            tenant_id=tenant_id
+        ),
     )
 
 

@@ -12,6 +12,7 @@ from aieos.domains.teaching.api.v1.dependencies import (
     create_teaching_work_service,
     generate_teaching_work_service,
     get_teaching_work_service,
+    list_assignable_school_classes_service,
     list_teaching_work_artifacts_service,
     list_teaching_works_service,
     prepare_teaching_work_service,
@@ -29,6 +30,8 @@ from aieos.domains.teaching.api.v1.models import (
     PreparationProjectionResponse,
     PreparationStatusResponse,
     ReviewProjectionResponse,
+    SchoolContextClassItemResponse,
+    SchoolContextClassesResponse,
     TeacherOsMissionResponse,
     TeachingWorkArtifactsResponse,
     TeachingWorkCreateRequest,
@@ -66,6 +69,9 @@ from aieos.domains.teaching.application.queries import (
     ListTeachingWorksService,
 )
 from aieos.domains.teaching.application.refine import RefineTeachingWorkService
+from aieos.domains.teaching.application.school_context import (
+    ListAssignableSchoolClassesService,
+)
 from aieos.domains.education.schema import PREPARATION_ARTIFACT_KINDS
 from aieos.domains.teaching.domain.errors import InvalidTeachingIdentityError
 from aieos.domains.teaching.domain.identities import AggregateRevision, WorkId
@@ -502,3 +508,34 @@ def teacher_os_today_mission(
         mission_date=mission_date,
     )
     return _to_mission_response(mission)
+
+
+@router.get(
+    "/teacher-os/school-context/classes",
+    response_model=SchoolContextClassesResponse,
+    operation_id="teacher_os_school_context_classes_list",
+    responses=_GET_RESPONSES,
+    tags=["teacher-os"],
+)
+def teacher_os_school_context_classes_list(
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        ListAssignableSchoolClassesService,
+        Depends(list_assignable_school_classes_service),
+    ],
+) -> SchoolContextClassesResponse:
+    """Current-authority assignable ClassRef list for Teacher OS Assign UX.
+
+    Advisory read only. Does not authorize TeachingAssignment CREATE.
+    Tenant and teacher Principal come only from resolve_trusted_context.
+    """
+    items = service.list(context.tenant_id, context.principal_id)
+    return SchoolContextClassesResponse(
+        items=[
+            SchoolContextClassItemResponse(
+                class_ref=item.class_ref,
+                display_label=item.display_label,
+            )
+            for item in items
+        ]
+    )

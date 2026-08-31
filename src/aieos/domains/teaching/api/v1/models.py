@@ -194,3 +194,20 @@ class TeacherOsMissionResponse(BaseModel):
     review: ReviewProjectionResponse
     preparation: PreparationProjectionResponse
     hero_action: HeroActionResponse
+
+
+class SchoolContextClassItemResponse(BaseModel):
+    """Opaque ClassRef + display label. Not Class master data ownership."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    class_ref: str
+    display_label: str
+
+
+class SchoolContextClassesResponse(BaseModel):
+    """Current-authority assignable class list. Not durable CREATE authorization."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[SchoolContextClassItemResponse]

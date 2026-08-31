@@ -70,6 +70,8 @@ from aieos.domains.teaching.application.errors import (
     PersistenceInvariantViolation as TeachingPersistenceInvariantViolation,
     PersistenceOperationFailed as TeachingPersistenceOperationFailed,
     PreparationRecoveryInvariantError,
+    SchoolContextContractError,
+    SchoolContextUnavailable,
     TeacherOsMissionUnavailable,
     TeachingApplicationError,
     TeachingWorkForbidden,
@@ -551,6 +553,18 @@ _TEACHING_PROBLEMS: dict[type[TeachingApplicationError], tuple[int, str, str, st
         "teacher_os_mission_unavailable",
         "Today's Mission unavailable",
         "Today's Mission projection is temporarily unavailable",
+    ),
+    SchoolContextUnavailable: (
+        503,
+        "school_context_unavailable",
+        "School Context unavailable",
+        "School Context is temporarily unavailable",
+    ),
+    SchoolContextContractError: (
+        503,
+        "school_context_unavailable",
+        "School Context unavailable",
+        "School Context is temporarily unavailable",
     ),
 }
 

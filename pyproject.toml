@@ -90,4 +90,5 @@ markers = [
     "tos_dev04_i06: TOS-DEV04-I06 Prepare Work orchestration and recovery",
     "tos_dev04_i07: TOS-DEV04-I07 prepare HTTP/OpenAPI and Work artifact projection",
     "tos_dev04_i08: TOS-DEV04-I08 PostgreSQL/RLS/concurrency/recovery adversarial verification",
+    "tos_dev06_i01: TOS-DEV06-I01 School Context ClassRef read contract",
 ]
