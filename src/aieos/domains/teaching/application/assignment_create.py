@@ -52,7 +52,6 @@ def _create_fingerprint(command: CreateTeachingAssignmentCommand) -> str:
             "content_id": str(command.content_id),
             "content_version_id": str(command.content_version_id),
             "class_ref": command.class_ref.strip(),
-            "audience_display_label": command.audience_display_label,
             "source_work_id": (
                 None
                 if command.source_work_id is None
@@ -141,9 +140,6 @@ class CreateTeachingAssignmentService:
                         "source TeachingWork is owned by a different teacher"
                     )
 
-            display_label = command.audience_display_label
-            if display_label is None:
-                display_label = class_target.display_label
             try:
                 assignment = TeachingAssignment.create(
                     tenant_id=execution_tenant_id,
@@ -152,7 +148,7 @@ class CreateTeachingAssignmentService:
                     content_version_id=command.content_version_id,
                     class_ref=class_target.class_ref,
                     assigned_at=assigned_at,
-                    audience_display_label=display_label,
+                    audience_display_label=class_target.display_label,
                     source_work_id=source_work_id,
                     available_from=command.available_from,
                     due_at=command.due_at,

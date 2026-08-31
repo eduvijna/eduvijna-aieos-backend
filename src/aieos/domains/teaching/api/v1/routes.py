@@ -571,7 +571,6 @@ def teaching_assignment_create(
             content_id=body.content_id,
             content_version_id=body.content_version_id,
             class_ref=body.class_ref,
-            audience_display_label=body.audience_display_label,
             source_work_id=body.source_work_id,
             available_from=body.available_from,
             due_at=body.due_at,

@@ -1198,17 +1198,6 @@
       "TeachingAssignmentCreateRequest": {
         "additionalProperties": false,
         "properties": {
-          "audience_display_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Audience Display Label"
-          },
           "available_from": {
             "anyOf": [
               {
@@ -10634,4 +10623,3 @@
     }
   ]
 }
-

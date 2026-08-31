@@ -109,7 +109,6 @@ class CreateTeachingAssignmentCommand:
     content_id: UUID
     content_version_id: UUID
     class_ref: str
-    audience_display_label: str | None = None
     source_work_id: UUID | None = None
     available_from: datetime | None = None
     due_at: datetime | None = None
