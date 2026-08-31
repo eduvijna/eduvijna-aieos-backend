@@ -85,7 +85,7 @@ def seed_published_worksheet(
                 """
                 INSERT INTO content.review_decisions (
                     review_decision_id, tenant_id, content_id, version_id,
-                    decision, comment, decided_at, decided_by_principal_id,
+                    decision, comment, decided_at, reviewer_principal_id,
                     effective_actor_id, correlation_id
                 ) VALUES (
                     :did, :tid, :cid, :vid, 'APPROVE', NULL, :now, :actor, :actor, :corr
