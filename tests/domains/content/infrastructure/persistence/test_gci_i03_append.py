@@ -733,6 +733,7 @@ class TestArchitectureAndNoSchemaChange:
             "tosd030001_generation_runs.py",
     "tosd030002_generation_run_work_fence.py",
     "tosd040001_multi_artifact_provenance_and_generation_fences.py",
+    "tosd060001_teaching_assignments.py",
         ]
         assert not Path(
             REPO_ROOT / "src" / "aieos" / "domains" / "content" / "infrastructure" / "outbox"

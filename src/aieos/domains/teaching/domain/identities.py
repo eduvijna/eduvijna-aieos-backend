@@ -60,8 +60,27 @@ class WorkId:
 
 
 @dataclass(frozen=True, slots=True)
+class AssignmentId:
+    """Stable TeachingAssignment identity for classroom assignment intent."""
+
+    value: UUID
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "value", _require_uuid7(self.value, label="assignment_id")
+        )
+
+    @classmethod
+    def generate(cls) -> AssignmentId:
+        return cls(uuid.uuid7())
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+
+@dataclass(frozen=True, slots=True)
 class AggregateRevision:
-    """Optimistic concurrency revision of the TeachingWork aggregate."""
+    """Optimistic concurrency revision of a Teaching-owned aggregate."""
 
     value: int
 

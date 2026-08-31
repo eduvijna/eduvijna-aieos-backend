@@ -139,7 +139,7 @@ class TestNoTeachingIntentSystemOfRecord:
             and node.args
             and isinstance(node.args[0], ast.Constant)
         ]
-        assert tables == ["works"]
+        assert tables == ["works", "assignments"]
 
     def test_intent_type_is_a_value_object_not_an_aggregate(self) -> None:
         source = (TEACHING_ROOT / "domain" / "intent_type.py").read_text(

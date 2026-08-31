@@ -34,6 +34,7 @@ _EXPECTED_MIGRATIONS = [
     "tosd030001_generation_runs.py",
     "tosd030002_generation_run_work_fence.py",
     "tosd040001_multi_artifact_provenance_and_generation_fences.py",
+    "tosd060001_teaching_assignments.py",
 ]
 
 
@@ -107,7 +108,8 @@ def test_no_gci_i14_or_unauthorized_structures() -> None:
     hits: list[str] = []
     allowed_generation_runs = {"tosd030001_generation_runs.py",
     "tosd030002_generation_run_work_fence.py",
-    "tosd040001_multi_artifact_provenance_and_generation_fences.py", "env.py"}
+    "tosd040001_multi_artifact_provenance_and_generation_fences.py",
+    "tosd060001_teaching_assignments.py", "env.py"}
     for path in (REPO_ROOT / "migrations").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         for needle in (

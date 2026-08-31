@@ -287,13 +287,13 @@ class TestArchitectureGuards:
             key=lambda p: p.name,
         )
         assert versions
-        assert versions[-1].name.startswith("tosd040001_")
+        assert versions[-1].name.startswith("tosd060001_")
         assert not any(p.name.startswith("tosd040002_") for p in versions)
 
     def test_no_preparation_kit_table_or_generation_artifact_tables(self) -> None:
         for path in (REPO_ROOT / "migrations" / "versions").glob("*.py"):
             text = path.read_text(encoding="utf-8").lower()
-            assert "preparation_kit" not in text or "tosd040001" in path.name
+            assert "preparation_kit" not in text or "tosd060001" in path.name
             # I04 must not introduce these tables
         i04_sources = [
             _EDUCATION_APP / "generate_preparation_kit.py",

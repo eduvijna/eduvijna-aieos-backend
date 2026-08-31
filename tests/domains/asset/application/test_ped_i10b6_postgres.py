@@ -237,11 +237,11 @@ def _kernel(engine) -> AuthorizationKernel:
 
 
 class TestMigrationHeadAndContentCompatibility:
-    def test_alembic_head_is_tosd040001(self, bootstrap_engine) -> None:
+    def test_alembic_head_is_tosd060001(self, bootstrap_engine) -> None:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd040001"
+                == "tosd060001"
             )
 
     def test_existing_content_audit_row_still_accepted(self, bootstrap_engine) -> None:
@@ -876,7 +876,7 @@ class TestDowngradeGuard:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd040001"
+                == "tosd060001"
             )
         evidence_id = uuid7()
         with bootstrap_engine.connect() as conn:
@@ -892,7 +892,7 @@ class TestDowngradeGuard:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd040001"
+                == "tosd060001"
             )
             assert (
                 conn.execute(

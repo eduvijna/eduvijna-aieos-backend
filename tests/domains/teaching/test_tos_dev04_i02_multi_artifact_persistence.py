@@ -437,20 +437,20 @@ def _make_domain_version(
 
 
 class TestMigrationHeadAndSchema:
-    def test_single_alembic_head_is_tosd040001(self, bootstrap_engine: Engine) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd040001"
-        assert EXPECTED_MIGRATION_HEAD == "tosd040001"
+    def test_single_alembic_head_is_tosd060001(self, bootstrap_engine: Engine) -> None:
+        assert EXPECTED_ALEMBIC_HEAD == "tosd060001"
+        assert EXPECTED_MIGRATION_HEAD == "tosd060001"
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd040001"
+                == "tosd060001"
             )
         versions = sorted(
             p.name
             for p in (REPO_ROOT / "migrations" / "versions").glob("*.py")
             if p.name != "__pycache__"
         )
-        assert versions[-1].startswith("tosd040001_")
+        assert versions[-1].startswith("tosd060001_")
 
     def test_new_indexes_and_constraint_present(
         self, bootstrap_engine: Engine
@@ -554,7 +554,7 @@ class TestMigrationHeadAndSchema:
                     conn.execute(
                         text("SELECT version_num FROM alembic_version")
                     ).scalar_one()
-                    == "tosd040001"
+                    == "tosd060001"
                 )
                 prov = conn.execute(
                     text(
@@ -590,7 +590,7 @@ class TestMigrationHeadAndSchema:
                     conn.execute(
                         text("SELECT version_num FROM alembic_version")
                     ).scalar_one()
-                    == "tosd040001"
+                    == "tosd060001"
                 )
         finally:
             _ensure_head(postgres18, bootstrap_engine)
@@ -615,7 +615,7 @@ class TestMigrationHeadAndSchema:
                     conn.execute(
                         text("SELECT version_num FROM alembic_version")
                     ).scalar_one()
-                    == "tosd040001"
+                    == "tosd060001"
                 )
                 count = conn.execute(
                     text(

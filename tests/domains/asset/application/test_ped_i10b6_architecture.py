@@ -120,7 +120,7 @@ class TestDocsAndContracts:
         digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest().upper()
         assert digest == EXPECTED_OPENAPI_SHA256
         assert UV_LOCK.is_file()
-        assert EXPECTED_ALEMBIC_HEAD == "tosd040001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd060001"
         source = READINESS.read_text(encoding="utf-8")
         assert "asset_schema_owner" not in source
         assert "AIEOS_ASSET_SCHEMA_OWNER_ROLE" not in source

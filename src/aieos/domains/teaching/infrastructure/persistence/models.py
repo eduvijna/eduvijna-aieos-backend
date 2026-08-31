@@ -83,3 +83,87 @@ works_table = Table(
     Index("ix_teaching_works_tenant_archived_at", "tenant_id", "archived_at"),
     schema="teaching",
 )
+
+
+assignments_table = Table(
+    "assignments",
+    teaching_metadata,
+    Column("assignment_id", UUID(as_uuid=True), nullable=False),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("teacher_principal_id", UUID(as_uuid=True), nullable=False),
+    Column("content_id", UUID(as_uuid=True), nullable=False),
+    Column("content_version_id", UUID(as_uuid=True), nullable=False),
+    Column("audience_type", Text, nullable=False),
+    # Opaque School Context ClassRef. NOT a Class SoR foreign key.
+    Column("class_ref", Text, nullable=False),
+    Column("audience_display_label", Text, nullable=True),
+    Column("source_work_id", UUID(as_uuid=True), nullable=True),
+    Column("lifecycle_state", Text, nullable=False),
+    Column("assigned_at", DateTime(timezone=True), nullable=False),
+    Column("available_from", DateTime(timezone=True), nullable=False),
+    Column("due_at", DateTime(timezone=True), nullable=True),
+    Column("closed_at", DateTime(timezone=True), nullable=True),
+    Column("cancelled_at", DateTime(timezone=True), nullable=True),
+    Column("aggregate_revision", BigInteger, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    PrimaryKeyConstraint("assignment_id", name="pk_teaching_assignments"),
+    UniqueConstraint(
+        "tenant_id",
+        "assignment_id",
+        name="uq_teaching_assignments_tenant_assignment",
+    ),
+    CheckConstraint(
+        "aggregate_revision >= 0",
+        name="ck_teaching_assignments_aggregate_revision_nonnegative",
+    ),
+    CheckConstraint(
+        "audience_type = 'class'",
+        name="ck_teaching_assignments_audience_type",
+    ),
+    CheckConstraint(
+        "btrim(class_ref) <> ''",
+        name="ck_teaching_assignments_class_ref_nonempty",
+    ),
+    CheckConstraint(
+        "audience_display_label IS NULL OR btrim(audience_display_label) <> ''",
+        name="ck_teaching_assignments_audience_display_label_nonempty",
+    ),
+    CheckConstraint(
+        "lifecycle_state IN ('ACTIVE', 'CLOSED', 'CANCELLED')",
+        name="ck_teaching_assignments_lifecycle_state",
+    ),
+    CheckConstraint(
+        "("
+        "lifecycle_state = 'ACTIVE' AND closed_at IS NULL AND cancelled_at IS NULL"
+        ") OR ("
+        "lifecycle_state = 'CLOSED' AND closed_at IS NOT NULL AND cancelled_at IS NULL"
+        ") OR ("
+        "lifecycle_state = 'CANCELLED' AND cancelled_at IS NOT NULL AND closed_at IS NULL"
+        ")",
+        name="ck_teaching_assignments_lifecycle_timestamps",
+    ),
+    CheckConstraint(
+        "updated_at >= created_at",
+        name="ck_teaching_assignments_updated_after_created",
+    ),
+    Index(
+        "ix_teaching_assignments_tenant_teacher",
+        "tenant_id",
+        "teacher_principal_id",
+    ),
+    Index(
+        "ix_teaching_assignments_tenant_teacher_lifecycle",
+        "tenant_id",
+        "teacher_principal_id",
+        "lifecycle_state",
+    ),
+    Index("ix_teaching_assignments_tenant_class_ref", "tenant_id", "class_ref"),
+    Index(
+        "ix_teaching_assignments_tenant_content_version",
+        "tenant_id",
+        "content_id",
+        "content_version_id",
+    ),
+    schema="teaching",
+)

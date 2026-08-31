@@ -12,6 +12,7 @@ from aieos.domains.teaching.infrastructure.persistence.errors import (
     reraise_as_application_error,
 )
 from aieos.domains.teaching.infrastructure.persistence.repositories import (
+    SqlAlchemyTeachingAssignmentRepository,
     SqlAlchemyTeachingWorkRepository,
 )
 from aieos.platform.api.infrastructure.persistence.repositories import (
@@ -26,6 +27,7 @@ class SqlAlchemyTeachingUnitOfWork:
         self._connection: Connection | None = None
         self._transaction: Transaction | None = None
         self.works: SqlAlchemyTeachingWorkRepository
+        self.assignments: SqlAlchemyTeachingAssignmentRepository
         self.idempotency: SqlAlchemyIdempotencyRepository
 
     def __enter__(self) -> SqlAlchemyTeachingUnitOfWork:
@@ -37,6 +39,9 @@ class SqlAlchemyTeachingUnitOfWork:
                 {"tid": str(self._execution_tenant_id)},
             )
             self.works = SqlAlchemyTeachingWorkRepository(
+                self._connection, self._execution_tenant_id
+            )
+            self.assignments = SqlAlchemyTeachingAssignmentRepository(
                 self._connection, self._execution_tenant_id
             )
             self.idempotency = SqlAlchemyIdempotencyRepository(
