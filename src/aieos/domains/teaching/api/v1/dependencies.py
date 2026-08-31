@@ -20,11 +20,15 @@ from aieos.domains.teaching.application.queries import (
     ListTeachingWorksService,
 )
 from aieos.domains.teaching.application.refine import RefineTeachingWorkService
+from aieos.domains.teaching.application.school_context import (
+    ListAssignableSchoolClassesService,
+)
 
 __all__ = [
     "create_teaching_work_service",
     "generate_teaching_work_service",
     "get_teaching_work_service",
+    "list_assignable_school_classes_service",
     "list_teaching_work_artifacts_service",
     "list_teaching_works_service",
     "prepare_teaching_work_service",
@@ -87,5 +91,18 @@ def list_teaching_work_artifacts_service(
 
         raise GenerationServiceUnavailable(
             "Teaching Work artifacts are not composed in this runtime"
+        )
+    return service
+
+
+def list_assignable_school_classes_service(
+    request: Request,
+) -> ListAssignableSchoolClassesService:
+    service = request.app.state.list_assignable_school_classes_service
+    if service is None:
+        from aieos.domains.teaching.application.errors import SchoolContextUnavailable
+
+        raise SchoolContextUnavailable(
+            "School Context is not composed in this runtime"
         )
     return service

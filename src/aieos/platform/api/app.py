@@ -59,6 +59,10 @@ from aieos.domains.teaching.application.refine import RefineTeachingWorkService
 from aieos.domains.teaching.application.review_queue_port import (
     ReviewQueuePendingCountAdapter,
 )
+from aieos.domains.teaching.application.school_context import (
+    ListAssignableSchoolClassesService,
+    SchoolContextClassReader,
+)
 from aieos.platform.ai.application.ports import AIUnitOfWorkFactory
 from aieos.platform.ai.clock import UtcNow
 from aieos.platform.ai.config import DEFAULT_AI_MODEL, DEFAULT_AI_PROVIDER
@@ -71,12 +75,12 @@ from aieos.platform.security.authenticator import RequestIdentityAuthenticator
 from aieos.platform.security.context import SecurityContextResolver
 
 _APP_DESCRIPTION = (
-    "AIEOS HTTP foundation (GCI-I12, TOS-DEV02, TOS-DEV03, TOS-DEV04). "
+    "AIEOS HTTP foundation (GCI-I12, TOS-DEV02, TOS-DEV03, TOS-DEV04, TOS-DEV06-I01). "
     "Content create, version append, review, publish, Teacher OS Review Queue "
-    "reads, Teaching Work preparation, Today's Mission projection, AI worksheet "
-    "generation, and preparation-kit prepare are development/test foundations "
-    "only and MUST NOT be authorized for production until required "
-    "security-audit intent persistence is integrated alongside the "
+    "reads, Teaching Work preparation, Today's Mission projection, School Context "
+    "ClassRef reads, AI worksheet generation, and preparation-kit prepare are "
+    "development/test foundations only and MUST NOT be authorized for production "
+    "until required security-audit intent persistence is integrated alongside the "
     "transactional outbox."
 )
 
@@ -104,6 +108,7 @@ def create_app(
     ai_model_id: str = DEFAULT_AI_MODEL,
     generation_lease_seconds: int = 120,
     generation_clock: UtcNow | None = None,
+    school_context_class_reader: SchoolContextClassReader | None = None,
 ) -> FastAPI:
     codec = CursorCodec(cursor_signing_key)
     app = FastAPI(
@@ -168,6 +173,12 @@ def create_app(
         teaching_uow_factory,
         ReviewQueuePendingCountAdapter(list_teacher_review_queue_service),
     )
+    if school_context_class_reader is not None:
+        app.state.list_assignable_school_classes_service = (
+            ListAssignableSchoolClassesService(school_context_class_reader)
+        )
+    else:
+        app.state.list_assignable_school_classes_service = None
 
     if (
         ai_uow_factory is not None

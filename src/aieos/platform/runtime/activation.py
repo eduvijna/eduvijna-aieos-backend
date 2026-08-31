@@ -57,6 +57,7 @@ READ_ONLY_OPERATION_IDS: frozenset[str] = frozenset(
         "teaching_work_get",
         "teaching_work_list",
         "teacher_os_today_mission",
+        "teacher_os_school_context_classes_list",
         "teaching_work_artifacts_list",
     }
 )
