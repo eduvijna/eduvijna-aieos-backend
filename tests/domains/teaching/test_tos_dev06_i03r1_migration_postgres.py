@@ -187,9 +187,9 @@ class TestTosd060002Migration:
                     conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
                     == "tosd060001"
                 )
-                tenant_id = uuid.uuid7()
-                with conn.begin():
-                    _seed_assignment_row(conn, tenant_id=tenant_id)
+            tenant_id = uuid.uuid7()
+            with bootstrap_engine.begin() as conn:
+                _seed_assignment_row(conn, tenant_id=tenant_id)
             command.upgrade(cfg, "tosd060002")
             provision_runtime_grants(bootstrap_engine)
             with bootstrap_engine.connect() as conn:

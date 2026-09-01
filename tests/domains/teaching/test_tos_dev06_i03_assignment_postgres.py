@@ -153,7 +153,6 @@ class TestPublicationRaceCaseB:
         self,
         runtime_engine: Engine,
         bootstrap_engine: Engine,
-        monkeypatch,
     ) -> None:
         tenant_id = uuid.uuid7()
         principal_id = uuid.uuid7()
@@ -200,17 +199,18 @@ class TestPublicationRaceCaseB:
         def patched_verify(self, **kwargs):  # noqa: ANN001
             result = original_verify(self, **kwargs)
             lock_held.set()
-            assert release_create.wait(timeout=10)
+            if not release_create.wait(timeout=10):
+                raise TimeoutError("CREATE release barrier timed out")
             return result
 
-        monkeypatch.setattr(
-            SqlAlchemyContentAssignmentEligibilityAdapter,
-            "verify_published_learner_content_with_lock",
-            patched_verify,
+        SqlAlchemyContentAssignmentEligibilityAdapter.verify_published_learner_content_with_lock = (
+            patched_verify
         )
 
         def republish_worker() -> None:
-            assert lock_held.wait(timeout=10)
+            if not lock_held.wait(timeout=10):
+                republish_errors.append(TimeoutError("republish never observed CREATE lock"))
+                return
             try:
                 with bootstrap_engine.connect() as conn:
                     conn.execute(text("SET lock_timeout = '5s'"))
@@ -273,15 +273,18 @@ class TestPublicationRaceCaseB:
 
         create_thread = threading.Thread(target=create_worker)
         create_thread.start()
-        assert lock_held.wait(timeout=10)
-        assert republish_attempted.wait(timeout=10)
+        assert lock_held.wait(timeout=10), "CREATE never acquired content head lock"
+        assert republish_attempted.wait(timeout=10), "republish never attempted during lock"
         release_create.set()
         create_thread.join(timeout=15)
         republish_thread.join(timeout=15)
+        SqlAlchemyContentAssignmentEligibilityAdapter.verify_published_learner_content_with_lock = (
+            original_verify
+        )
         assert create_done.is_set()
         assert republish_done.is_set()
-        assert not create_errors
-        assert not republish_errors
+        assert not create_errors, create_errors
+        assert not republish_errors, republish_errors
         result = create_result["value"]
         assert result.content_version_id == version_v1
         with bootstrap_engine.connect() as conn:
