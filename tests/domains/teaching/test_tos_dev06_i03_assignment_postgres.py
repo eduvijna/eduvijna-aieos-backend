@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 
 from aieos.development.school_context import development_class_authority
 from aieos.domains.teaching.application.assignment_create import (
@@ -17,6 +19,8 @@ from aieos.domains.teaching.application.assignment_create import (
 from aieos.domains.teaching.application.audit import api_mutation_audit_provenance
 from aieos.domains.teaching.application.errors import (
     ClassRefNotAssignable,
+    ContentNotEligibleForAssignment,
+    ContentNotFoundForAssignment,
     ContentVersionMismatch,
     IdempotencyKeyReused,
     SchoolContextUnavailable,
@@ -37,20 +41,16 @@ from tests.dbutil import set_tenant
 from tests.domains.teaching.helpers_dev06_i03 import (
     FIXED_NOW,
     IDEMPOTENCY_RETENTION,
+    create_assignment,
+    create_service,
+    event_context,
+    is_lock_contention_error,
     republish_content_to_new_version,
+    seed_content_head,
     seed_published_worksheet,
 )
 
 pytestmark = pytest.mark.tos_dev06_i03
-
-
-def _event_context(principal_id: uuid.UUID) -> MutationEventContext:
-    return MutationEventContext(
-        correlation_id=uuid.uuid7(),
-        causation_id=uuid.uuid7(),
-        actor_principal_id=principal_id,
-        effective_actor_id=principal_id,
-    )
 
 
 class TestAssignmentCreatePostgres:
@@ -78,8 +78,8 @@ class TestAssignmentCreatePostgres:
                 content_version_id=version_id,
                 class_ref="class-5a",
             ),
-            idempotency_key="i03-create-1",
-            event_context=_event_context(principal_id),
+                idempotency_key="i03-create-1",
+                event_context=event_context(principal_id),
             audit_provenance=api_mutation_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
@@ -142,7 +142,7 @@ class TestAssignmentCreatePostgres:
                     class_ref="class-5a",
                 ),
                 idempotency_key="i03-race-a",
-                event_context=_event_context(principal_id),
+                event_context=event_context(principal_id),
                 audit_provenance=api_mutation_audit_provenance(principal_id),
                 now=datetime(2026, 8, 31, 15, 0, tzinfo=UTC),
             )
@@ -166,7 +166,6 @@ class TestPublicationRaceCaseB:
             parent_version_id=version_v1,
             owner_id=uuid.uuid7(),
         )
-        # Restore published pointer to v1 so CREATE targets the historical version.
         with bootstrap_engine.begin() as conn:
             conn.execute(
                 text(
@@ -183,57 +182,86 @@ class TestPublicationRaceCaseB:
                     "cid": content_id,
                 },
             )
-        republish_started = threading.Event()
-        republish_attempted = threading.Event()
-        republish_done = threading.Event()
-        republish_errors: list[BaseException] = []
+
+        lock_acquired = threading.Event()
+        republish_finished = threading.Event()
+        republish_lock_error: OperationalError | None = None
+        holder_pid: int | None = None
+        blocking_observed = threading.Event()
 
         original_verify = (
             SqlAlchemyContentAssignmentEligibilityAdapter.verify_published_learner_content_with_lock
         )
 
         def patched_verify(self, **kwargs):  # noqa: ANN001
+            nonlocal holder_pid
             result = original_verify(self, **kwargs)
-            republish_started.set()
-            assert republish_attempted.wait(timeout=10), (
+            holder_pid = self._contents._connection.execute(  # type: ignore[attr-defined]
+                text("SELECT pg_backend_pid()")
+            ).scalar_one()
+            lock_acquired.set()
+            assert republish_finished.wait(timeout=15), (
                 "republish never attempted while CREATE held content lock"
             )
             return result
 
         def republish_worker() -> None:
-            if not republish_started.wait(timeout=10):
-                republish_errors.append(
-                    TimeoutError("CREATE never reached locked content eligibility")
-                )
-                return
-            republish_attempted.set()
+            nonlocal republish_lock_error
+            assert lock_acquired.wait(timeout=15), (
+                "CREATE never acquired content head FOR UPDATE lock"
+            )
             try:
                 with bootstrap_engine.connect() as conn:
-                    with conn.begin():
-                        conn.execute(text("SET LOCAL lock_timeout = '5s'"))
-                        set_tenant(conn, tenant_id)
-                        conn.execute(
-                            text(
-                                """
-                                UPDATE content.contents
-                                SET published_version_id = :v2,
-                                    current_version_id = :v2,
-                                    aggregate_revision = aggregate_revision + 1,
-                                    updated_at = :now
-                                WHERE tenant_id = :tid AND content_id = :cid
-                                """
-                            ),
-                            {
-                                "v2": version_v2,
-                                "tid": tenant_id,
-                                "cid": content_id,
-                                "now": FIXED_NOW,
-                            },
-                        )
-            except BaseException as exc:  # noqa: BLE001
-                republish_errors.append(exc)
+                    trans = conn.begin()
+                    set_tenant(conn, tenant_id)
+                    conn.execute(text("SET LOCAL lock_timeout = '2s'"))
+                    conn.execute(
+                        text(
+                            """
+                            UPDATE content.contents
+                            SET published_version_id = :v2,
+                                current_version_id = :v2,
+                                aggregate_revision = aggregate_revision + 1,
+                                updated_at = :now
+                            WHERE tenant_id = :tid AND content_id = :cid
+                            """
+                        ),
+                        {
+                            "v2": version_v2,
+                            "tid": tenant_id,
+                            "cid": content_id,
+                            "now": FIXED_NOW,
+                        },
+                    )
+                    trans.commit()
+            except OperationalError as exc:
+                republish_lock_error = exc
             finally:
-                republish_done.set()
+                republish_finished.set()
+
+        def blocking_observer() -> None:
+            assert lock_acquired.wait(timeout=15)
+            assert holder_pid is not None
+            deadline = time.monotonic() + 10.0
+            with bootstrap_engine.connect() as conn:
+                while time.monotonic() < deadline and not republish_finished.is_set():
+                    row = conn.execute(
+                        text(
+                            """
+                            SELECT pid, pg_blocking_pids(pid) AS blockers
+                            FROM pg_stat_activity
+                            WHERE datname = current_database()
+                              AND query LIKE '%UPDATE content.contents%'
+                              AND pid <> pg_backend_pid()
+                            """
+                        )
+                    ).mappings().first()
+                    if row is not None and row["blockers"]:
+                        blockers = list(row["blockers"] or [])
+                        if holder_pid in blockers:
+                            blocking_observed.set()
+                            return
+                    time.sleep(0.02)
 
         factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
         service = CreateTeachingAssignmentService(
@@ -244,11 +272,13 @@ class TestPublicationRaceCaseB:
             idempotency_retention=IDEMPOTENCY_RETENTION,
         )
         republish_thread = threading.Thread(target=republish_worker)
+        observer_thread = threading.Thread(target=blocking_observer)
         SqlAlchemyContentAssignmentEligibilityAdapter.verify_published_learner_content_with_lock = (
             patched_verify
         )
         try:
             republish_thread.start()
+            observer_thread.start()
             result = service.create(
                 tenant_id,
                 principal_id,
@@ -258,7 +288,7 @@ class TestPublicationRaceCaseB:
                     class_ref="class-5a",
                 ),
                 idempotency_key="i03-race-b",
-                event_context=_event_context(principal_id),
+                event_context=event_context(principal_id),
                 audit_provenance=api_mutation_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
@@ -267,11 +297,19 @@ class TestPublicationRaceCaseB:
                 original_verify
             )
         republish_thread.join(timeout=15)
-        assert republish_done.is_set()
-        assert not republish_errors, republish_errors
+        observer_thread.join(timeout=15)
+
+        assert republish_lock_error is not None, (
+            "conflicting republish UPDATE must fail while CREATE holds row lock"
+        )
+        assert is_lock_contention_error(republish_lock_error), republish_lock_error
+        assert blocking_observed.is_set() or is_lock_contention_error(
+            republish_lock_error
+        )
         assert result.content_version_id == version_v1
+
         with bootstrap_engine.connect() as conn:
-            published = conn.execute(
+            published_during = conn.execute(
                 text(
                     """
                     SELECT published_version_id FROM content.contents
@@ -280,7 +318,182 @@ class TestPublicationRaceCaseB:
                 ),
                 {"tid": tenant_id, "cid": content_id},
             ).scalar_one()
-        assert published == version_v2
+        assert published_during == version_v1
+
+        with bootstrap_engine.begin() as conn:
+            set_tenant(conn, tenant_id)
+            conn.execute(
+                text(
+                    """
+                    UPDATE content.contents
+                    SET published_version_id = :v2,
+                        current_version_id = :v2,
+                        aggregate_revision = aggregate_revision + 1,
+                        updated_at = :now
+                    WHERE tenant_id = :tid AND content_id = :cid
+                    """
+                ),
+                {
+                    "v2": version_v2,
+                    "tid": tenant_id,
+                    "cid": content_id,
+                    "now": FIXED_NOW,
+                },
+            )
+
+        with bootstrap_engine.connect() as conn:
+            published_after = conn.execute(
+                text(
+                    """
+                    SELECT published_version_id FROM content.contents
+                    WHERE tenant_id = :tid AND content_id = :cid
+                    """
+                ),
+                {"tid": tenant_id, "cid": content_id},
+            ).scalar_one()
+        assert published_after == version_v2
+
+
+class TestPublicationGatesPostgres:
+    def test_create_rejects_approved_never_published(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id, version_id = seed_content_head(
+            bootstrap_engine,
+            tenant_id=tenant_id,
+            content_type="worksheet",
+            published=False,
+        )
+        service = create_service(
+            runtime_engine, tenant_id=tenant_id, principal_id=principal_id
+        )
+        with pytest.raises(ContentVersionMismatch):
+            service.create(
+                tenant_id,
+                principal_id,
+                CreateTeachingAssignmentCommand(
+                    content_id=content_id,
+                    content_version_id=version_id,
+                    class_ref="class-5a",
+                ),
+                idempotency_key="i03-gate-unpub",
+                event_context=event_context(principal_id),
+                audit_provenance=api_mutation_audit_provenance(principal_id),
+                now=FIXED_NOW,
+            )
+
+    def test_create_rejects_stale_published_version(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id, version_v1 = seed_published_worksheet(
+            bootstrap_engine, tenant_id=tenant_id
+        )
+        republish_content_to_new_version(
+            bootstrap_engine,
+            tenant_id=tenant_id,
+            content_id=content_id,
+            parent_version_id=version_v1,
+            owner_id=uuid.uuid7(),
+        )
+        service = create_service(
+            runtime_engine, tenant_id=tenant_id, principal_id=principal_id
+        )
+        with pytest.raises(ContentVersionMismatch):
+            service.create(
+                tenant_id,
+                principal_id,
+                CreateTeachingAssignmentCommand(
+                    content_id=content_id,
+                    content_version_id=version_v1,
+                    class_ref="class-5a",
+                ),
+                idempotency_key="i03-gate-stale",
+                event_context=event_context(principal_id),
+                audit_provenance=api_mutation_audit_provenance(principal_id),
+                now=FIXED_NOW,
+            )
+
+    def test_create_rejects_content_version_mismatch(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id, _version_id = seed_published_worksheet(
+            bootstrap_engine, tenant_id=tenant_id
+        )
+        service = create_service(
+            runtime_engine, tenant_id=tenant_id, principal_id=principal_id
+        )
+        with pytest.raises(ContentVersionMismatch):
+            service.create(
+                tenant_id,
+                principal_id,
+                CreateTeachingAssignmentCommand(
+                    content_id=content_id,
+                    content_version_id=uuid.uuid7(),
+                    class_ref="class-5a",
+                ),
+                idempotency_key="i03-gate-mismatch",
+                event_context=event_context(principal_id),
+                audit_provenance=api_mutation_audit_provenance(principal_id),
+                now=FIXED_NOW,
+            )
+
+    def test_create_rejects_unknown_content(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        service = create_service(
+            runtime_engine, tenant_id=tenant_id, principal_id=principal_id
+        )
+        with pytest.raises(ContentNotFoundForAssignment):
+            service.create(
+                tenant_id,
+                principal_id,
+                CreateTeachingAssignmentCommand(
+                    content_id=uuid.uuid7(),
+                    content_version_id=uuid.uuid7(),
+                    class_ref="class-5a",
+                ),
+                idempotency_key="i03-gate-unknown",
+                event_context=event_context(principal_id),
+                audit_provenance=api_mutation_audit_provenance(principal_id),
+                now=FIXED_NOW,
+            )
+
+    def test_create_rejects_teacher_only_content(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id, version_id = seed_content_head(
+            bootstrap_engine,
+            tenant_id=tenant_id,
+            content_type="lesson_plan",
+            published=True,
+        )
+        service = create_service(
+            runtime_engine, tenant_id=tenant_id, principal_id=principal_id
+        )
+        with pytest.raises(ContentNotEligibleForAssignment):
+            service.create(
+                tenant_id,
+                principal_id,
+                CreateTeachingAssignmentCommand(
+                    content_id=content_id,
+                    content_version_id=version_id,
+                    class_ref="class-5a",
+                ),
+                idempotency_key="i03-gate-teacher",
+                event_context=event_context(principal_id),
+                audit_provenance=api_mutation_audit_provenance(principal_id),
+                now=FIXED_NOW,
+            )
 
 
 class _MutableSchoolContextReader:
@@ -349,7 +562,7 @@ class TestCreateIdempotencyReplayOrder:
             principal_id,
             command,
             idempotency_key="i03-replay-unavail",
-            event_context=_event_context(principal_id),
+            event_context=event_context(principal_id),
             audit_provenance=api_mutation_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
@@ -359,7 +572,7 @@ class TestCreateIdempotencyReplayOrder:
             principal_id,
             command,
             idempotency_key="i03-replay-unavail",
-            event_context=_event_context(principal_id),
+            event_context=event_context(principal_id),
             audit_provenance=api_mutation_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
@@ -395,7 +608,7 @@ class TestCreateIdempotencyReplayOrder:
             principal_id,
             command,
             idempotency_key="i03-replay-revoke",
-            event_context=_event_context(principal_id),
+            event_context=event_context(principal_id),
             audit_provenance=api_mutation_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
@@ -405,7 +618,7 @@ class TestCreateIdempotencyReplayOrder:
             principal_id,
             command,
             idempotency_key="i03-replay-revoke",
-            event_context=_event_context(principal_id),
+            event_context=event_context(principal_id),
             audit_provenance=api_mutation_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
@@ -436,7 +649,7 @@ class TestCreateIdempotencyReplayOrder:
                 class_ref="class-5a",
             ),
             idempotency_key="i03-replay-conflict",
-            event_context=_event_context(principal_id),
+            event_context=event_context(principal_id),
             audit_provenance=api_mutation_audit_provenance(principal_id),
             now=FIXED_NOW,
         )
@@ -450,7 +663,7 @@ class TestCreateIdempotencyReplayOrder:
                     class_ref="class-5b",
                 ),
                 idempotency_key="i03-replay-conflict",
-                event_context=_event_context(principal_id),
+                event_context=event_context(principal_id),
                 audit_provenance=api_mutation_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
@@ -485,7 +698,79 @@ class TestCreateIdempotencyReplayOrder:
                     class_ref="class-5a",
                 ),
                 idempotency_key="i03-fresh-after-revoke",
-                event_context=_event_context(principal_id),
+                event_context=event_context(principal_id),
                 audit_provenance=api_mutation_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
+
+    def test_same_key_same_fingerprint_returns_same_assignment_id(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id, version_id = seed_published_worksheet(
+            bootstrap_engine, tenant_id=tenant_id
+        )
+        command = CreateTeachingAssignmentCommand(
+            content_id=content_id,
+            content_version_id=version_id,
+            class_ref="class-5a",
+        )
+        service = create_service(
+            runtime_engine, tenant_id=tenant_id, principal_id=principal_id
+        )
+        first = service.create(
+            tenant_id,
+            principal_id,
+            command,
+            idempotency_key="i03-same-key-fp",
+            event_context=event_context(principal_id),
+            audit_provenance=api_mutation_audit_provenance(principal_id),
+            now=FIXED_NOW,
+        )
+        second = service.create(
+            tenant_id,
+            principal_id,
+            command,
+            idempotency_key="i03-same-key-fp",
+            event_context=event_context(principal_id),
+            audit_provenance=api_mutation_audit_provenance(principal_id),
+            now=FIXED_NOW,
+        )
+        assert second.assignment_id == first.assignment_id
+
+    def test_different_keys_same_business_fields_yield_two_assignments(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id, version_id = seed_published_worksheet(
+            bootstrap_engine, tenant_id=tenant_id
+        )
+        command = CreateTeachingAssignmentCommand(
+            content_id=content_id,
+            content_version_id=version_id,
+            class_ref="class-5a",
+        )
+        service = create_service(
+            runtime_engine, tenant_id=tenant_id, principal_id=principal_id
+        )
+        first = service.create(
+            tenant_id,
+            principal_id,
+            command,
+            idempotency_key="i03-diff-key-a",
+            event_context=event_context(principal_id),
+            audit_provenance=api_mutation_audit_provenance(principal_id),
+            now=FIXED_NOW,
+        )
+        second = service.create(
+            tenant_id,
+            principal_id,
+            command,
+            idempotency_key="i03-diff-key-b",
+            event_context=event_context(principal_id),
+            audit_provenance=api_mutation_audit_provenance(principal_id),
+            now=FIXED_NOW,
+        )
+        assert second.assignment_id != first.assignment_id

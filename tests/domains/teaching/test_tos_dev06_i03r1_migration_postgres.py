@@ -248,12 +248,40 @@ class TestTosd060002Migration:
             command.upgrade(cfg, "head")
             provision_runtime_grants(bootstrap_engine)
 
-    def test_fresh_database_reaches_same_contract(self, bootstrap_engine: Engine) -> None:
-        with bootstrap_engine.connect() as conn:
-            assert (
-                conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd060002"
-            )
+    def test_fresh_database_reaches_same_contract(
+        self, postgres18, bootstrap_engine: Engine
+    ) -> None:
+        cfg = alembic_config(postgres18["migrator_url"])
+        clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
+        try:
+            command.downgrade(cfg, "base")
+            with bootstrap_engine.connect() as conn:
+                version_count = conn.execute(
+                    text("SELECT count(*) FROM alembic_version")
+                ).scalar_one()
+                assert int(version_count) == 0
+            command.upgrade(cfg, "tosd060001")
+            with bootstrap_engine.connect() as conn:
+                assert (
+                    conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                    == "tosd060001"
+                )
+                assert conn.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.tables "
+                        "WHERE table_schema = 'teaching' AND table_name = 'assignments'"
+                    )
+                ).scalar_one() == 1
+            command.upgrade(cfg, "tosd060002")
+            provision_runtime_grants(bootstrap_engine)
+            with bootstrap_engine.connect() as conn:
+                assert (
+                    conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                    == "tosd060002"
+                )
+        finally:
+            command.upgrade(cfg, "head")
+            provision_runtime_grants(bootstrap_engine)
         action_constraint = next(
             c
             for c in audit_records_table.constraints

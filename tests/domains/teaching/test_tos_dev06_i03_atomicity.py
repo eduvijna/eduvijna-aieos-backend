@@ -21,7 +21,6 @@ from aieos.domains.teaching.infrastructure.persistence.audit_repository import (
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
-from aieos.platform.events.models import MutationEventContext
 from aieos.platform.events.persistence.repositories import SqlAlchemyOutboxRepository
 from aieos.platform.api.infrastructure.persistence.repositories import (
     SqlAlchemyIdempotencyRepository,
@@ -29,19 +28,11 @@ from aieos.platform.api.infrastructure.persistence.repositories import (
 from tests.domains.teaching.helpers_dev06_i03 import (
     FIXED_NOW,
     IDEMPOTENCY_RETENTION,
+    event_context,
     seed_published_worksheet,
 )
 
 pytestmark = pytest.mark.tos_dev06_i03
-
-
-def _event_context(principal_id: uuid.UUID) -> MutationEventContext:
-    return MutationEventContext(
-        correlation_id=uuid.uuid7(),
-        causation_id=uuid.uuid7(),
-        actor_principal_id=principal_id,
-        effective_actor_id=principal_id,
-    )
 
 
 def _service(
@@ -125,7 +116,7 @@ class TestCreateAtomicityFailureInjection:
                 principal_id,
                 _command(content_id, version_id),
                 idempotency_key="i03r1-outbox-fail",
-                event_context=_event_context(principal_id),
+                event_context=event_context(principal_id),
                 audit_provenance=api_mutation_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
@@ -156,7 +147,7 @@ class TestCreateAtomicityFailureInjection:
                 principal_id,
                 _command(content_id, version_id),
                 idempotency_key="i03r1-audit-fail",
-                event_context=_event_context(principal_id),
+                event_context=event_context(principal_id),
                 audit_provenance=api_mutation_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
@@ -187,7 +178,7 @@ class TestCreateAtomicityFailureInjection:
                 principal_id,
                 _command(content_id, version_id),
                 idempotency_key="i03r1-idem-fail",
-                event_context=_event_context(principal_id),
+                event_context=event_context(principal_id),
                 audit_provenance=api_mutation_audit_provenance(principal_id),
                 now=FIXED_NOW,
             )
