@@ -204,46 +204,46 @@ class TestTosd060002Migration:
                     {"tid": tenant_id},
                 ).scalar_one()
                 assert int(assignments) == 1
-                with conn.begin():
-                    _insert_teaching_create_audit(conn, tenant_id=tenant_id)
-                with conn.begin():
-                    conn.execute(text("SAVEPOINT teaching_invalid"))
-                    with pytest.raises(Exception):
-                        conn.execute(
-                            text(
-                                """
-                                INSERT INTO security.audit_records (
-                                    audit_record_id, tenant_id, action,
-                                    primary_resource_type, primary_resource_id,
-                                    primary_resource_revision,
-                                    resource_revision_before, resource_revision_after,
-                                    related_resource_refs,
-                                    initiating_principal_id, effective_actor_id,
-                                    executing_principal_id,
-                                    delegation_id, execution_channel,
-                                    correlation_id, causation_id, trace_id, occurred_at
-                                ) VALUES (
-                                    :audit_record_id, :tenant_id, 'teaching.assignment.due_update',
-                                    'teaching.assignment', :assignment_id, 2,
-                                    0, 0,
-                                    CAST('[]' AS jsonb),
-                                    :principal, :principal, :principal,
-                                    NULL, 'API',
-                                    :corr, :caus, NULL, :occurred_at
-                                )
-                                """
-                            ),
-                            {
-                                "audit_record_id": uuid.uuid7(),
-                                "tenant_id": tenant_id,
-                                "assignment_id": uuid.uuid7(),
-                                "principal": uuid.uuid7(),
-                                "corr": uuid.uuid7(),
-                                "caus": uuid.uuid7(),
-                                "occurred_at": FIXED_NOW,
-                            },
-                        )
-                    conn.execute(text("ROLLBACK TO SAVEPOINT teaching_invalid"))
+            with bootstrap_engine.begin() as conn:
+                _insert_teaching_create_audit(conn, tenant_id=tenant_id)
+            with bootstrap_engine.begin() as conn:
+                conn.execute(text("SAVEPOINT teaching_invalid"))
+                with pytest.raises(Exception):
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO security.audit_records (
+                                audit_record_id, tenant_id, action,
+                                primary_resource_type, primary_resource_id,
+                                primary_resource_revision,
+                                resource_revision_before, resource_revision_after,
+                                related_resource_refs,
+                                initiating_principal_id, effective_actor_id,
+                                executing_principal_id,
+                                delegation_id, execution_channel,
+                                correlation_id, causation_id, trace_id, occurred_at
+                            ) VALUES (
+                                :audit_record_id, :tenant_id, 'teaching.assignment.due_update',
+                                'teaching.assignment', :assignment_id, 2,
+                                0, 0,
+                                CAST('[]' AS jsonb),
+                                :principal, :principal, :principal,
+                                NULL, 'API',
+                                :corr, :caus, NULL, :occurred_at
+                            )
+                            """
+                        ),
+                        {
+                            "audit_record_id": uuid.uuid7(),
+                            "tenant_id": tenant_id,
+                            "assignment_id": uuid.uuid7(),
+                            "principal": uuid.uuid7(),
+                            "corr": uuid.uuid7(),
+                            "caus": uuid.uuid7(),
+                            "occurred_at": FIXED_NOW,
+                        },
+                    )
+                conn.execute(text("ROLLBACK TO SAVEPOINT teaching_invalid"))
         finally:
             command.upgrade(cfg, "head")
             provision_runtime_grants(bootstrap_engine)
