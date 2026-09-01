@@ -28,6 +28,16 @@ MIGRATIONS = REPO_ROOT / "migrations" / "versions"
 FIXED_NOW = datetime(2026, 8, 31, 14, 0, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def _ensure_alembic_head(postgres18, bootstrap_engine: Engine):
+    cfg = alembic_config(postgres18["migrator_url"])
+    command.upgrade(cfg, "head")
+    provision_runtime_grants(bootstrap_engine)
+    yield
+    command.upgrade(cfg, "head")
+    provision_runtime_grants(bootstrap_engine)
+
+
 def _insert_teaching_create_audit(conn, *, tenant_id: uuid.UUID) -> None:
     assignment_id = uuid.uuid7()
     principal = uuid.uuid7()
@@ -170,66 +180,70 @@ class TestTosd060002Migration:
     ) -> None:
         cfg = alembic_config(postgres18["migrator_url"])
         clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
-        command.downgrade(cfg, "tosd060001")
-        with bootstrap_engine.connect() as conn:
-            assert (
-                conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd060001"
-            )
-            tenant_id = uuid.uuid7()
-            with conn.begin():
-                _seed_assignment_row(conn, tenant_id=tenant_id)
-        command.upgrade(cfg, "tosd060002")
-        provision_runtime_grants(bootstrap_engine)
-        with bootstrap_engine.connect() as conn:
-            assert (
-                conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd060002"
-            )
-            assignments = conn.execute(
-                text("SELECT count(*) FROM teaching.assignments")
-            ).scalar_one()
-            assert int(assignments) == 1
-            with conn.begin():
-                _insert_teaching_create_audit(conn, tenant_id=tenant_id)
-            with conn.begin():
-                conn.execute(text("SAVEPOINT teaching_invalid"))
-                with pytest.raises(Exception):
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO security.audit_records (
-                                audit_record_id, tenant_id, action,
-                                primary_resource_type, primary_resource_id,
-                                primary_resource_revision,
-                                resource_revision_before, resource_revision_after,
-                                related_resource_refs,
-                                initiating_principal_id, effective_actor_id,
-                                executing_principal_id,
-                                delegation_id, execution_channel,
-                                correlation_id, causation_id, trace_id, occurred_at
-                            ) VALUES (
-                                :audit_record_id, :tenant_id, 'teaching.assignment.due_update',
-                                'teaching.assignment', :assignment_id, 2,
-                                0, 0,
-                                CAST('[]' AS jsonb),
-                                :principal, :principal, :principal,
-                                NULL, 'API',
-                                :corr, :caus, NULL, :occurred_at
-                            )
-                            """
-                        ),
-                        {
-                            "audit_record_id": uuid.uuid7(),
-                            "tenant_id": tenant_id,
-                            "assignment_id": uuid.uuid7(),
-                            "principal": uuid.uuid7(),
-                            "corr": uuid.uuid7(),
-                            "caus": uuid.uuid7(),
-                            "occurred_at": FIXED_NOW,
-                        },
-                    )
-                conn.execute(text("ROLLBACK TO SAVEPOINT teaching_invalid"))
+        try:
+            command.downgrade(cfg, "tosd060001")
+            with bootstrap_engine.connect() as conn:
+                assert (
+                    conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                    == "tosd060001"
+                )
+                tenant_id = uuid.uuid7()
+                with conn.begin():
+                    _seed_assignment_row(conn, tenant_id=tenant_id)
+            command.upgrade(cfg, "tosd060002")
+            provision_runtime_grants(bootstrap_engine)
+            with bootstrap_engine.connect() as conn:
+                assert (
+                    conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                    == "tosd060002"
+                )
+                assignments = conn.execute(
+                    text("SELECT count(*) FROM teaching.assignments")
+                ).scalar_one()
+                assert int(assignments) == 1
+                with conn.begin():
+                    _insert_teaching_create_audit(conn, tenant_id=tenant_id)
+                with conn.begin():
+                    conn.execute(text("SAVEPOINT teaching_invalid"))
+                    with pytest.raises(Exception):
+                        conn.execute(
+                            text(
+                                """
+                                INSERT INTO security.audit_records (
+                                    audit_record_id, tenant_id, action,
+                                    primary_resource_type, primary_resource_id,
+                                    primary_resource_revision,
+                                    resource_revision_before, resource_revision_after,
+                                    related_resource_refs,
+                                    initiating_principal_id, effective_actor_id,
+                                    executing_principal_id,
+                                    delegation_id, execution_channel,
+                                    correlation_id, causation_id, trace_id, occurred_at
+                                ) VALUES (
+                                    :audit_record_id, :tenant_id, 'teaching.assignment.due_update',
+                                    'teaching.assignment', :assignment_id, 2,
+                                    0, 0,
+                                    CAST('[]' AS jsonb),
+                                    :principal, :principal, :principal,
+                                    NULL, 'API',
+                                    :corr, :caus, NULL, :occurred_at
+                                )
+                                """
+                            ),
+                            {
+                                "audit_record_id": uuid.uuid7(),
+                                "tenant_id": tenant_id,
+                                "assignment_id": uuid.uuid7(),
+                                "principal": uuid.uuid7(),
+                                "corr": uuid.uuid7(),
+                                "caus": uuid.uuid7(),
+                                "occurred_at": FIXED_NOW,
+                            },
+                        )
+                    conn.execute(text("ROLLBACK TO SAVEPOINT teaching_invalid"))
+        finally:
+            command.upgrade(cfg, "head")
+            provision_runtime_grants(bootstrap_engine)
 
     def test_fresh_database_reaches_same_contract(self, bootstrap_engine: Engine) -> None:
         with bootstrap_engine.connect() as conn:
@@ -250,19 +264,26 @@ class TestTosd060002Migration:
         self, postgres18, bootstrap_engine: Engine
     ) -> None:
         cfg = alembic_config(postgres18["migrator_url"])
+        command.upgrade(cfg, "head")
+        provision_runtime_grants(bootstrap_engine)
         tenant_id = uuid.uuid7()
         with bootstrap_engine.connect() as conn:
             with conn.begin():
                 _insert_teaching_create_audit(conn, tenant_id=tenant_id)
-        with pytest.raises(Exception) as exc:
-            command.downgrade(cfg, "tosd060001")
-        message = str(exc.value)
-        cause = exc.value.__cause__
-        if cause is not None:
-            message = f"{message} {cause}"
-        assert "Teaching security audit evidence" in message
-        with bootstrap_engine.connect() as conn:
-            assert (
-                conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd060002"
-            )
+        try:
+            with pytest.raises(Exception) as exc:
+                command.downgrade(cfg, "tosd060001")
+            message = str(exc.value)
+            cause = exc.value.__cause__
+            if cause is not None:
+                message = f"{message} {cause}"
+            assert "Teaching security audit evidence" in message
+            with bootstrap_engine.connect() as conn:
+                assert (
+                    conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                    == "tosd060002"
+                )
+        finally:
+            clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)
+            command.upgrade(cfg, "head")
+            provision_runtime_grants(bootstrap_engine)
