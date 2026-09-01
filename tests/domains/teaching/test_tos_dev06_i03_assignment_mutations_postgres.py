@@ -86,7 +86,7 @@ class TestDueUpdatePostgres:
         updated = service.update_due(
             tenant_id,
             principal_id,
-            assignment_id=AssignmentId(created.assignment_id),
+            assignment_id=created.assignment_id,
             expected_aggregate_revision=AggregateRevision(0),
             command=UpdateTeachingAssignmentDueCommand(due_at=DUE_AT),
             idempotency_key="i03-mut-due",
@@ -135,7 +135,7 @@ class TestDueUpdatePostgres:
             service.update_due(
                 tenant_id,
                 principal_id,
-                assignment_id=AssignmentId(created.assignment_id),
+                assignment_id=created.assignment_id,
                 expected_aggregate_revision=AggregateRevision(99),
                 command=UpdateTeachingAssignmentDueCommand(due_at=DUE_AT),
                 idempotency_key="i03-mut-due-stale",
@@ -164,7 +164,7 @@ class TestDueUpdatePostgres:
         service.update_due(
             tenant_id,
             principal_id,
-            assignment_id=AssignmentId(created.assignment_id),
+            assignment_id=created.assignment_id,
             expected_aggregate_revision=AggregateRevision(0),
             command=UpdateTeachingAssignmentDueCommand(due_at=DUE_AT),
             idempotency_key="i03-mut-due-conf",
@@ -176,7 +176,7 @@ class TestDueUpdatePostgres:
             service.update_due(
                 tenant_id,
                 principal_id,
-                assignment_id=AssignmentId(created.assignment_id),
+                assignment_id=created.assignment_id,
                 expected_aggregate_revision=AggregateRevision(1),
                 command=UpdateTeachingAssignmentDueCommand(
                     due_at=datetime(2026, 10, 1, tzinfo=UTC)
@@ -209,7 +209,7 @@ class TestClosePostgres:
         closed = service.close(
             tenant_id,
             principal_id,
-            assignment_id=AssignmentId(created.assignment_id),
+            assignment_id=created.assignment_id,
             expected_aggregate_revision=AggregateRevision(0),
             idempotency_key="i03-mut-close",
             event_context=event_context(principal_id),
@@ -254,7 +254,7 @@ class TestClosePostgres:
         close_service.close(
             tenant_id,
             principal_id,
-            assignment_id=AssignmentId(created.assignment_id),
+            assignment_id=created.assignment_id,
             expected_aggregate_revision=AggregateRevision(0),
             idempotency_key="i03-mut-close-term",
             event_context=event_context(principal_id),
@@ -265,7 +265,7 @@ class TestClosePostgres:
             close_service.close(
                 tenant_id,
                 principal_id,
-                assignment_id=AssignmentId(created.assignment_id),
+                assignment_id=created.assignment_id,
                 expected_aggregate_revision=AggregateRevision(1),
                 idempotency_key="i03-mut-close-again",
                 event_context=event_context(principal_id),
@@ -295,7 +295,7 @@ class TestCancelPostgres:
         cancelled = service.cancel(
             tenant_id,
             principal_id,
-            assignment_id=AssignmentId(created.assignment_id),
+            assignment_id=created.assignment_id,
             expected_aggregate_revision=AggregateRevision(0),
             idempotency_key="i03-mut-cancel",
             event_context=event_context(principal_id),
@@ -339,7 +339,7 @@ class TestCancelPostgres:
         cancel_service.cancel(
             tenant_id,
             principal_id,
-            assignment_id=AssignmentId(created.assignment_id),
+            assignment_id=created.assignment_id,
             expected_aggregate_revision=AggregateRevision(0),
             idempotency_key="i03-mut-cancel-term",
             event_context=event_context(principal_id),
@@ -350,7 +350,7 @@ class TestCancelPostgres:
             cancel_service.cancel(
                 tenant_id,
                 principal_id,
-                assignment_id=AssignmentId(created.assignment_id),
+                assignment_id=created.assignment_id,
                 expected_aggregate_revision=AggregateRevision(1),
                 idempotency_key="i03-mut-cancel-again",
                 event_context=event_context(principal_id),

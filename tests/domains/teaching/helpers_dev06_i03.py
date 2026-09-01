@@ -440,7 +440,11 @@ def fetch_outbox(
     params: dict = {"tid": tenant_id, "etype": event_type}
     if assignment_id is not None:
         sql += " AND aggregate_id = :aid"
-        params["aid"] = assignment_id
+        params["aid"] = (
+            assignment_id.value
+            if hasattr(assignment_id, "value")
+            else assignment_id
+        )
     with bootstrap_engine.connect() as conn:
         rows = conn.execute(text(sql), params).mappings().all()
     return [dict(row) for row in rows]
@@ -464,7 +468,11 @@ def fetch_audit(
     params: dict = {"tid": tenant_id, "action": action}
     if assignment_id is not None:
         sql += " AND primary_resource_id = :aid"
-        params["aid"] = assignment_id
+        params["aid"] = (
+            assignment_id.value
+            if hasattr(assignment_id, "value")
+            else assignment_id
+        )
     with bootstrap_engine.connect() as conn:
         rows = conn.execute(text(sql), params).mappings().all()
     return [dict(row) for row in rows]

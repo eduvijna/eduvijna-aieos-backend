@@ -269,7 +269,7 @@ class TestPersistedEventAuditContracts:
             content_version_id=version_id,
             idempotency_key="i03-ev-lifecycle-create",
         )
-        assignment_id = AssignmentId(created.assignment_id)
+        assignment_id = created.assignment_id
         factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
         UpdateTeachingAssignmentDueService(
             factory, idempotency_retention=IDEMPOTENCY_RETENTION
@@ -345,7 +345,7 @@ class TestPersistedEventAuditContracts:
         ).cancel(
             tenant_id,
             principal_id,
-            assignment_id=AssignmentId(created.assignment_id),
+            assignment_id=created.assignment_id,
             expected_aggregate_revision=AggregateRevision(0),
             idempotency_key="i03-ev-cancel",
             event_context=event_context(principal_id),
