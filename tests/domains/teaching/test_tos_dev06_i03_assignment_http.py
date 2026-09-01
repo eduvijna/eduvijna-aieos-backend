@@ -13,9 +13,20 @@ from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.teaching.application.errors import SchoolContextUnavailable
 from aieos.domains.teaching.application.school_context import AssignableClassRef
 from aieos.platform.api.app import create_app
+from aieos.platform.events.constants import (
+    EVENT_TEACHING_ASSIGNMENT_CANCELLED_V1,
+    EVENT_TEACHING_ASSIGNMENT_CLOSED_V1,
+)
+from aieos.platform.idempotency.models import (
+    TEACHING_ASSIGNMENT_CANCEL_V1,
+    TEACHING_ASSIGNMENT_CLOSE_V1,
+)
 from tests.domains.teaching.helpers_dev06_i03 import (
     CREATE_PATH,
     build_assignment_client,
+    count_rows,
+    fetch_audit,
+    fetch_outbox,
     headers,
     seed_published_worksheet,
 )
@@ -96,6 +107,25 @@ def _client(tenant_id: uuid.UUID, principal_id: uuid.UUID) -> TestClient:
 
 def _etag(response) -> str:
     return response.headers["ETag"]
+
+
+def _count_lifecycle_idempotency(
+    bootstrap_engine: Engine,
+    *,
+    tenant_id: uuid.UUID,
+    operation: str,
+    assignment_id: uuid.UUID,
+) -> int:
+    return count_rows(
+        bootstrap_engine,
+        """
+        SELECT count(*) FROM api.idempotency_records
+        WHERE tenant_id = :tid AND operation = :op
+          AND result_content_id = :aid
+        """,
+        tenant_id=tenant_id,
+        extra={"op": operation, "aid": assignment_id},
+    )
 
 
 def _create_via_http(
@@ -551,6 +581,167 @@ class TestCloseHttp:
         )
         assert response.status_code == 428
 
+    def test_close_stale_if_match_412(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id, version_id = seed_published_worksheet(
+            bootstrap_engine, tenant_id=tenant_id
+        )
+        client = build_assignment_client(runtime_engine, tenant_id, principal_id)
+        created = _create_via_http(
+            client,
+            tenant_id,
+            content_id=content_id,
+            version_id=version_id,
+            idempotency_key="i03-close-412-create",
+        )
+        assignment_id = uuid.UUID(created.json()["assignment_id"])
+        assert created.json()["lifecycle_state"] == "ACTIVE"
+        assert created.json()["aggregate_revision"] == 0
+        response = client.post(
+            f"{CREATE_PATH}/{assignment_id}/actions/close",
+            headers=headers(
+                tenant_id,
+                idempotency_key="i03-close-412",
+                if_match='"r99"',
+            ),
+        )
+        assert response.status_code == 412
+        current = client.get(
+            f"{CREATE_PATH}/{assignment_id}",
+            headers=headers(tenant_id),
+        )
+        assert current.status_code == 200
+        assert current.json()["lifecycle_state"] == "ACTIVE"
+        assert current.json()["aggregate_revision"] == 0
+        assert (
+            len(
+                fetch_outbox(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    event_type=EVENT_TEACHING_ASSIGNMENT_CLOSED_V1,
+                    assignment_id=assignment_id,
+                )
+            )
+            == 0
+        )
+        assert (
+            len(
+                fetch_audit(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    action="teaching.assignment.close",
+                    assignment_id=assignment_id,
+                )
+            )
+            == 0
+        )
+        assert (
+            _count_lifecycle_idempotency(
+                bootstrap_engine,
+                tenant_id=tenant_id,
+                operation=TEACHING_ASSIGNMENT_CLOSE_V1,
+                assignment_id=assignment_id,
+            )
+            == 0
+        )
+
+    def test_close_idempotent_replay(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id, version_id = seed_published_worksheet(
+            bootstrap_engine, tenant_id=tenant_id
+        )
+        client = build_assignment_client(runtime_engine, tenant_id, principal_id)
+        created = _create_via_http(
+            client,
+            tenant_id,
+            content_id=content_id,
+            version_id=version_id,
+            idempotency_key="i03-close-replay-create",
+        )
+        assignment_id = uuid.UUID(created.json()["assignment_id"])
+        etag = '"r0"'
+        close_headers = headers(
+            tenant_id,
+            idempotency_key="i03-close-replay",
+            if_match=etag,
+        )
+        first = client.post(
+            f"{CREATE_PATH}/{assignment_id}/actions/close",
+            headers=close_headers,
+        )
+        assert first.status_code == 200, first.text
+        body = first.json()
+        assert body["lifecycle_state"] == "CLOSED"
+        assert body["aggregate_revision"] == 1
+        assert (
+            len(
+                fetch_outbox(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    event_type=EVENT_TEACHING_ASSIGNMENT_CLOSED_V1,
+                    assignment_id=assignment_id,
+                )
+            )
+            == 1
+        )
+        assert (
+            len(
+                fetch_audit(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    action="teaching.assignment.close",
+                    assignment_id=assignment_id,
+                )
+            )
+            == 1
+        )
+        replay = client.post(
+            f"{CREATE_PATH}/{assignment_id}/actions/close",
+            headers=close_headers,
+        )
+        assert replay.status_code == 200, replay.text
+        replay_body = replay.json()
+        assert replay_body["assignment_id"] == str(assignment_id)
+        assert replay_body["lifecycle_state"] == "CLOSED"
+        assert replay_body["aggregate_revision"] == 1
+        assert (
+            len(
+                fetch_outbox(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    event_type=EVENT_TEACHING_ASSIGNMENT_CLOSED_V1,
+                    assignment_id=assignment_id,
+                )
+            )
+            == 1
+        )
+        assert (
+            len(
+                fetch_audit(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    action="teaching.assignment.close",
+                    assignment_id=assignment_id,
+                )
+            )
+            == 1
+        )
+        assert (
+            _count_lifecycle_idempotency(
+                bootstrap_engine,
+                tenant_id=tenant_id,
+                operation=TEACHING_ASSIGNMENT_CLOSE_V1,
+                assignment_id=assignment_id,
+            )
+            == 1
+        )
+
     def test_close_terminal_state(
         self, runtime_engine: Engine, bootstrap_engine: Engine
     ) -> None:
@@ -663,6 +854,167 @@ class TestCancelHttp:
             headers=headers(tenant_id, idempotency_key="i03-cancel-428"),
         )
         assert response.status_code == 428
+
+    def test_cancel_stale_if_match_412(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id, version_id = seed_published_worksheet(
+            bootstrap_engine, tenant_id=tenant_id
+        )
+        client = build_assignment_client(runtime_engine, tenant_id, principal_id)
+        created = _create_via_http(
+            client,
+            tenant_id,
+            content_id=content_id,
+            version_id=version_id,
+            idempotency_key="i03-cancel-412-create",
+        )
+        assignment_id = uuid.UUID(created.json()["assignment_id"])
+        assert created.json()["lifecycle_state"] == "ACTIVE"
+        assert created.json()["aggregate_revision"] == 0
+        response = client.post(
+            f"{CREATE_PATH}/{assignment_id}/actions/cancel",
+            headers=headers(
+                tenant_id,
+                idempotency_key="i03-cancel-412",
+                if_match='"r99"',
+            ),
+        )
+        assert response.status_code == 412
+        current = client.get(
+            f"{CREATE_PATH}/{assignment_id}",
+            headers=headers(tenant_id),
+        )
+        assert current.status_code == 200
+        assert current.json()["lifecycle_state"] == "ACTIVE"
+        assert current.json()["aggregate_revision"] == 0
+        assert (
+            len(
+                fetch_outbox(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    event_type=EVENT_TEACHING_ASSIGNMENT_CANCELLED_V1,
+                    assignment_id=assignment_id,
+                )
+            )
+            == 0
+        )
+        assert (
+            len(
+                fetch_audit(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    action="teaching.assignment.cancel",
+                    assignment_id=assignment_id,
+                )
+            )
+            == 0
+        )
+        assert (
+            _count_lifecycle_idempotency(
+                bootstrap_engine,
+                tenant_id=tenant_id,
+                operation=TEACHING_ASSIGNMENT_CANCEL_V1,
+                assignment_id=assignment_id,
+            )
+            == 0
+        )
+
+    def test_cancel_idempotent_replay(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        content_id, version_id = seed_published_worksheet(
+            bootstrap_engine, tenant_id=tenant_id
+        )
+        client = build_assignment_client(runtime_engine, tenant_id, principal_id)
+        created = _create_via_http(
+            client,
+            tenant_id,
+            content_id=content_id,
+            version_id=version_id,
+            idempotency_key="i03-cancel-replay-create",
+        )
+        assignment_id = uuid.UUID(created.json()["assignment_id"])
+        etag = '"r0"'
+        cancel_headers = headers(
+            tenant_id,
+            idempotency_key="i03-cancel-replay",
+            if_match=etag,
+        )
+        first = client.post(
+            f"{CREATE_PATH}/{assignment_id}/actions/cancel",
+            headers=cancel_headers,
+        )
+        assert first.status_code == 200, first.text
+        body = first.json()
+        assert body["lifecycle_state"] == "CANCELLED"
+        assert body["aggregate_revision"] == 1
+        assert (
+            len(
+                fetch_outbox(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    event_type=EVENT_TEACHING_ASSIGNMENT_CANCELLED_V1,
+                    assignment_id=assignment_id,
+                )
+            )
+            == 1
+        )
+        assert (
+            len(
+                fetch_audit(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    action="teaching.assignment.cancel",
+                    assignment_id=assignment_id,
+                )
+            )
+            == 1
+        )
+        replay = client.post(
+            f"{CREATE_PATH}/{assignment_id}/actions/cancel",
+            headers=cancel_headers,
+        )
+        assert replay.status_code == 200, replay.text
+        replay_body = replay.json()
+        assert replay_body["assignment_id"] == str(assignment_id)
+        assert replay_body["lifecycle_state"] == "CANCELLED"
+        assert replay_body["aggregate_revision"] == 1
+        assert (
+            len(
+                fetch_outbox(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    event_type=EVENT_TEACHING_ASSIGNMENT_CANCELLED_V1,
+                    assignment_id=assignment_id,
+                )
+            )
+            == 1
+        )
+        assert (
+            len(
+                fetch_audit(
+                    bootstrap_engine,
+                    tenant_id=tenant_id,
+                    action="teaching.assignment.cancel",
+                    assignment_id=assignment_id,
+                )
+            )
+            == 1
+        )
+        assert (
+            _count_lifecycle_idempotency(
+                bootstrap_engine,
+                tenant_id=tenant_id,
+                operation=TEACHING_ASSIGNMENT_CANCEL_V1,
+                assignment_id=assignment_id,
+            )
+            == 1
+        )
 
     def test_cancel_terminal_state(
         self, runtime_engine: Engine, bootstrap_engine: Engine
