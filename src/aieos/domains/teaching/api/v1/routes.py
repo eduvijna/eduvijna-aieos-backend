@@ -9,16 +9,22 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 
 from aieos.domains.teaching.api.v1.dependencies import (
+    cancel_teaching_assignment_service,
+    close_teaching_assignment_service,
+    create_teaching_assignment_service,
     create_teaching_work_service,
     generate_teaching_work_service,
+    get_teaching_assignment_service,
     get_teaching_work_service,
     list_assignable_school_classes_service,
+    list_teaching_assignment_service,
     list_teaching_work_artifacts_service,
     list_teaching_works_service,
     prepare_teaching_work_service,
     refine_teaching_work_service,
     resolve_trusted_context,
     teacher_os_today_mission_service,
+    update_teaching_assignment_due_service,
 )
 from aieos.domains.teaching.api.v1.models import (
     ContinueWorkSummaryResponse,
@@ -40,7 +46,23 @@ from aieos.domains.teaching.api.v1.models import (
     TeachingWorkPrepareResponse,
     TeachingWorkRefineRequest,
     TeachingWorkResponse,
+    TeachingAssignmentCreateRequest,
+    TeachingAssignmentDueUpdateRequest,
+    TeachingAssignmentListResponse,
+    TeachingAssignmentResponse,
     WorkArtifactItemResponse,
+)
+from aieos.domains.teaching.application.assignment_create import (
+    CreateTeachingAssignmentService,
+)
+from aieos.domains.teaching.application.assignment_mutations import (
+    CancelTeachingAssignmentService,
+    CloseTeachingAssignmentService,
+    UpdateTeachingAssignmentDueService,
+)
+from aieos.domains.teaching.application.assignment_queries import (
+    GetTeachingAssignmentService,
+    ListTeachingAssignmentsService,
 )
 from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifactsService
 from aieos.domains.teaching.application.create import CreateTeachingWorkService
@@ -54,11 +76,16 @@ from aieos.domains.teaching.application.generate import (
 )
 from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionService
 from aieos.domains.teaching.application.mission_models import TeacherOsMission
+from aieos.domains.teaching.application.audit import api_mutation_audit_provenance
 from aieos.domains.teaching.application.models import (
+    CreateTeachingAssignmentCommand,
     CreateTeachingWorkCommand,
+    ListTeachingAssignmentsQuery,
     ListTeachingWorksQuery,
     RefineTeachingWorkCommand,
+    TeachingAssignmentReadModel,
     TeachingWorkReadModel,
+    UpdateTeachingAssignmentDueCommand,
 )
 from aieos.domains.teaching.application.prepare import (
     PrepareTeachingWorkResult,
@@ -74,7 +101,7 @@ from aieos.domains.teaching.application.school_context import (
 )
 from aieos.domains.education.schema import PREPARATION_ARTIFACT_KINDS
 from aieos.domains.teaching.domain.errors import InvalidTeachingIdentityError
-from aieos.domains.teaching.domain.identities import AggregateRevision, WorkId
+from aieos.domains.teaching.domain.identities import AggregateRevision, AssignmentId, WorkId
 from aieos.domains.teaching.domain.work import UNSET
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.api.idempotency_key import parse_idempotency_key
@@ -108,6 +135,12 @@ _GENERATE_RESPONSES = _problem_responses(
 _PREPARE_RESPONSES = _problem_responses(
     400, 401, 403, 404, 409, 412, 422, 428, 500, 502, 503
 )
+_ASSIGNMENT_CREATE_RESPONSES = _problem_responses(
+    400, 401, 403, 409, 422, 500, 503
+)
+_ASSIGNMENT_MUTATION_RESPONSES = _problem_responses(
+    400, 401, 403, 404, 409, 412, 422, 428, 500, 503
+)
 
 
 def _mutation_event_context(
@@ -126,6 +159,41 @@ def _work_id(value: UUID) -> WorkId:
         return WorkId(value)
     except InvalidTeachingIdentityError as exc:
         raise InvalidTeachingWorkRequest("work_id must be a UUIDv7") from exc
+
+
+def _assignment_id(value: UUID) -> AssignmentId:
+    try:
+        return AssignmentId(value)
+    except InvalidTeachingIdentityError as exc:
+        raise InvalidTeachingWorkRequest("assignment_id must be a UUIDv7") from exc
+
+
+def _to_assignment_response(
+    model: TeachingAssignmentReadModel,
+) -> TeachingAssignmentResponse:
+    return TeachingAssignmentResponse(
+        assignment_id=model.assignment_id.value,
+        teacher_principal_id=model.teacher_principal_id,
+        content_id=model.content_id,
+        content_version_id=model.content_version_id,
+        audience_type=model.audience_type,
+        class_ref=model.class_ref,
+        audience_display_label=model.audience_display_label,
+        source_work_id=(
+            None
+            if model.source_work_id is None
+            else model.source_work_id.value
+        ),
+        lifecycle_state=model.lifecycle_state,
+        assigned_at=model.assigned_at,
+        available_from=model.available_from,
+        due_at=model.due_at,
+        closed_at=model.closed_at,
+        cancelled_at=model.cancelled_at,
+        aggregate_revision=int(model.aggregate_revision),
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
 
 
 def _to_response(model: TeachingWorkReadModel) -> TeachingWorkResponse:
@@ -477,6 +545,198 @@ def teaching_work_artifacts_list(
             for item in result.items
         ],
     )
+
+
+@router.post(
+    "/teaching/assignments",
+    status_code=201,
+    response_model=TeachingAssignmentResponse,
+    operation_id="teaching_assignment_create",
+    responses=_ASSIGNMENT_CREATE_RESPONSES,
+)
+def teaching_assignment_create(
+    body: TeachingAssignmentCreateRequest,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        CreateTeachingAssignmentService, Depends(create_teaching_assignment_service)
+    ],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingAssignmentResponse:
+    key = parse_idempotency_key(idempotency_key)
+    model = service.create(
+        context.tenant_id,
+        context.principal_id,
+        CreateTeachingAssignmentCommand(
+            content_id=body.content_id,
+            content_version_id=body.content_version_id,
+            class_ref=body.class_ref,
+            source_work_id=body.source_work_id,
+            available_from=body.available_from,
+            due_at=body.due_at,
+        ),
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
+    )
+    response.headers["Location"] = (
+        f"/api/v1/teaching/assignments/{model.assignment_id.value}"
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_assignment_response(model)
+
+
+@router.get(
+    "/teaching/assignments",
+    response_model=TeachingAssignmentListResponse,
+    operation_id="teaching_assignment_list",
+    responses=_LIST_RESPONSES,
+)
+def teaching_assignment_list(
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        ListTeachingAssignmentsService, Depends(list_teaching_assignment_service)
+    ],
+    limit: Annotated[int | None, Query(ge=1)] = None,
+    lifecycle_state: Annotated[str | None, Query()] = None,
+) -> TeachingAssignmentListResponse:
+    if limit is not None and limit > MAX_LIST_LIMIT:
+        raise InvalidTeachingWorkRequest("list limit exceeds the maximum of 100")
+    page_size = DEFAULT_LIST_LIMIT if limit is None else limit
+    result = service.list(
+        context.tenant_id,
+        context.principal_id,
+        ListTeachingAssignmentsQuery(
+            limit=page_size, lifecycle_state=lifecycle_state
+        ),
+    )
+    return TeachingAssignmentListResponse(
+        items=[_to_assignment_response(item) for item in result.items],
+        has_more=result.has_more,
+    )
+
+
+@router.get(
+    "/teaching/assignments/{assignment_id}",
+    response_model=TeachingAssignmentResponse,
+    operation_id="teaching_assignment_get",
+    responses=_GET_RESPONSES,
+)
+def teaching_assignment_get(
+    assignment_id: UUID,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        GetTeachingAssignmentService, Depends(get_teaching_assignment_service)
+    ],
+) -> TeachingAssignmentResponse:
+    model = service.get(
+        context.tenant_id,
+        context.principal_id,
+        _assignment_id(assignment_id),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_assignment_response(model)
+
+
+@router.patch(
+    "/teaching/assignments/{assignment_id}",
+    response_model=TeachingAssignmentResponse,
+    operation_id="teaching_assignment_due_update",
+    responses=_ASSIGNMENT_MUTATION_RESPONSES,
+)
+def teaching_assignment_due_update(
+    assignment_id: UUID,
+    body: TeachingAssignmentDueUpdateRequest,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        UpdateTeachingAssignmentDueService,
+        Depends(update_teaching_assignment_due_service),
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingAssignmentResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    model = service.update_due(
+        context.tenant_id,
+        context.principal_id,
+        assignment_id=_assignment_id(assignment_id),
+        expected_aggregate_revision=expected,
+        command=UpdateTeachingAssignmentDueCommand(due_at=body.due_at),
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_assignment_response(model)
+
+
+@router.post(
+    "/teaching/assignments/{assignment_id}/actions/close",
+    response_model=TeachingAssignmentResponse,
+    operation_id="teaching_assignment_close",
+    responses=_ASSIGNMENT_MUTATION_RESPONSES,
+)
+def teaching_assignment_close(
+    assignment_id: UUID,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        CloseTeachingAssignmentService, Depends(close_teaching_assignment_service)
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingAssignmentResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    model = service.close(
+        context.tenant_id,
+        context.principal_id,
+        assignment_id=_assignment_id(assignment_id),
+        expected_aggregate_revision=expected,
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_assignment_response(model)
+
+
+@router.post(
+    "/teaching/assignments/{assignment_id}/actions/cancel",
+    response_model=TeachingAssignmentResponse,
+    operation_id="teaching_assignment_cancel",
+    responses=_ASSIGNMENT_MUTATION_RESPONSES,
+)
+def teaching_assignment_cancel(
+    assignment_id: UUID,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        CancelTeachingAssignmentService, Depends(cancel_teaching_assignment_service)
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingAssignmentResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    model = service.cancel(
+        context.tenant_id,
+        context.principal_id,
+        assignment_id=_assignment_id(assignment_id),
+        expected_aggregate_revision=expected,
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_assignment_response(model)
 
 
 @router.get(

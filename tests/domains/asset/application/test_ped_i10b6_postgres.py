@@ -241,7 +241,7 @@ class TestMigrationHeadAndContentCompatibility:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd060001"
+                == "tosd060002"
             )
 
     def test_existing_content_audit_row_still_accepted(self, bootstrap_engine) -> None:
@@ -876,7 +876,7 @@ class TestDowngradeGuard:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd060001"
+                == "tosd060002"
             )
         evidence_id = uuid7()
         with bootstrap_engine.connect() as conn:
@@ -892,7 +892,7 @@ class TestDowngradeGuard:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd060001"
+                == "tosd060002"
             )
             assert (
                 conn.execute(

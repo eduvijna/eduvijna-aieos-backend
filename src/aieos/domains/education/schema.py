@@ -83,6 +83,12 @@ PREPARATION_ARTIFACT_AUDIENCE: Mapping[str, ContentAudience] = {
 }
 
 
+def is_learner_assignable_content_type(content_type: str) -> bool:
+    """Return True when content_type is a known learner-assignable preparation kind."""
+    audience = PREPARATION_ARTIFACT_AUDIENCE.get(content_type)
+    return audience is ContentAudience.LEARNER
+
+
 def _raise_invalid(label: str, exc: ValidationError) -> None:
     raise InvalidPayloadError(f"{label} payload invalid: {exc.error_count()} error(s)") from exc
 

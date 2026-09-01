@@ -44,6 +44,10 @@ FROZEN_API_MUTATION_OPERATION_IDS: frozenset[str] = frozenset(
         "teaching_work_refine",
         "teaching_work_generate",
         "teaching_work_prepare",
+        "teaching_assignment_create",
+        "teaching_assignment_due_update",
+        "teaching_assignment_close",
+        "teaching_assignment_cancel",
     }
 )
 
@@ -59,6 +63,8 @@ READ_ONLY_OPERATION_IDS: frozenset[str] = frozenset(
         "teacher_os_today_mission",
         "teacher_os_school_context_classes_list",
         "teaching_work_artifacts_list",
+        "teaching_assignment_get",
+        "teaching_assignment_list",
     }
 )
 

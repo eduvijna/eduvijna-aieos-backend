@@ -105,6 +105,46 @@ class SchoolContextContractError(TeachingApplicationError):
     """School Context provider returned a structurally invalid response."""
 
 
+class TeachingAssignmentNotFound(TeachingApplicationError):
+    """Target TeachingAssignment is not visible in the execution tenant."""
+
+
+class TeachingAssignmentForbidden(TeachingApplicationError):
+    """The principal does not own the target TeachingAssignment."""
+
+
+class ClassRefNotAssignable(TeachingApplicationError):
+    """Requested ClassRef is not currently assignable for the teacher."""
+
+
+class ContentNotEligibleForAssignment(TeachingApplicationError):
+    """Content is not eligible for classroom assignment."""
+
+
+class ContentNotFoundForAssignment(TeachingApplicationError):
+    """Requested Content is not visible for assignment."""
+
+
+class ContentVersionMismatch(TeachingApplicationError):
+    """Requested ContentVersion is not the published exact version."""
+
+
+class TeachingAssignmentNotActive(TeachingApplicationError):
+    """Mutation requires an ACTIVE TeachingAssignment."""
+
+
+class SourceWorkNotFound(TeachingApplicationError):
+    """Optional source TeachingWork is not visible."""
+
+
+class SourceWorkForbidden(TeachingApplicationError):
+    """Optional source TeachingWork is owned by a different teacher."""
+
+
+class InvalidTeachingAssignmentRequest(TeachingApplicationError):
+    """An assignment command failed application validation."""
+
+
 class ContentMaterializationFailedError(TeachingApplicationError):
     """Content materialization failed after model generation succeeded."""
 

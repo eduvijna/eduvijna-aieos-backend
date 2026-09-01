@@ -47,7 +47,7 @@ BOUNDARY_DOC = REPO_ROOT / "docs" / "GCI-I04-NON-PRODUCTION-MUTATION-BOUNDARY.md
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 SNAPSHOT = REPO_ROOT / "contracts" / "openapi" / "aieos-v1.json"
 EXPECTED_OPENAPI_SHA256 = (
-    "230FBDC9323D5C22D6BA7027E74AF977FC7C2EE8C75927D81C5D18C60457B297"
+    "CCD233062672B36A4DB6C6B60E7413AF8EEC6FDAAE9550270C6879E4C4A06D7C"
 )
 
 _EXPECTED_MIGRATIONS = [
@@ -70,6 +70,7 @@ _EXPECTED_MIGRATIONS = [
     "tosd030002_generation_run_work_fence.py",
     "tosd040001_multi_artifact_provenance_and_generation_fences.py",
     "tosd060001_teaching_assignments.py",
+    "tosd060002_teaching_assignment_audit.py",
 ]
 
 # Frozen SAI-I05 mutation inventory classification.
@@ -261,6 +262,10 @@ class TestMutationInventory:
             "asset.quarantine.clear",
             "asset.safety.pass",
             "asset.safety.fail",
+            "teaching.assignment.create",
+            "teaching.assignment.due_update",
+            "teaching.assignment.close",
+            "teaching.assignment.cancel",
         }
         assert _FROZEN_ACTIONS == expected
         assert SecurityAuditExecutionChannel.WORKFLOW_ACTIVITY.value == "WORKFLOW_ACTIVITY"

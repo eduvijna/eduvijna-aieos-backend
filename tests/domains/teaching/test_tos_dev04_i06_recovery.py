@@ -298,7 +298,7 @@ class TestCrossRevision:
 class TestArchitecture:
     def test_no_migration_and_prepare_is_http_composed(self) -> None:
         versions = sorted((REPO_ROOT / "migrations" / "versions").glob("*.py"))
-        assert versions[-1].name.startswith("tosd060001_")
+        assert versions[-1].name.startswith("tosd060002_")
         assert not any(p.name.startswith("tosd040002_") for p in versions)
         # I07 composes PrepareTeachingWorkService into create_app / routes.
         factory = (

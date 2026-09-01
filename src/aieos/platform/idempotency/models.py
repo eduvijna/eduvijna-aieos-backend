@@ -16,6 +16,10 @@ CONTENT_REVIEW_REJECT_V1 = "content_review_reject.v1"
 CONTENT_PUBLISH_V1 = "content_publish.v1"
 TEACHING_WORK_CREATE_V1 = "teaching_work_create.v1"
 TEACHING_WORK_REFINE_V1 = "teaching_work_refine.v1"
+TEACHING_ASSIGNMENT_CREATE_V1 = "teaching_assignment_create.v1"
+TEACHING_ASSIGNMENT_DUE_UPDATE_V1 = "teaching_assignment_due_update.v1"
+TEACHING_ASSIGNMENT_CLOSE_V1 = "teaching_assignment_close.v1"
+TEACHING_ASSIGNMENT_CANCEL_V1 = "teaching_assignment_cancel.v1"
 
 
 @dataclass(frozen=True, slots=True)

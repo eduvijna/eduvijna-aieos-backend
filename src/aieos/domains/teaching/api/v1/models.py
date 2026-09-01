@@ -211,3 +211,49 @@ class SchoolContextClassesResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[SchoolContextClassItemResponse]
+
+
+class TeachingAssignmentCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content_id: UUID
+    content_version_id: UUID
+    class_ref: str
+    source_work_id: UUID | None = None
+    available_from: datetime | None = None
+    due_at: datetime | None = None
+
+
+class TeachingAssignmentDueUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    due_at: datetime | None = None
+
+
+class TeachingAssignmentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    assignment_id: UUID
+    teacher_principal_id: UUID
+    content_id: UUID
+    content_version_id: UUID
+    audience_type: str
+    class_ref: str
+    audience_display_label: str | None
+    source_work_id: UUID | None
+    lifecycle_state: str
+    assigned_at: datetime
+    available_from: datetime
+    due_at: datetime | None
+    closed_at: datetime | None
+    cancelled_at: datetime | None
+    aggregate_revision: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class TeachingAssignmentListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[TeachingAssignmentResponse]
+    has_more: bool

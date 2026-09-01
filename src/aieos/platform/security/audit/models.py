@@ -18,6 +18,8 @@ from aieos.platform.security.audit.actions import (
     is_content_create_action,
     is_content_increment_action,
     is_content_migration_import_action,
+    is_teaching_create_action,
+    is_teaching_increment_action,
 )
 from aieos.platform.security.audit.errors import InvalidSecurityAuditError
 from aieos.platform.security.audit.identities import AuditRecordId
@@ -131,13 +133,31 @@ def _validate_revision_pair(
                 f"{action.value} requires resource_revision_after == before + 1"
             )
         return
+    if is_teaching_create_action(action):
+        if before is not None or after != 0:
+            raise InvalidSecurityAuditError(
+                "teaching.assignment.create requires before=None and after=0"
+            )
+        return
+    if is_teaching_increment_action(action):
+        if before is None:
+            raise InvalidSecurityAuditError(
+                f"{action.value} requires a non-null resource_revision_before"
+            )
+        if after != before + 1:
+            raise InvalidSecurityAuditError(
+                f"{action.value} requires resource_revision_after == before + 1"
+            )
+        return
     raise InvalidSecurityAuditError(f"unsupported audit action: {action!r}")
 
 
 def _validate_primary_resource_revision(
     action: SecurityAuditAction, primary: ResourceRef, after: int
 ) -> None:
-    if is_content_audit_action(action):
+    if is_content_audit_action(action) or is_teaching_create_action(
+        action
+    ) or is_teaching_increment_action(action):
         if primary.resource_revision != after:
             raise InvalidSecurityAuditError(
                 "primary_resource_ref.resource_revision must equal "

@@ -8,6 +8,12 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine, Transaction
 
 from aieos.domains.teaching.application.errors import PersistenceOperationFailed
+from aieos.domains.teaching.infrastructure.persistence.audit_repository import (
+    TeachingSecurityMutationAuditRepository,
+)
+from aieos.domains.teaching.infrastructure.persistence.content_eligibility import (
+    SqlAlchemyContentAssignmentEligibilityAdapter,
+)
 from aieos.domains.teaching.infrastructure.persistence.errors import (
     reraise_as_application_error,
 )
@@ -18,6 +24,7 @@ from aieos.domains.teaching.infrastructure.persistence.repositories import (
 from aieos.platform.api.infrastructure.persistence.repositories import (
     SqlAlchemyIdempotencyRepository,
 )
+from aieos.platform.events.persistence.repositories import SqlAlchemyOutboxRepository
 
 
 class SqlAlchemyTeachingUnitOfWork:
@@ -29,6 +36,9 @@ class SqlAlchemyTeachingUnitOfWork:
         self.works: SqlAlchemyTeachingWorkRepository
         self.assignments: SqlAlchemyTeachingAssignmentRepository
         self.idempotency: SqlAlchemyIdempotencyRepository
+        self.outbox: SqlAlchemyOutboxRepository
+        self.audit: TeachingSecurityMutationAuditRepository
+        self.content_eligibility: SqlAlchemyContentAssignmentEligibilityAdapter
 
     def __enter__(self) -> SqlAlchemyTeachingUnitOfWork:
         try:
@@ -45,6 +55,11 @@ class SqlAlchemyTeachingUnitOfWork:
                 self._connection, self._execution_tenant_id
             )
             self.idempotency = SqlAlchemyIdempotencyRepository(
+                self._connection, self._execution_tenant_id
+            )
+            self.outbox = SqlAlchemyOutboxRepository(self._connection)
+            self.audit = TeachingSecurityMutationAuditRepository(self._connection)
+            self.content_eligibility = SqlAlchemyContentAssignmentEligibilityAdapter(
                 self._connection, self._execution_tenant_id
             )
             return self
