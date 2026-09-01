@@ -198,7 +198,10 @@ class TestTosd060002Migration:
                     == "tosd060002"
                 )
                 assignments = conn.execute(
-                    text("SELECT count(*) FROM teaching.assignments")
+                    text(
+                        "SELECT count(*) FROM teaching.assignments WHERE tenant_id = :tid"
+                    ),
+                    {"tid": tenant_id},
                 ).scalar_one()
                 assert int(assignments) == 1
                 with conn.begin():

@@ -192,6 +192,8 @@ class TestPublicationRaceCaseB:
         create_errors: list[BaseException] = []
         create_result: dict[str, object] = {}
 
+        republish_waiting = threading.Event()
+
         original_verify = (
             SqlAlchemyContentAssignmentEligibilityAdapter.verify_published_learner_content_with_lock
         )
@@ -203,11 +205,8 @@ class TestPublicationRaceCaseB:
                 raise TimeoutError("CREATE release barrier timed out")
             return result
 
-        SqlAlchemyContentAssignmentEligibilityAdapter.verify_published_learner_content_with_lock = (
-            patched_verify
-        )
-
         def republish_worker() -> None:
+            republish_waiting.set()
             if not lock_held.wait(timeout=10):
                 republish_errors.append(TimeoutError("republish never observed CREATE lock"))
                 return
@@ -240,47 +239,54 @@ class TestPublicationRaceCaseB:
             finally:
                 republish_done.set()
 
-        republish_thread = threading.Thread(target=republish_worker)
-        republish_thread.start()
-        factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
-        service = CreateTeachingAssignmentService(
-            factory,
-            development_class_authority(
-                tenant_id=tenant_id, teacher_principal_id=principal_id
-            ),
-            idempotency_retention=IDEMPOTENCY_RETENTION,
-        )
-
-        def create_worker() -> None:
-            try:
-                create_result["value"] = service.create(
-                    tenant_id,
-                    principal_id,
-                    CreateTeachingAssignmentCommand(
-                        content_id=content_id,
-                        content_version_id=version_v1,
-                        class_ref="class-5a",
-                    ),
-                    idempotency_key="i03-race-b",
-                    event_context=_event_context(principal_id),
-                    audit_provenance=api_mutation_audit_provenance(principal_id),
-                    now=FIXED_NOW,
-                )
-            except BaseException as exc:  # noqa: BLE001
-                create_errors.append(exc)
-            finally:
-                create_done.set()
-
-        create_thread = threading.Thread(target=create_worker)
-        create_thread.start()
-        assert lock_held.wait(timeout=10), "CREATE never acquired content head lock"
-        assert republish_attempted.wait(timeout=10), "republish never attempted during lock"
-        release_create.set()
-        create_thread.join(timeout=15)
-        republish_thread.join(timeout=15)
         SqlAlchemyContentAssignmentEligibilityAdapter.verify_published_learner_content_with_lock = (
-            original_verify
+            patched_verify
         )
+        try:
+            republish_thread = threading.Thread(target=republish_worker)
+            republish_thread.start()
+            assert republish_waiting.wait(timeout=10), "republish worker did not start"
+            factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
+            service = CreateTeachingAssignmentService(
+                factory,
+                development_class_authority(
+                    tenant_id=tenant_id, teacher_principal_id=principal_id
+                ),
+                idempotency_retention=IDEMPOTENCY_RETENTION,
+            )
+
+            def create_worker() -> None:
+                try:
+                    create_result["value"] = service.create(
+                        tenant_id,
+                        principal_id,
+                        CreateTeachingAssignmentCommand(
+                            content_id=content_id,
+                            content_version_id=version_v1,
+                            class_ref="class-5a",
+                        ),
+                        idempotency_key="i03-race-b",
+                        event_context=_event_context(principal_id),
+                        audit_provenance=api_mutation_audit_provenance(principal_id),
+                        now=FIXED_NOW,
+                    )
+                except BaseException as exc:  # noqa: BLE001
+                    create_errors.append(exc)
+                finally:
+                    create_done.set()
+
+            create_thread = threading.Thread(target=create_worker)
+            create_thread.start()
+            assert lock_held.wait(timeout=10), "CREATE never acquired content head lock"
+            assert republish_attempted.wait(timeout=10), "republish never attempted during lock"
+            release_create.set()
+            create_thread.join(timeout=15)
+            republish_thread.join(timeout=15)
+        finally:
+            SqlAlchemyContentAssignmentEligibilityAdapter.verify_published_learner_content_with_lock = (
+                original_verify
+            )
+
         assert create_done.is_set()
         assert republish_done.is_set()
         assert not create_errors, create_errors
