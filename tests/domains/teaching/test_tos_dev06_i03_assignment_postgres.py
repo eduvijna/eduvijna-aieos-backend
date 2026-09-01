@@ -209,8 +209,8 @@ class TestPublicationRaceCaseB:
             republish_attempted.set()
             try:
                 with bootstrap_engine.connect() as conn:
-                    conn.execute(text("SET lock_timeout = '5s'"))
                     with conn.begin():
+                        conn.execute(text("SET LOCAL lock_timeout = '5s'"))
                         set_tenant(conn, tenant_id)
                         conn.execute(
                             text(
