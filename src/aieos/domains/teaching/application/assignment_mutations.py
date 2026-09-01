@@ -141,6 +141,7 @@ class UpdateTeachingAssignmentDueService:
                 assignment_due_updated_outbox(
                     tenant_id=execution_tenant_id,
                     assignment_id=updated.assignment_id.value,
+                    lifecycle_state=updated.lifecycle_state.value,
                     due_at=updated.due_at,
                     aggregate_revision=int(updated.aggregate_revision),
                     context=event_context,
@@ -241,6 +242,7 @@ class CloseTeachingAssignmentService:
                 assignment_closed_outbox(
                     tenant_id=execution_tenant_id,
                     assignment_id=closed.assignment_id.value,
+                    lifecycle_state=closed.lifecycle_state.value,
                     closed_at=closed_at,
                     aggregate_revision=int(closed.aggregate_revision),
                     context=event_context,
@@ -341,6 +343,7 @@ class CancelTeachingAssignmentService:
                 assignment_cancelled_outbox(
                     tenant_id=execution_tenant_id,
                     assignment_id=cancelled.assignment_id.value,
+                    lifecycle_state=cancelled.lifecycle_state.value,
                     cancelled_at=cancelled_at,
                     aggregate_revision=int(cancelled.aggregate_revision),
                     context=event_context,

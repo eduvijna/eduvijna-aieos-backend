@@ -92,9 +92,6 @@ class CreateTeachingAssignmentService:
         audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> TeachingAssignmentReadModel:
-        self._class_authority.require_assignable_class_ref(
-            execution_tenant_id, principal_id, command.class_ref
-        )
         assigned_at = _now(now)
         fingerprint = _create_fingerprint(command)
         scope = IdempotencyScope(
@@ -162,10 +159,18 @@ class CreateTeachingAssignmentService:
                 assignment_created_outbox(
                     tenant_id=execution_tenant_id,
                     assignment_id=assignment.assignment_id.value,
+                    teacher_principal_id=assignment.teacher_principal_id,
                     content_id=assignment.content_id,
                     content_version_id=assignment.content_version_id,
                     class_ref=assignment.class_ref,
                     lifecycle_state=assignment.lifecycle_state.value,
+                    available_from=assignment.available_from,
+                    due_at=assignment.due_at,
+                    source_work_id=(
+                        None
+                        if source_work_id is None
+                        else source_work_id.value
+                    ),
                     aggregate_revision=int(assignment.aggregate_revision),
                     context=event_context,
                     created_at=assigned_at,

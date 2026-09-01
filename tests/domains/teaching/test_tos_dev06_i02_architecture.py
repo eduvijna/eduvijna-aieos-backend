@@ -31,8 +31,8 @@ def _sql_literals(path: Path) -> str:
 
 class TestI02ArchitectureGuards:
     def test_migration_head_and_chain(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd060001"
-        assert EXPECTED_MIGRATION_HEAD == "tosd060001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd060002"
+        assert EXPECTED_MIGRATION_HEAD == "tosd060002"
         text = MIGRATION.read_text(encoding="utf-8")
         assert 'revision: str = "tosd060001"' in text
         assert 'down_revision: str | None = "tosd040001"' in text
@@ -123,8 +123,8 @@ class TestI02ArchitectureGuards:
         assert "class_ref: str" in source
         assert "TeachingWork.class_label" in source  # explicit non-identity note
 
-    def test_i02_persistence_contract_under_amended_head(self) -> None:
-        """I02 table/RLS contract remains on head tosd060001 (I03 amends audit only)."""
+    def test_i02_persistence_contract_on_historical_tosd060001(self) -> None:
+        """I02 table/RLS contract remains on historical tosd060001 (audit extended by tosd060002)."""
         text = MIGRATION.read_text(encoding="utf-8")
         assert "CREATE TABLE teaching.assignments" in text
         assert "teaching_assignments_tenant_isolation" in text

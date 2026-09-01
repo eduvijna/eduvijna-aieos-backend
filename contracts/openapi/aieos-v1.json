@@ -1406,6 +1406,11 @@
             ],
             "title": "Source Work Id"
           },
+          "teacher_principal_id": {
+            "format": "uuid",
+            "title": "Teacher Principal Id",
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -1414,6 +1419,7 @@
         },
         "required": [
           "assignment_id",
+          "teacher_principal_id",
           "content_id",
           "content_version_id",
           "audience_type",

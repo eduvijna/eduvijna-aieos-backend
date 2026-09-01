@@ -128,6 +128,7 @@ class ListTeachingAssignmentsQuery:
 @dataclass(frozen=True, slots=True)
 class TeachingAssignmentReadModel:
     assignment_id: AssignmentId
+    teacher_principal_id: UUID
     content_id: UUID
     content_version_id: UUID
     audience_type: str
@@ -156,6 +157,7 @@ def teaching_assignment_read_model(
 ) -> TeachingAssignmentReadModel:
     return TeachingAssignmentReadModel(
         assignment_id=assignment.assignment_id,
+        teacher_principal_id=assignment.teacher_principal_id,
         content_id=assignment.content_id,
         content_version_id=assignment.content_version_id,
         audience_type=assignment.audience_type.value,

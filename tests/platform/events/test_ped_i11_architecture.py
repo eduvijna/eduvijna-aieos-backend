@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 from aieos.platform.events.constants import (
-    PRODUCTION_EVENT_PUBLISH_PREFIX,
     PRODUCTION_EVENT_PUBLISH_PREFIXES,
     PRODUCTION_EVENT_STREAM_NAME,
     PRODUCTION_EVENT_STREAM_SUBJECTS,
@@ -91,7 +90,6 @@ def test_stream_constants() -> None:
     assert TEST_STREAM_NAME == "AIEOS_EVENTS"
     assert PRODUCTION_EVENT_STREAM_NAME != TEST_STREAM_NAME
     assert PRODUCTION_EVENT_STREAM_SUBJECTS == ("io.eduvijna.aieos.>",)
-    assert PRODUCTION_EVENT_PUBLISH_PREFIX == "io.eduvijna.aieos.content."
     assert PRODUCTION_EVENT_PUBLISH_PREFIXES == (
         "io.eduvijna.aieos.content.",
         "io.eduvijna.aieos.teaching.",

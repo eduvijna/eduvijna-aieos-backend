@@ -173,6 +173,7 @@ def _to_assignment_response(
 ) -> TeachingAssignmentResponse:
     return TeachingAssignmentResponse(
         assignment_id=model.assignment_id.value,
+        teacher_principal_id=model.teacher_principal_id,
         content_id=model.content_id,
         content_version_id=model.content_version_id,
         audience_type=model.audience_type,

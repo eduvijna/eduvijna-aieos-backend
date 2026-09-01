@@ -234,6 +234,7 @@ class TeachingAssignmentResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     assignment_id: UUID
+    teacher_principal_id: UUID
     content_id: UUID
     content_version_id: UUID
     audience_type: str

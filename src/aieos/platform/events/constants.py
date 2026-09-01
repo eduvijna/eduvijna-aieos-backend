@@ -80,7 +80,6 @@ PRODUCTION_EVENT_PUBLISH_PREFIXES = (
     "io.eduvijna.aieos.content.",
     "io.eduvijna.aieos.teaching.",
 )
-PRODUCTION_EVENT_PUBLISH_PREFIX = PRODUCTION_EVENT_PUBLISH_PREFIXES[0]
 
 
 def content_subject(content_id: str) -> str:

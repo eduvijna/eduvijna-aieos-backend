@@ -55,15 +55,31 @@ def assignment_created_outbox(
     *,
     tenant_id: UUID,
     assignment_id: UUID,
+    teacher_principal_id: UUID,
     content_id: UUID,
     content_version_id: UUID,
     class_ref: str,
     lifecycle_state: str,
+    available_from: datetime,
+    due_at: datetime | None,
+    source_work_id: UUID | None,
     aggregate_revision: int,
     context: MutationEventContext,
     created_at: datetime,
 ) -> OutboxMessage:
     event_id = EventId.generate()
+    data: dict[str, object] = {
+        "assignment_id": str(assignment_id),
+        "teacher_principal_id": str(teacher_principal_id),
+        "content_id": str(content_id),
+        "content_version_id": str(content_version_id),
+        "class_ref": class_ref,
+        "lifecycle_state": lifecycle_state,
+        "available_from": available_from.isoformat(),
+        "due_at": None if due_at is None else due_at.isoformat(),
+    }
+    if source_work_id is not None:
+        data["source_work_id"] = str(source_work_id)
     envelope = build_teaching_cloudevent(
         event_id=event_id,
         event_type=EVENT_TEACHING_ASSIGNMENT_CREATED_V1,
@@ -72,13 +88,7 @@ def assignment_created_outbox(
         context=context,
         tenant_id=tenant_id,
         aggregate_revision=aggregate_revision,
-        data={
-            "assignment_id": str(assignment_id),
-            "content_id": str(content_id),
-            "content_version_id": str(content_version_id),
-            "class_ref": class_ref,
-            "lifecycle_state": lifecycle_state,
-        },
+        data=data,
     )
     return _base(
         event_id=event_id,
@@ -95,6 +105,7 @@ def assignment_due_updated_outbox(
     *,
     tenant_id: UUID,
     assignment_id: UUID,
+    lifecycle_state: str,
     due_at: datetime | None,
     aggregate_revision: int,
     context: MutationEventContext,
@@ -111,6 +122,7 @@ def assignment_due_updated_outbox(
         aggregate_revision=aggregate_revision,
         data={
             "assignment_id": str(assignment_id),
+            "lifecycle_state": lifecycle_state,
             "due_at": None if due_at is None else due_at.isoformat(),
         },
     )
@@ -129,6 +141,7 @@ def assignment_closed_outbox(
     *,
     tenant_id: UUID,
     assignment_id: UUID,
+    lifecycle_state: str,
     closed_at: datetime,
     aggregate_revision: int,
     context: MutationEventContext,
@@ -145,6 +158,7 @@ def assignment_closed_outbox(
         aggregate_revision=aggregate_revision,
         data={
             "assignment_id": str(assignment_id),
+            "lifecycle_state": lifecycle_state,
             "closed_at": closed_at.isoformat(),
         },
     )
@@ -163,6 +177,7 @@ def assignment_cancelled_outbox(
     *,
     tenant_id: UUID,
     assignment_id: UUID,
+    lifecycle_state: str,
     cancelled_at: datetime,
     aggregate_revision: int,
     context: MutationEventContext,
@@ -179,6 +194,7 @@ def assignment_cancelled_outbox(
         aggregate_revision=aggregate_revision,
         data={
             "assignment_id": str(assignment_id),
+            "lifecycle_state": lifecycle_state,
             "cancelled_at": cancelled_at.isoformat(),
         },
     )
