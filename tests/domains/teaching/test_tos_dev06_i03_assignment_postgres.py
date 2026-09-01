@@ -206,12 +206,12 @@ class TestPublicationRaceCaseB:
                     TimeoutError("CREATE never reached locked content eligibility")
                 )
                 return
+            republish_attempted.set()
             try:
                 with bootstrap_engine.connect() as conn:
                     conn.execute(text("SET lock_timeout = '5s'"))
                     with conn.begin():
                         set_tenant(conn, tenant_id)
-                        republish_attempted.set()
                         conn.execute(
                             text(
                                 """
