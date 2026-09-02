@@ -7,9 +7,19 @@ from typing import Protocol
 from uuid import UUID
 
 from aieos.domains.teaching.domain.assignment import TeachingAssignment
+from aieos.domains.teaching.domain.execution import TeachingExecution
+from aieos.domains.teaching.domain.execution_content_binding import (
+    TeachingExecutionContentBinding,
+)
+from aieos.domains.teaching.domain.execution_observation import (
+    TeachingExecutionObservation,
+)
 from aieos.domains.teaching.domain.identities import (
     AggregateRevision,
     AssignmentId,
+    ExecutionId,
+    ObservationId,
+    ObservationRevision,
     WorkId,
 )
 from aieos.domains.teaching.domain.work import TeachingWork
@@ -89,6 +99,48 @@ class TeachingAssignmentRepository(Protocol):
     ) -> list[TeachingAssignment]: ...
 
 
+class TeachingExecutionRepository(Protocol):
+    """Durable persistence for TeachingExecution and its conceptual children."""
+
+    def insert(self, execution: TeachingExecution) -> None: ...
+
+    def get(self, execution_id: ExecutionId) -> TeachingExecution | None: ...
+
+    def get_for_update(
+        self, execution_id: ExecutionId
+    ) -> TeachingExecution | None: ...
+
+    def update(
+        self,
+        execution: TeachingExecution,
+        *,
+        expected_revision: AggregateRevision,
+    ) -> bool: ...
+
+    def list_bindings(
+        self, execution_id: ExecutionId
+    ) -> list[TeachingExecutionContentBinding]: ...
+
+    def insert_observation(
+        self, observation: TeachingExecutionObservation
+    ) -> None: ...
+
+    def get_observation(
+        self, observation_id: ObservationId
+    ) -> TeachingExecutionObservation | None: ...
+
+    def list_observations(
+        self, execution_id: ExecutionId
+    ) -> list[TeachingExecutionObservation]: ...
+
+    def update_observation(
+        self,
+        observation: TeachingExecutionObservation,
+        *,
+        expected_revision: ObservationRevision,
+    ) -> bool: ...
+
+
 class ReviewQueuePendingCountPort(Protocol):
     """Pending Review Queue size for the current teacher in the execution tenant.
 
@@ -108,6 +160,7 @@ class TeachingClock(Protocol):
 class TeachingUnitOfWork(Protocol):
     works: TeachingWorkRepository
     assignments: TeachingAssignmentRepository
+    executions: TeachingExecutionRepository
     idempotency: IdempotencyRepository
     outbox: OutboxRepository
     audit: SecurityMutationAuditRepository

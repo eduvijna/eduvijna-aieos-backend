@@ -131,7 +131,13 @@ class TestTeachingWorkScenarioLoader:
                 ),
                 {"tid": str(tenant_id)},
             ).scalar_one()
-        assert tables == {"works", "assignments"}
+        assert tables == {
+            "works",
+            "assignments",
+            "executions",
+            "execution_content_bindings",
+            "execution_observations",
+        }
         assert works == len(WORK_SPECS)
         assert assignments == 0
 

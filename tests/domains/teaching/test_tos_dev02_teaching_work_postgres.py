@@ -529,7 +529,13 @@ class TestNoTeachingIntentSystemOfRecord:
                     )
                 )
             }
-        assert tables == {"works", "assignments"}
+        assert tables == {
+            "works",
+            "assignments",
+            "executions",
+            "execution_content_bindings",
+            "execution_observations",
+        }
         assert "teaching_intents" not in tables
         assert not any("intent" in name for name in tables)
         assert not any("mission" in name for name in tables)

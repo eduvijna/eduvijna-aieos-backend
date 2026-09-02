@@ -71,6 +71,7 @@ _EXPECTED_MIGRATIONS = [
     "tosd040001_multi_artifact_provenance_and_generation_fences.py",
     "tosd060001_teaching_assignments.py",
     "tosd060002_teaching_assignment_audit.py",
+    "tosd070001_teaching_executions.py",
 ]
 
 # Frozen SAI-I05 mutation inventory classification.

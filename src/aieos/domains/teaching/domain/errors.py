@@ -25,3 +25,11 @@ class InvalidTeachingWorkError(TeachingDomainError):
 
 class InvalidTeachingAssignmentError(TeachingDomainError):
     """A TeachingAssignment aggregate field or lifecycle transition failed."""
+
+
+class InvalidTeachingExecutionError(TeachingDomainError):
+    """A TeachingExecution aggregate field or lifecycle transition failed."""
+
+
+class InvalidTeachingExecutionObservationError(TeachingDomainError):
+    """A TeachingExecutionObservation field or mutation failed."""
