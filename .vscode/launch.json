@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "AIEOS API — Local Development",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/dev/run_local_api.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "preLaunchTask": "AIEOS: Local DB Up + Migrate"
+    }
+  ]
+}
