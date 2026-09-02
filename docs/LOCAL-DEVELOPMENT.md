@@ -88,6 +88,30 @@ Fixed local identity (deterministic):
 
 - Tenant and principal UUIDs are defined in `tools/dev/local_config.py`.
 - Production JWT/JWKS is not used locally; adapters exist only in the local launcher.
+- `/livez` reports `release.git_sha` from the **current Git HEAD** (`git rev-parse HEAD`) at F5 startup.
+
+---
+
+## CURRENT LOCAL CAPABILITIES
+
+### A. Usable now (local PostgreSQL + local adapters)
+
+- Operational health: `/livez`, `/readyz`
+- Teaching Work reads and mutations backed by local PostgreSQL, including `teaching_work_create`
+- Teaching Assignment reads and mutations (where no external dependency is required)
+- Content reads and mutations that do not require real AIStor blob storage or production authorization kernel seed data
+- Swagger exploration of registered routes with local bearer token `aieos-local-dev`
+- Mutations are enabled locally through the governed mutation interlock (`AIEOS_API_MUTATION_ACTIVATION=ENABLED` with matching local Git SHA and artifact digest)
+
+### B. Limited or unavailable without external integrations
+
+- **Real AI generation** (`teaching_work_generate`, AI worksheet flows): requires OpenAI or configured model gateway credentials not included in this checkpoint
+- **School Context class lists**: uses development synthetic data only; no live school information system
+- **Production JWT/JWKS authentication**: not used locally; local bearer token only
+- **AIStor blob ingest/asset flows**: local development uses permissive asset adapters; no real object storage backend
+- **Production authorization kernel grants**: local development uses permissive development authorization adapters; security tables are not pre-seeded with tenant membership data
+
+If a Swagger operation fails with an external dependency error, check this section before assuming a product defect.
 
 ---
 

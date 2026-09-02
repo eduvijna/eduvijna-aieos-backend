@@ -26,7 +26,12 @@ from aieos.platform.runtime.database import create_api_runtime_engine
 from aieos.platform.runtime.errors import RuntimeConfigurationError
 from aieos.platform.runtime.models import WorkloadKind
 from tools.dev.compose_local_api import compose_local_api_runtime_dependencies
-from tools.dev.local_config import API_BIND_HOST, API_BIND_PORT, apply_local_api_environ
+from tools.dev.local_config import (
+    API_BIND_HOST,
+    API_BIND_PORT,
+    apply_local_api_environ,
+    is_local_worktree_dirty,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +88,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     _ = argv
     engine = None
     try:
-        apply_local_api_environ()
+        _, source_sha = apply_local_api_environ()
+        if is_local_worktree_dirty():
+            logger.warning("LOCAL DEVELOPMENT WORKTREE DIRTY git_sha=%s", source_sha)
         config = load_api_runtime_config(os.environ)
         _configure_logging(config)
         engine = create_api_runtime_engine(config)

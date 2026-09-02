@@ -103,10 +103,113 @@ def test_openapi_digest_unchanged() -> None:
 
 
 def test_local_config_environ_uses_safe_local_database() -> None:
-    from tools.dev.local_config import build_local_api_environ
+    from tools.dev.local_config import build_local_api_environ, resolve_local_source_git_sha
 
-    env = build_local_api_environ()
+    source_sha = resolve_local_source_git_sha()
+    env = build_local_api_environ(source_sha)
     assert "AIEOS_DATABASE_URL" not in env
     assert "@127.0.0.1:55432/aieos" in env["AIEOS_RUNTIME_DATABASE_URL"]
     assert env["AIEOS_RUNTIME_DATABASE_ROLE"] == "aieos_runtime"
     assert env["AIEOS_AUTH_JWKS_URI"].startswith("https://")
+    assert env["AIEOS_GIT_SHA"] == source_sha
+
+
+def test_build_local_api_environ_rejects_invalid_source_sha() -> None:
+    from tools.dev.local_config import build_local_api_environ
+
+    with pytest.raises(ValueError, match="40 lowercase hexadecimal"):
+        build_local_api_environ("not-a-valid-git-sha")
+
+
+def test_local_f5_mutation_gate_enabled() -> None:
+    from aieos.platform.runtime.activation import (
+        MutationActivationStatus,
+        load_api_mutation_activation_gate,
+    )
+    from aieos.platform.runtime.models import ReleaseIdentity
+    from tools.dev.local_config import (
+        LOCAL_ARTIFACT_DIGEST,
+        build_local_api_environ,
+        resolve_local_source_git_sha,
+    )
+
+    source_sha = resolve_local_source_git_sha()
+    env = build_local_api_environ(source_sha)
+    assert env["AIEOS_API_MUTATION_ACTIVATION"] == "ENABLED"
+    assert env["AIEOS_API_MUTATION_AUTHORIZED_GIT_SHA"] == source_sha
+    assert env["AIEOS_API_MUTATION_AUTHORIZED_ARTIFACT_DIGEST"] == LOCAL_ARTIFACT_DIGEST
+
+    release = ReleaseIdentity(
+        application_version="0.1.0",
+        git_sha=source_sha,
+        build_id="local-f5-dev",
+        artifact_digest=LOCAL_ARTIFACT_DIGEST,
+    )
+    decision = load_api_mutation_activation_gate(env, release).check()
+    assert decision.enabled is True
+    assert decision.status == MutationActivationStatus.ENABLED
+
+
+def test_local_f5_teaching_work_create_mutation(postgres18) -> None:
+    import os
+    import uuid
+    from datetime import date, timedelta
+
+    from fastapi.testclient import TestClient
+
+    from aieos.platform.runtime.composition import compose_api_application
+    from aieos.platform.runtime.config import load_api_runtime_config
+    from aieos.platform.runtime.database import create_api_runtime_engine
+    from tools.dev.compose_local_api import compose_local_api_runtime_dependencies
+    from tools.dev.local_config import (
+        LOCAL_BEARER_TOKEN,
+        LOCAL_DEV_TENANT_ID,
+        build_local_api_environ,
+        resolve_local_source_git_sha,
+    )
+
+    source_sha = resolve_local_source_git_sha()
+    env = build_local_api_environ(source_sha)
+    env["AIEOS_RUNTIME_DATABASE_URL"] = postgres18["runtime_url"]
+    for key in list(os.environ):
+        if key.startswith("AIEOS_"):
+            del os.environ[key]
+    for key, value in env.items():
+        os.environ[key] = value
+
+    config = load_api_runtime_config(env)
+    engine = create_api_runtime_engine(config)
+    try:
+        dependencies = compose_local_api_runtime_dependencies(
+            engine=engine,
+            config=config,
+        )
+        decision = dependencies.mutation_activation_gate.check()
+        assert decision.enabled is True
+
+        app = compose_api_application(config, dependencies)
+        client = TestClient(app, raise_server_exceptions=False)
+        target_date = (date.today() + timedelta(days=1)).isoformat()
+        response = client.post(
+            "/api/v1/teaching/works",
+            json={
+                "intent_type": "prepare_tomorrow",
+                "goal_text": "Local F5 teaching work mutation proof",
+                "target_date": target_date,
+                "locale": "en-IN",
+                "class_label": "Grade 5B",
+                "subject": "Mathematics",
+                "topic": "Fractions",
+            },
+            headers={
+                "Authorization": f"Bearer {LOCAL_BEARER_TOKEN}",
+                "X-AIEOS-Tenant-ID": str(LOCAL_DEV_TENANT_ID),
+                "Idempotency-Key": f"local-f5-proof-{uuid.uuid7()}",
+            },
+        )
+        assert response.status_code == 201, response.text
+        assert "mutations_not_activated" not in response.text
+        body = response.json()
+        assert body["goal_text"] == "Local F5 teaching work mutation proof"
+    finally:
+        engine.dispose()
