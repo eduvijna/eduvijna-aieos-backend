@@ -19,6 +19,7 @@ from aieos.domains.teaching.infrastructure.persistence.errors import (
 )
 from aieos.domains.teaching.infrastructure.persistence.repositories import (
     SqlAlchemyTeachingAssignmentRepository,
+    SqlAlchemyTeachingExecutionRepository,
     SqlAlchemyTeachingWorkRepository,
 )
 from aieos.platform.api.infrastructure.persistence.repositories import (
@@ -35,6 +36,7 @@ class SqlAlchemyTeachingUnitOfWork:
         self._transaction: Transaction | None = None
         self.works: SqlAlchemyTeachingWorkRepository
         self.assignments: SqlAlchemyTeachingAssignmentRepository
+        self.executions: SqlAlchemyTeachingExecutionRepository
         self.idempotency: SqlAlchemyIdempotencyRepository
         self.outbox: SqlAlchemyOutboxRepository
         self.audit: TeachingSecurityMutationAuditRepository
@@ -52,6 +54,9 @@ class SqlAlchemyTeachingUnitOfWork:
                 self._connection, self._execution_tenant_id
             )
             self.assignments = SqlAlchemyTeachingAssignmentRepository(
+                self._connection, self._execution_tenant_id
+            )
+            self.executions = SqlAlchemyTeachingExecutionRepository(
                 self._connection, self._execution_tenant_id
             )
             self.idempotency = SqlAlchemyIdempotencyRepository(

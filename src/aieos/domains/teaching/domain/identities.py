@@ -79,6 +79,44 @@ class AssignmentId:
 
 
 @dataclass(frozen=True, slots=True)
+class ExecutionId:
+    """Stable TeachingExecution identity for classroom teaching execution."""
+
+    value: UUID
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "value", _require_uuid7(self.value, label="execution_id")
+        )
+
+    @classmethod
+    def generate(cls) -> ExecutionId:
+        return cls(uuid.uuid7())
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+
+@dataclass(frozen=True, slots=True)
+class ObservationId:
+    """Stable TeachingExecutionObservation identity."""
+
+    value: UUID
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "value", _require_uuid7(self.value, label="observation_id")
+        )
+
+    @classmethod
+    def generate(cls) -> ObservationId:
+        return cls(uuid.uuid7())
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+
+@dataclass(frozen=True, slots=True)
 class AggregateRevision:
     """Optimistic concurrency revision of a Teaching-owned aggregate."""
 
@@ -96,6 +134,29 @@ class AggregateRevision:
 
     def next(self) -> AggregateRevision:
         return AggregateRevision(self.value + 1)
+
+    def __int__(self) -> int:
+        return self.value
+
+
+@dataclass(frozen=True, slots=True)
+class ObservationRevision:
+    """Optimistic concurrency revision of a TeachingExecutionObservation."""
+
+    value: int
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.value, bool)
+            or not isinstance(self.value, int)
+            or self.value < 0
+        ):
+            raise InvalidAggregateRevisionError(
+                "observation revision must be a non-negative integer"
+            )
+
+    def next(self) -> ObservationRevision:
+        return ObservationRevision(self.value + 1)
 
     def __int__(self) -> int:
         return self.value

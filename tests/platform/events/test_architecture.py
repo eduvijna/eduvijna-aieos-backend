@@ -128,6 +128,7 @@ def test_migration_chain_and_forbidden_tables() -> None:
     "tosd040001_multi_artifact_provenance_and_generation_fences.py",
     "tosd060001_teaching_assignments.py",
     "tosd060002_teaching_assignment_audit.py",
+    "tosd070001_teaching_executions.py",
     ]
 
 

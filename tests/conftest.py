@@ -426,6 +426,52 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
             conn.execute(
                 text(f"REVOKE DELETE ON teaching.assignments FROM {RUNTIME_USER}")
             )
+            # TOS-DEV07-I01 tables may be absent on intermediate Alembic revisions.
+            has_executions = conn.execute(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_schema = 'teaching'
+                          AND table_name = 'executions'
+                    )
+                    """
+                )
+            ).scalar_one()
+            if has_executions:
+                conn.execute(
+                    text(
+                        f"GRANT SELECT, INSERT, UPDATE ON teaching.executions "
+                        f"TO {RUNTIME_USER}"
+                    )
+                )
+                conn.execute(
+                    text(f"REVOKE DELETE ON teaching.executions FROM {RUNTIME_USER}")
+                )
+                conn.execute(
+                    text(
+                        f"GRANT SELECT, INSERT ON teaching.execution_content_bindings "
+                        f"TO {RUNTIME_USER}"
+                    )
+                )
+                conn.execute(
+                    text(
+                        f"REVOKE UPDATE, DELETE ON teaching.execution_content_bindings "
+                        f"FROM {RUNTIME_USER}"
+                    )
+                )
+                conn.execute(
+                    text(
+                        f"GRANT SELECT, INSERT, UPDATE ON "
+                        f"teaching.execution_observations TO {RUNTIME_USER}"
+                    )
+                )
+                conn.execute(
+                    text(
+                        f"REVOKE DELETE ON teaching.execution_observations "
+                        f"FROM {RUNTIME_USER}"
+                    )
+                )
             conn.execute(
                 text(
                     f"GRANT EXECUTE ON FUNCTION teaching.current_tenant_id() "

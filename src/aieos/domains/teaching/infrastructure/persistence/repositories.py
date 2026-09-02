@@ -9,9 +9,20 @@ from sqlalchemy.engine import Connection
 
 from aieos.domains.teaching.application.errors import PersistenceInvariantViolation
 from aieos.domains.teaching.domain.assignment import TeachingAssignment
+from aieos.domains.teaching.domain.execution import TeachingExecution
+from aieos.domains.teaching.domain.execution_content_binding import (
+    TeachingExecutionContentBinding,
+)
+from aieos.domains.teaching.domain.execution_lifecycle import ExecutionLifecycleState
+from aieos.domains.teaching.domain.execution_observation import (
+    TeachingExecutionObservation,
+)
 from aieos.domains.teaching.domain.identities import (
     AggregateRevision,
     AssignmentId,
+    ExecutionId,
+    ObservationId,
+    ObservationRevision,
     WorkId,
 )
 from aieos.domains.teaching.domain.work import TeachingWork
@@ -20,6 +31,9 @@ from aieos.domains.teaching.infrastructure.persistence.errors import (
 )
 from aieos.domains.teaching.infrastructure.persistence.models import (
     assignments_table,
+    execution_content_bindings_table,
+    execution_observations_table,
+    executions_table,
     works_table,
 )
 
@@ -351,3 +365,322 @@ class SqlAlchemyTeachingAssignmentRepository:
         except Exception as exc:
             reraise_as_application_error(exc)
         return [teaching_assignment_from_row(row) for row in rows]
+
+
+def teaching_execution_from_row(
+    row,
+    bindings: tuple[TeachingExecutionContentBinding, ...] = (),
+) -> TeachingExecution:
+    try:
+        return TeachingExecution(
+            execution_id=ExecutionId(row["execution_id"]),
+            tenant_id=row["tenant_id"],
+            teacher_principal_id=row["teacher_principal_id"],
+            work_id=WorkId(row["work_id"]),
+            class_ref=row["class_ref"],
+            lifecycle_state=row["lifecycle_state"],
+            started_at=row["started_at"],
+            completed_at=row["completed_at"],
+            cancelled_at=row["cancelled_at"],
+            aggregate_revision=AggregateRevision(int(row["aggregate_revision"])),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            bindings=bindings,
+        )
+    except Exception as exc:
+        raise PersistenceInvariantViolation(
+            "stored TeachingExecution row violates the aggregate contract"
+        ) from exc
+
+
+def teaching_execution_binding_from_row(row) -> TeachingExecutionContentBinding:
+    try:
+        return TeachingExecutionContentBinding(
+            execution_id=ExecutionId(row["execution_id"]),
+            content_id=row["content_id"],
+            content_version_id=row["content_version_id"],
+            artifact_kind=row["artifact_kind"],
+        )
+    except Exception as exc:
+        raise PersistenceInvariantViolation(
+            "stored TeachingExecutionContentBinding row violates the contract"
+        ) from exc
+
+
+def teaching_execution_observation_from_row(row) -> TeachingExecutionObservation:
+    try:
+        return TeachingExecutionObservation(
+            observation_id=ObservationId(row["observation_id"]),
+            execution_id=ExecutionId(row["execution_id"]),
+            observation_kind=row["observation_kind"],
+            body=row["body"],
+            recorded_at=row["recorded_at"],
+            updated_at=row["updated_at"],
+            revision=ObservationRevision(int(row["revision"])),
+        )
+    except Exception as exc:
+        raise PersistenceInvariantViolation(
+            "stored TeachingExecutionObservation row violates the contract"
+        ) from exc
+
+
+class SqlAlchemyTeachingExecutionRepository:
+    def __init__(self, connection: Connection, execution_tenant_id: UUID) -> None:
+        self._connection = connection
+        self._execution_tenant_id = execution_tenant_id
+
+    def insert(self, execution: TeachingExecution) -> None:
+        try:
+            self._connection.execute(
+                executions_table.insert().values(
+                    execution_id=execution.execution_id.value,
+                    tenant_id=execution.tenant_id,
+                    teacher_principal_id=execution.teacher_principal_id,
+                    work_id=execution.work_id.value,
+                    class_ref=execution.class_ref,
+                    lifecycle_state=execution.lifecycle_state.value,
+                    started_at=execution.started_at,
+                    completed_at=execution.completed_at,
+                    cancelled_at=execution.cancelled_at,
+                    aggregate_revision=int(execution.aggregate_revision),
+                    created_at=execution.created_at,
+                    updated_at=execution.updated_at,
+                )
+            )
+            for binding in execution.bindings:
+                self._connection.execute(
+                    execution_content_bindings_table.insert().values(
+                        tenant_id=execution.tenant_id,
+                        execution_id=binding.execution_id.value,
+                        content_id=binding.content_id,
+                        content_version_id=binding.content_version_id,
+                        artifact_kind=binding.artifact_kind,
+                    )
+                )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+
+    def _load_bindings(
+        self, execution_id: ExecutionId
+    ) -> tuple[TeachingExecutionContentBinding, ...]:
+        rows = (
+            self._connection.execute(
+                select(execution_content_bindings_table)
+                .where(
+                    execution_content_bindings_table.c.execution_id
+                    == execution_id.value,
+                    execution_content_bindings_table.c.tenant_id
+                    == self._execution_tenant_id,
+                )
+                .order_by(
+                    execution_content_bindings_table.c.content_id,
+                    execution_content_bindings_table.c.content_version_id,
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return tuple(teaching_execution_binding_from_row(row) for row in rows)
+
+    def get(self, execution_id: ExecutionId) -> TeachingExecution | None:
+        try:
+            row = (
+                self._connection.execute(
+                    select(executions_table).where(
+                        executions_table.c.execution_id == execution_id.value,
+                        executions_table.c.tenant_id == self._execution_tenant_id,
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                return None
+            bindings = self._load_bindings(execution_id)
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return teaching_execution_from_row(row, bindings)
+
+    def get_for_update(
+        self, execution_id: ExecutionId
+    ) -> TeachingExecution | None:
+        try:
+            row = (
+                self._connection.execute(
+                    select(executions_table)
+                    .where(
+                        executions_table.c.execution_id == execution_id.value,
+                        executions_table.c.tenant_id == self._execution_tenant_id,
+                    )
+                    .with_for_update()
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                return None
+            bindings = self._load_bindings(execution_id)
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return teaching_execution_from_row(row, bindings)
+
+    def update(
+        self,
+        execution: TeachingExecution,
+        *,
+        expected_revision: AggregateRevision,
+    ) -> bool:
+        """Compare-and-set mutable execution lifecycle. False means a lost race."""
+        try:
+            result = self._connection.execute(
+                update(executions_table)
+                .where(
+                    executions_table.c.execution_id == execution.execution_id.value,
+                    executions_table.c.tenant_id == self._execution_tenant_id,
+                    executions_table.c.aggregate_revision == int(expected_revision),
+                )
+                .values(
+                    lifecycle_state=execution.lifecycle_state.value,
+                    completed_at=execution.completed_at,
+                    cancelled_at=execution.cancelled_at,
+                    aggregate_revision=int(execution.aggregate_revision),
+                    updated_at=execution.updated_at,
+                )
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return result.rowcount == 1
+
+    def list_bindings(
+        self, execution_id: ExecutionId
+    ) -> list[TeachingExecutionContentBinding]:
+        try:
+            return list(self._load_bindings(execution_id))
+        except Exception as exc:
+            reraise_as_application_error(exc)
+
+    def insert_observation(
+        self, observation: TeachingExecutionObservation
+    ) -> None:
+        """Insert observation only while parent execution is IN_PROGRESS.
+
+        Locks the parent execution row so terminalization races fail closed.
+        """
+        try:
+            parent = self.get_for_update(observation.execution_id)
+            if parent is None:
+                raise PersistenceInvariantViolation(
+                    "cannot insert observation for unknown TeachingExecution"
+                )
+            if parent.lifecycle_state is not ExecutionLifecycleState.IN_PROGRESS:
+                raise PersistenceInvariantViolation(
+                    "observations cannot be created after TeachingExecution "
+                    "becomes terminal"
+                )
+            self._connection.execute(
+                execution_observations_table.insert().values(
+                    observation_id=observation.observation_id.value,
+                    tenant_id=self._execution_tenant_id,
+                    execution_id=observation.execution_id.value,
+                    observation_kind=observation.observation_kind.value,
+                    body=observation.body,
+                    recorded_at=observation.recorded_at,
+                    updated_at=observation.updated_at,
+                    revision=int(observation.revision),
+                )
+            )
+        except PersistenceInvariantViolation:
+            raise
+        except Exception as exc:
+            reraise_as_application_error(exc)
+
+    def get_observation(
+        self, observation_id: ObservationId
+    ) -> TeachingExecutionObservation | None:
+        try:
+            row = (
+                self._connection.execute(
+                    select(execution_observations_table).where(
+                        execution_observations_table.c.observation_id
+                        == observation_id.value,
+                        execution_observations_table.c.tenant_id
+                        == self._execution_tenant_id,
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if row is None:
+            return None
+        return teaching_execution_observation_from_row(row)
+
+    def list_observations(
+        self, execution_id: ExecutionId
+    ) -> list[TeachingExecutionObservation]:
+        try:
+            rows = (
+                self._connection.execute(
+                    select(execution_observations_table)
+                    .where(
+                        execution_observations_table.c.execution_id
+                        == execution_id.value,
+                        execution_observations_table.c.tenant_id
+                        == self._execution_tenant_id,
+                    )
+                    .order_by(
+                        execution_observations_table.c.recorded_at.asc(),
+                        execution_observations_table.c.observation_id.asc(),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return [teaching_execution_observation_from_row(row) for row in rows]
+
+    def update_observation(
+        self,
+        observation: TeachingExecutionObservation,
+        *,
+        expected_revision: ObservationRevision,
+    ) -> bool:
+        """CAS observation correction while parent remains IN_PROGRESS.
+
+        Locks the parent execution first so a race with terminalization fails
+        closed rather than permitting post-terminal mutation.
+        """
+        try:
+            parent = self.get_for_update(observation.execution_id)
+            if parent is None:
+                raise PersistenceInvariantViolation(
+                    "cannot update observation for unknown TeachingExecution"
+                )
+            if parent.lifecycle_state is not ExecutionLifecycleState.IN_PROGRESS:
+                raise PersistenceInvariantViolation(
+                    "observations are immutable after TeachingExecution becomes "
+                    "terminal"
+                )
+            result = self._connection.execute(
+                update(execution_observations_table)
+                .where(
+                    execution_observations_table.c.observation_id
+                    == observation.observation_id.value,
+                    execution_observations_table.c.tenant_id
+                    == self._execution_tenant_id,
+                    execution_observations_table.c.revision
+                    == int(expected_revision),
+                )
+                .values(
+                    body=observation.body,
+                    updated_at=observation.updated_at,
+                    revision=int(observation.revision),
+                )
+            )
+        except PersistenceInvariantViolation:
+            raise
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return result.rowcount == 1

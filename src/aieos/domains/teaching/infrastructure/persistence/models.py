@@ -184,3 +184,171 @@ assignments_table = Table(
     ),
     schema="teaching",
 )
+
+
+executions_table = Table(
+    "executions",
+    teaching_metadata,
+    Column("execution_id", UUID(as_uuid=True), nullable=False),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("teacher_principal_id", UUID(as_uuid=True), nullable=False),
+    Column("work_id", UUID(as_uuid=True), nullable=False),
+    # Opaque School Context ClassRef. NOT a Class SoR foreign key.
+    Column("class_ref", Text, nullable=False),
+    Column("lifecycle_state", Text, nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("completed_at", DateTime(timezone=True), nullable=True),
+    Column("cancelled_at", DateTime(timezone=True), nullable=True),
+    Column("aggregate_revision", BigInteger, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    PrimaryKeyConstraint("execution_id", name="pk_teaching_executions"),
+    UniqueConstraint(
+        "tenant_id",
+        "execution_id",
+        name="uq_teaching_executions_tenant_execution",
+    ),
+    CheckConstraint(
+        "aggregate_revision >= 0",
+        name="ck_teaching_executions_aggregate_revision_nonnegative",
+    ),
+    CheckConstraint(
+        "btrim(class_ref) <> ''",
+        name="ck_teaching_executions_class_ref_nonempty",
+    ),
+    CheckConstraint(
+        "lifecycle_state IN ('IN_PROGRESS', 'COMPLETED', 'CANCELLED')",
+        name="ck_teaching_executions_lifecycle_state",
+    ),
+    CheckConstraint(
+        "("
+        "lifecycle_state = 'IN_PROGRESS' "
+        "AND completed_at IS NULL AND cancelled_at IS NULL"
+        ") OR ("
+        "lifecycle_state = 'COMPLETED' "
+        "AND completed_at IS NOT NULL AND cancelled_at IS NULL"
+        ") OR ("
+        "lifecycle_state = 'CANCELLED' "
+        "AND cancelled_at IS NOT NULL AND completed_at IS NULL"
+        ")",
+        name="ck_teaching_executions_lifecycle_timestamps",
+    ),
+    CheckConstraint(
+        "updated_at >= created_at",
+        name="ck_teaching_executions_updated_after_created",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "work_id"],
+        ["teaching.works.tenant_id", "teaching.works.work_id"],
+        name="fk_teaching_executions_work",
+        ondelete="RESTRICT",
+    ),
+    Index(
+        "ix_teaching_executions_tenant_teacher",
+        "tenant_id",
+        "teacher_principal_id",
+    ),
+    Index(
+        "ix_teaching_executions_tenant_teacher_lifecycle",
+        "tenant_id",
+        "teacher_principal_id",
+        "lifecycle_state",
+    ),
+    Index("ix_teaching_executions_tenant_work", "tenant_id", "work_id"),
+    Index("ix_teaching_executions_tenant_class_ref", "tenant_id", "class_ref"),
+    schema="teaching",
+)
+
+
+execution_content_bindings_table = Table(
+    "execution_content_bindings",
+    teaching_metadata,
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("execution_id", UUID(as_uuid=True), nullable=False),
+    Column("content_id", UUID(as_uuid=True), nullable=False),
+    Column("content_version_id", UUID(as_uuid=True), nullable=False),
+    Column("artifact_kind", Text, nullable=False),
+    PrimaryKeyConstraint(
+        "tenant_id",
+        "execution_id",
+        "content_id",
+        "content_version_id",
+        name="pk_teaching_execution_content_bindings",
+    ),
+    CheckConstraint(
+        "btrim(artifact_kind) <> ''",
+        name="ck_teaching_execution_content_bindings_artifact_kind_nonempty",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "execution_id"],
+        ["teaching.executions.tenant_id", "teaching.executions.execution_id"],
+        name="fk_teaching_execution_content_bindings_execution",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "content_id", "content_version_id"],
+        [
+            "content.content_versions.tenant_id",
+            "content.content_versions.content_id",
+            "content.content_versions.version_id",
+        ],
+        name="fk_teaching_execution_content_bindings_content_version",
+        ondelete="RESTRICT",
+    ),
+    Index(
+        "ix_teaching_execution_content_bindings_tenant_execution",
+        "tenant_id",
+        "execution_id",
+    ),
+    schema="teaching",
+)
+
+
+execution_observations_table = Table(
+    "execution_observations",
+    teaching_metadata,
+    Column("observation_id", UUID(as_uuid=True), nullable=False),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("execution_id", UUID(as_uuid=True), nullable=False),
+    Column("observation_kind", Text, nullable=False),
+    Column("body", Text, nullable=False),
+    Column("recorded_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("revision", BigInteger, nullable=False),
+    PrimaryKeyConstraint(
+        "observation_id", name="pk_teaching_execution_observations"
+    ),
+    UniqueConstraint(
+        "tenant_id",
+        "observation_id",
+        name="uq_teaching_execution_observations_tenant_observation",
+    ),
+    CheckConstraint(
+        "observation_kind IN ('PRIVATE_EXECUTION_NOTE', 'CLASS_OBSERVATION')",
+        name="ck_teaching_execution_observations_kind",
+    ),
+    CheckConstraint(
+        "btrim(body) <> ''",
+        name="ck_teaching_execution_observations_body_nonempty",
+    ),
+    CheckConstraint(
+        "revision >= 0",
+        name="ck_teaching_execution_observations_revision_nonnegative",
+    ),
+    CheckConstraint(
+        "updated_at >= recorded_at",
+        name="ck_teaching_execution_observations_updated_after_recorded",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "execution_id"],
+        ["teaching.executions.tenant_id", "teaching.executions.execution_id"],
+        name="fk_teaching_execution_observations_execution",
+        ondelete="RESTRICT",
+    ),
+    Index(
+        "ix_teaching_execution_observations_tenant_execution",
+        "tenant_id",
+        "execution_id",
+    ),
+    schema="teaching",
+)

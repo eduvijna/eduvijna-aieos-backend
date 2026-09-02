@@ -9,6 +9,15 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV07-I01 — TeachingExecution domain + PostgreSQL persistence/RLS:
+  `ExecutionId` / `ObservationId` (UUIDv7), `TeachingExecution` aggregate with
+  IN_PROGRESS/COMPLETED/CANCELLED lifecycle, immutable exact ContentVersion
+  bindings, PRIVATE_EXECUTION_NOTE / CLASS_OBSERVATION observations with
+  terminal immutability, `teaching.executions` /
+  `teaching.execution_content_bindings` / `teaching.execution_observations`
+  (`tosd070001`), tenant RLS, repository + Teaching UoW composition. No Teach
+  HTTP/API, ClassRef current-authority gate, events/audit, PreparationKit,
+  learner observations, or OpenAPI change. Alembic head `tosd070001`.
 - TOS-DEV06-I03 — TeachingAssignment application/API/events/audit on amended
   head `tosd060001`: CREATE/due-update/close/cancel command services with
   Idempotency-Key, If-Match, dual CREATE gates (School Context ClassRef
