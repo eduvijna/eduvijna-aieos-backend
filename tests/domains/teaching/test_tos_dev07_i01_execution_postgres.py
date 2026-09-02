@@ -14,10 +14,16 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from aieos.domains.content.domain.version import ContentPayload, canonical_payload_json
-from aieos.domains.teaching.application.errors import PersistenceInvariantViolation
+from aieos.domains.teaching.application.errors import (
+    PersistenceInvariantViolation,
+    PersistenceOperationFailed,
+)
 from aieos.domains.teaching.domain.execution import TeachingExecution
 from aieos.domains.teaching.domain.execution_content_binding import ContentBindingSpec
 from aieos.domains.teaching.domain.execution_lifecycle import ExecutionLifecycleState
+from aieos.domains.teaching.domain.execution_observation import (
+    TeachingExecutionObservation,
+)
 from aieos.domains.teaching.domain.identities import (
     AggregateRevision,
     ObservationRevision,
@@ -307,12 +313,10 @@ class TestExecutionPersistence:
             assert uow.executions.get(created.execution_id) is None
             assert uow.executions.get_observation(note.observation_id) is None
             assert uow.executions.list_bindings(created.execution_id) == []
-        # Cross-tenant insert must fail (FK / RLS) when using tenant B context
-        # with tenant A identifiers.
+        # Cross-tenant insert must fail closed (RLS WITH CHECK) when using
+        # tenant B context with tenant A identifiers.
         with factory(tenant_b) as uow:
-            with pytest.raises(
-                (PersistenceInvariantViolation, Exception)
-            ):
+            with pytest.raises(PersistenceOperationFailed):
                 cross = TeachingExecution.start(
                     tenant_id=tenant_a,
                     teacher_principal_id=principal_id,
@@ -322,6 +326,148 @@ class TestExecutionPersistence:
                 )
                 uow.executions.insert(cross)
                 uow.commit()
+
+    def test_cross_tenant_execution_update_fails_closed(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_a = uuid.uuid7()
+        tenant_b = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
+        work_id = _seed_work(
+            factory, tenant_id=tenant_a, principal_id=principal_id
+        )
+        created = _execution(
+            tenant_id=tenant_a, principal_id=principal_id, work_id=work_id
+        )
+        with factory(tenant_a) as uow:
+            uow.executions.insert(created)
+            uow.commit()
+        completed = created.complete(
+            completed_at=FIXED_NOW + timedelta(seconds=1)
+        )
+        with factory(tenant_b) as uow:
+            assert not uow.executions.update(
+                completed, expected_revision=created.aggregate_revision
+            )
+            uow.commit()
+        with factory(tenant_a) as uow:
+            loaded = uow.executions.get(created.execution_id)
+        assert loaded is not None
+        assert loaded.lifecycle_state is ExecutionLifecycleState.IN_PROGRESS
+        assert loaded.completed_at is None
+        assert int(loaded.aggregate_revision) == 0
+
+    def test_cross_tenant_observation_update_fails_closed(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_a = uuid.uuid7()
+        tenant_b = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
+        work_id = _seed_work(
+            factory, tenant_id=tenant_a, principal_id=principal_id
+        )
+        created = _execution(
+            tenant_id=tenant_a, principal_id=principal_id, work_id=work_id
+        )
+        with factory(tenant_a) as uow:
+            uow.executions.insert(created)
+            note = created.create_observation(
+                observation_kind=ObservationKind.PRIVATE_EXECUTION_NOTE,
+                body="owned by A",
+                recorded_at=FIXED_NOW,
+            )
+            uow.executions.insert_observation(note)
+            uow.commit()
+        corrected = note.correct(
+            body="cross-tenant attempt",
+            updated_at=FIXED_NOW + timedelta(seconds=1),
+        )
+        with factory(tenant_b) as uow:
+            with pytest.raises(PersistenceInvariantViolation):
+                uow.executions.update_observation(
+                    corrected, expected_revision=note.revision
+                )
+        with factory(tenant_a) as uow:
+            loaded = uow.executions.get_observation(note.observation_id)
+        assert loaded is not None
+        assert loaded.body == "owned by A"
+        assert int(loaded.revision) == 0
+        assert loaded.execution_id == created.execution_id
+
+    def test_spoofed_in_progress_parent_cannot_mutate_terminal_observation(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        principal_id = uuid.uuid7()
+        factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
+        work_id = _seed_work(
+            factory, tenant_id=tenant_id, principal_id=principal_id
+        )
+        execution_a = _execution(
+            tenant_id=tenant_id,
+            principal_id=principal_id,
+            work_id=work_id,
+            class_ref="class-a",
+            started_at=FIXED_NOW,
+        )
+        with factory(tenant_id) as uow:
+            uow.executions.insert(execution_a)
+            note = execution_a.create_observation(
+                observation_kind=ObservationKind.CLASS_OBSERVATION,
+                body="belongs to A",
+                recorded_at=FIXED_NOW,
+            )
+            uow.executions.insert_observation(note)
+            current_a = uow.executions.get_for_update(execution_a.execution_id)
+            assert current_a is not None
+            terminal_a = current_a.complete(
+                completed_at=FIXED_NOW + timedelta(seconds=1)
+            )
+            assert uow.executions.update(
+                terminal_a, expected_revision=current_a.aggregate_revision
+            )
+            uow.commit()
+
+        execution_b = _execution(
+            tenant_id=tenant_id,
+            principal_id=principal_id,
+            work_id=work_id,
+            class_ref="class-b",
+            started_at=FIXED_NOW + timedelta(seconds=2),
+        )
+        with factory(tenant_id) as uow:
+            uow.executions.insert(execution_b)
+            uow.commit()
+
+        spoofed = TeachingExecutionObservation(
+            observation_id=note.observation_id,
+            execution_id=execution_b.execution_id,
+            observation_kind=note.observation_kind,
+            body="mutated via B",
+            recorded_at=note.recorded_at,
+            updated_at=FIXED_NOW + timedelta(seconds=5),
+            revision=note.revision.next(),
+        )
+        with factory(tenant_id) as uow:
+            assert not uow.executions.update_observation(
+                spoofed, expected_revision=note.revision
+            )
+            uow.commit()
+
+        with factory(tenant_id) as uow:
+            loaded_note = uow.executions.get_observation(note.observation_id)
+            loaded_a = uow.executions.get(execution_a.execution_id)
+            loaded_b = uow.executions.get(execution_b.execution_id)
+        assert loaded_note is not None
+        assert loaded_note.execution_id == execution_a.execution_id
+        assert loaded_note.body == "belongs to A"
+        assert int(loaded_note.revision) == 0
+        assert loaded_a is not None
+        assert loaded_a.lifecycle_state is ExecutionLifecycleState.COMPLETED
+        assert loaded_b is not None
+        assert loaded_b.lifecycle_state is ExecutionLifecycleState.IN_PROGRESS
 
     def test_binding_cannot_cross_tenant(
         self, runtime_engine: Engine, bootstrap_engine: Engine

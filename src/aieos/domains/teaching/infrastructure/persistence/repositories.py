@@ -649,8 +649,11 @@ class SqlAlchemyTeachingExecutionRepository:
     ) -> bool:
         """CAS observation correction while parent remains IN_PROGRESS.
 
-        Locks the parent execution first so a race with terminalization fails
-        closed rather than permitting post-terminal mutation.
+        Locks the claimed parent execution first so a race with terminalization
+        fails closed. The CAS predicate also requires the stored observation's
+        execution_id to match the claimed parent, so a caller cannot authorize
+        mutation of a terminal-owned observation by supplying a different
+        IN_PROGRESS execution_id.
         """
         try:
             parent = self.get_for_update(observation.execution_id)
@@ -670,6 +673,8 @@ class SqlAlchemyTeachingExecutionRepository:
                     == observation.observation_id.value,
                     execution_observations_table.c.tenant_id
                     == self._execution_tenant_id,
+                    execution_observations_table.c.execution_id
+                    == observation.execution_id.value,
                     execution_observations_table.c.revision
                     == int(expected_revision),
                 )
