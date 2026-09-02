@@ -1,0 +1,59 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AIEOS: Local DB Up + Migrate",
+      "type": "shell",
+      "command": "uv run python tools/dev/local_db.py up",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
+    },
+    {
+      "label": "AIEOS: Local DB Status",
+      "type": "shell",
+      "command": "uv run python tools/dev/local_db.py status",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "AIEOS: Local DB Stop",
+      "type": "shell",
+      "command": "uv run python tools/dev/local_db.py stop",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "AIEOS: Local DB Reset",
+      "type": "shell",
+      "command": "uv run python tools/dev/local_db.py reset --confirm",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "AIEOS: Open API Docs",
+      "type": "shell",
+      "command": "Start-Process http://127.0.0.1:8080/docs",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

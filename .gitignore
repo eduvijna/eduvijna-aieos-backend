@@ -11,6 +11,8 @@ Desktop.ini
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json.example
+!.vscode/launch.json
+!.vscode/tasks.json
 *.swp
 *.swo
 *~
@@ -22,6 +24,7 @@ Desktop.ini
 .env
 .env.*
 !.env.example
+!.env.local.example
 *.pem
 *.key
 *.p12
