@@ -115,7 +115,7 @@ Use **`aieos_bootstrap`** when you want to see all local schemas and tables. Row
 |---------|-------|
 | Container | `aieos-local-postgres` |
 | Image | `postgres:18` |
-| Volume | `aieos-local-postgres-data` |
+| Volume | `aieos-local-postgres-data` (mounted at `/var/lib/postgresql` per PostgreSQL 18 image requirements) |
 
 ---
 
