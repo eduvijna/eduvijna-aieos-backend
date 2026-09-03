@@ -69,12 +69,14 @@ def _create_fingerprint(
 
 
 def _correct_fingerprint(
+    execution_id: ExecutionId,
     observation_id: ObservationId,
     expected_revision: ObservationRevision,
     command: CorrectTeachingExecutionObservationCommand,
 ) -> str:
     return fingerprint_material(
         {
+            "execution_id": str(execution_id),
             "observation_id": str(observation_id),
             "expected_revision": int(expected_revision),
             "body": command.body,
@@ -232,7 +234,7 @@ class CorrectTeachingExecutionObservationService:
         now: datetime | None = None,
     ) -> TeachingExecutionObservationReadModel:
         fingerprint = _correct_fingerprint(
-            observation_id, expected_revision, command
+            execution_id, observation_id, expected_revision, command
         )
         scope = IdempotencyScope(
             tenant_id=execution_tenant_id,
@@ -253,6 +255,11 @@ class CorrectTeachingExecutionObservationService:
                 if replayed is None:
                     raise PersistenceInvariantViolation(
                         "idempotent observation correct outcome is not visible"
+                    )
+                if replayed.execution_id != execution_id:
+                    raise PersistenceInvariantViolation(
+                        "idempotent observation correct outcome does not belong "
+                        "to the requested execution"
                     )
                 return teaching_execution_observation_read_model(replayed)
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -22,6 +23,7 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 )
 from aieos.domains.teaching.application.artifacts import (
     ListTeachingWorkArtifactsService,
+    WorkArtifactItem,
     WorkArtifactsResult,
 )
 from aieos.domains.teaching.application.audit import api_mutation_audit_provenance
@@ -390,4 +392,56 @@ def count_executions(bootstrap_engine: Engine, *, tenant_id: UUID) -> int:
         bootstrap_engine,
         "SELECT count(*) FROM teaching.executions WHERE tenant_id = :tid",
         tenant_id=tenant_id,
+    )
+
+
+def count_idempotency_outcomes(
+    bootstrap_engine: Engine,
+    *,
+    tenant_id: UUID,
+    principal_id: UUID | None = None,
+) -> int:
+    sql = """
+        SELECT count(*) FROM api.idempotency_records
+        WHERE tenant_id = :tid
+    """
+    extra: dict[str, Any] = {}
+    if principal_id is not None:
+        sql += " AND actor_principal_id = :pid"
+        extra["pid"] = principal_id
+    return count_rows(bootstrap_engine, sql, tenant_id=tenant_id, extra=extra)
+
+
+@dataclass(frozen=True, slots=True)
+class FixedTeachingWorkArtifacts:
+    """Deterministic Work artifact projection for binding START tests."""
+
+    items: tuple[WorkArtifactItem, ...]
+
+    def list(
+        self,
+        execution_tenant_id: UUID,
+        principal_id: UUID,
+        work_id: WorkId,
+    ) -> WorkArtifactsResult:
+        return WorkArtifactsResult(work_id=work_id, items=self.items)
+
+
+def work_artifact(
+    *,
+    content_id: UUID,
+    version_id: UUID,
+    content_type: str,
+    artifact_kind: str | None = None,
+) -> WorkArtifactItem:
+    return WorkArtifactItem(
+        content_id=content_id,
+        version_id=version_id,
+        content_type=content_type,
+        title=content_type,
+        origin="AI",
+        stewardship_state="APPROVED",
+        aggregate_revision=1,
+        educational_quality=None,
+        artifact_kind=artifact_kind or content_type,
     )

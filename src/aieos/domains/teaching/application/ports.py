@@ -101,6 +101,8 @@ class TeachingAssignmentRepository(Protocol):
         teacher_principal_id: UUID,
         limit: int,
         lifecycle_state: str | None = None,
+        source_work_id: WorkId | None = None,
+        class_ref: str | None = None,
     ) -> list[TeachingAssignment]: ...
 
 

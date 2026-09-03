@@ -11,7 +11,10 @@ from aieos.domains.content.infrastructure.persistence.repositories import (
     SqlAlchemyContentRepository,
     SqlAlchemyContentVersionRepository,
 )
-from aieos.domains.education.schema import is_learner_assignable_content_type
+from aieos.domains.education.schema import (
+    ContentAudience,
+    PREPARATION_ARTIFACT_AUDIENCE,
+)
 from aieos.domains.teaching.application.errors import (
     ContentNotEligibleForAssignment,
     ContentNotFoundForAssignment,
@@ -67,3 +70,13 @@ class SqlAlchemyContentAssignmentEligibilityAdapter:
             raise ExecutionContentBindingRejected(
                 "ContentVersion does not exist under the requested Content"
             )
+        audience = PREPARATION_ARTIFACT_AUDIENCE.get(head.content_type)
+        if audience is None:
+            raise ExecutionContentBindingRejected(
+                "Content type has no classified teaching audience for execution binding"
+            )
+        if audience is ContentAudience.LEARNER:
+            if head.published_version_id != content_version_id:
+                raise ContentVersionMismatch(
+                    "requested ContentVersion is not the published exact version"
+                )

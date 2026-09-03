@@ -17,6 +17,11 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
   no observation events), security audit (`teaching.execution.*`), HTTP under
   `/api/v1/teaching/executions` and `GET /api/v1/teacher-os/teach/context`.
   No new Alembic revision; head remains `tosd070002`.
+- TOS-DEV07-I02R1 (PR #38 correction) — execution binding Publication authority
+  for learner-facing worksheet/quiz/homework; observation-correct fingerprint
+  includes `execution_id`; Teach composition filters assignments by
+  `source_work_id` + `class_ref` at the repository boundary before limit.
+  Alembic head remains `tosd070002`; OpenAPI unchanged.
 - TOS-DEV07-I02R1 — TeachingExecution security audit vocabulary substrate:
   forward Alembic `tosd070002` extends `security.audit_records` CHECK
   constraints for `teaching.execution.start|complete|cancel` and

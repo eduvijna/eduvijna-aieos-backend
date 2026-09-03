@@ -28,8 +28,13 @@ class ContentAssignmentEligibilityPort(Protocol):
         content_id: ContentId,
         content_version_id: ContentVersionId,
     ) -> None:
-        """Lock Content head and verify the exact ContentVersion belongs to it.
+        """Lock Content head and verify exact ContentVersion for execution binding.
 
-        Does not require published or learner-assignable status. Raises when
-        Content is missing or the version does not exist under that Content.
+        Always requires Content visibility and that the version belongs to that
+        Content under the execution tenant. Learner-facing preparation types
+        (worksheet/quiz/homework) additionally require published_version_id to
+        equal the requested ContentVersion. Teacher-only preparation types
+        (lesson_plan/answer_key/teacher_notes) keep exact-version ownership
+        without a learner Publication requirement. Unknown/unclassified
+        content types fail closed.
         """

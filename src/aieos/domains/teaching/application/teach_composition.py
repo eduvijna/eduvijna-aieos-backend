@@ -28,8 +28,7 @@ from aieos.domains.teaching.application.school_context import (
 )
 from aieos.domains.teaching.domain.identities import WorkId
 
-# Composition relevance scan — assignments lack work_id/class_ref list filters.
-_ASSIGNMENT_SCAN_LIMIT = 100
+_COMPOSITION_RESULT_LIMIT = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,11 +79,13 @@ class GetTeacherOsTeachContextService:
                 )
             assignment_rows = uow.assignments.list_for_teacher(
                 teacher_principal_id=principal_id,
-                limit=_ASSIGNMENT_SCAN_LIMIT,
+                limit=_COMPOSITION_RESULT_LIMIT,
+                source_work_id=work_id,
+                class_ref=class_target.class_ref,
             )
             execution_rows = uow.executions.list_for_teacher(
                 teacher_principal_id=principal_id,
-                limit=_ASSIGNMENT_SCAN_LIMIT,
+                limit=_COMPOSITION_RESULT_LIMIT,
                 work_id=work_id,
                 class_ref=class_target.class_ref,
             )
@@ -92,19 +93,14 @@ class GetTeacherOsTeachContextService:
         artifacts = self._artifacts.list(
             execution_tenant_id, principal_id, work_id
         )
-        relevant_assignments = tuple(
-            teaching_assignment_read_model(row)
-            for row in assignment_rows
-            if row.source_work_id is not None
-            and row.source_work_id == work_id
-            and row.class_ref == class_target.class_ref
-        )
         return TeacherOsTeachContextReadModel(
             work=teaching_work_read_model(work),
             class_ref=class_target.class_ref,
             class_display_label=class_target.display_label,
             artifacts=artifacts,
-            assignments=relevant_assignments,
+            assignments=tuple(
+                teaching_assignment_read_model(row) for row in assignment_rows
+            ),
             executions=tuple(
                 teaching_execution_read_model(row) for row in execution_rows
             ),

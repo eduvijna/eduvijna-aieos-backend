@@ -347,6 +347,8 @@ class SqlAlchemyTeachingAssignmentRepository:
         teacher_principal_id: UUID,
         limit: int,
         lifecycle_state: str | None = None,
+        source_work_id: WorkId | None = None,
+        class_ref: str | None = None,
     ) -> list[TeachingAssignment]:
         statement = select(assignments_table).where(
             assignments_table.c.tenant_id == self._execution_tenant_id,
@@ -356,6 +358,12 @@ class SqlAlchemyTeachingAssignmentRepository:
             statement = statement.where(
                 assignments_table.c.lifecycle_state == lifecycle_state
             )
+        if source_work_id is not None:
+            statement = statement.where(
+                assignments_table.c.source_work_id == source_work_id.value
+            )
+        if class_ref is not None:
+            statement = statement.where(assignments_table.c.class_ref == class_ref)
         statement = statement.order_by(
             assignments_table.c.updated_at.desc(),
             assignments_table.c.assignment_id.desc(),
