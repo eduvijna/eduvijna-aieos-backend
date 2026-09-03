@@ -24,6 +24,11 @@ _MUTATION_IDEMPOTENCY_IDS = {
     "teaching_work_refine",
     "teaching_work_generate",
     "teaching_work_prepare",
+    "teaching_execution_start",
+    "teaching_execution_complete",
+    "teaching_execution_cancel",
+    "teaching_execution_observation_create",
+    "teaching_execution_observation_correct",
 }
 _IF_MATCH_OPERATION_IDS = {
     "content_version_append",
@@ -35,6 +40,9 @@ _IF_MATCH_OPERATION_IDS = {
     "teaching_work_refine",
     "teaching_work_generate",
     "teaching_work_prepare",
+    "teaching_execution_complete",
+    "teaching_execution_cancel",
+    "teaching_execution_observation_correct",
 }
 _GET_OPERATION_IDS = {
     "content_get",
@@ -47,6 +55,9 @@ _GET_OPERATION_IDS = {
     "teacher_os_today_mission",
     "teacher_os_school_context_classes_list",
     "teaching_work_artifacts_list",
+    "teaching_execution_get",
+    "teaching_execution_list",
+    "teacher_os_teach_context_get",
 }
 
 _IDEMPOTENCY_PARAM = {
@@ -170,6 +181,12 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                     "teaching_work_create",
                     "teaching_work_get",
                     "teaching_work_refine",
+                    "teaching_execution_start",
+                    "teaching_execution_get",
+                    "teaching_execution_complete",
+                    "teaching_execution_cancel",
+                    "teaching_execution_observation_create",
+                    "teaching_execution_observation_correct",
                 }:
                     headers["ETag"] = {
                         "description": "Opaque aggregate revision validator",
@@ -183,6 +200,11 @@ def build_openapi(app: FastAPI) -> dict[str, Any]:
                 if status == "201" and operation_id == "teaching_work_create":
                     headers["Location"] = {
                         "description": "Canonical Teaching Work URL",
+                        "schema": {"type": "string"},
+                    }
+                if status == "201" and operation_id == "teaching_execution_start":
+                    headers["Location"] = {
+                        "description": "Canonical TeachingExecution URL",
                         "schema": {"type": "string"},
                     }
                 if status == "201" and operation_id == "content_version_append":

@@ -9,6 +9,14 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV07-I02 — TeachingExecution teach composition application/API:
+  start/complete/cancel + observation create/correct services with ClassRef
+  current-authority gate, optional Work artifact bindings (zero bindings OK),
+  Idempotency-Key / If-Match concurrency, transactional outbox
+  (`io.eduvijna.aieos.teaching.execution.{started,completed,cancelled}.v1`;
+  no observation events), security audit (`teaching.execution.*`), HTTP under
+  `/api/v1/teaching/executions` and `GET /api/v1/teacher-os/teach/context`.
+  No new Alembic revision; head remains `tosd070002`.
 - TOS-DEV07-I02R1 — TeachingExecution security audit vocabulary substrate:
   forward Alembic `tosd070002` extends `security.audit_records` CHECK
   constraints for `teaching.execution.start|complete|cancel` and

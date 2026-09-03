@@ -257,3 +257,94 @@ class TeachingAssignmentListResponse(BaseModel):
 
     items: list[TeachingAssignmentResponse]
     has_more: bool
+
+
+class TeachingExecutionContentBindingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content_id: UUID
+    content_version_id: UUID
+    artifact_kind: str = Field(min_length=1)
+
+
+class TeachingExecutionStartRequest(BaseModel):
+    """Start request. Tenant/teacher/started_at/assignment_id are not client-settable."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    work_id: UUID
+    class_ref: str = Field(min_length=1)
+    bindings: list[TeachingExecutionContentBindingRequest] = Field(default_factory=list)
+
+
+class TeachingExecutionObservationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observation_kind: str = Field(min_length=1)
+    body: str = Field(min_length=1)
+
+
+class TeachingExecutionObservationCorrectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    body: str = Field(min_length=1)
+
+
+class TeachingExecutionContentBindingResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content_id: UUID
+    content_version_id: UUID
+    artifact_kind: str
+
+
+class TeachingExecutionObservationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observation_id: UUID
+    execution_id: UUID
+    observation_kind: str
+    body: str
+    recorded_at: datetime
+    updated_at: datetime
+    revision: int
+
+
+class TeachingExecutionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    execution_id: UUID
+    teacher_principal_id: UUID
+    work_id: UUID
+    class_ref: str
+    lifecycle_state: str
+    started_at: datetime
+    completed_at: datetime | None
+    cancelled_at: datetime | None
+    aggregate_revision: int
+    created_at: datetime
+    updated_at: datetime
+    bindings: list[TeachingExecutionContentBindingResponse]
+    observations: list[TeachingExecutionObservationResponse] = Field(
+        default_factory=list
+    )
+
+
+class TeachingExecutionListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[TeachingExecutionResponse]
+    has_more: bool
+
+
+class TeacherOsTeachContextResponse(BaseModel):
+    """Teacher OS Teach composition projection. No durable write behind this response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    work: ContinueWorkSummaryResponse
+    class_ref: str
+    display_label: str
+    artifacts: list[WorkArtifactItemResponse]
+    assignments: list[TeachingAssignmentResponse]
+    executions: list[TeachingExecutionResponse]

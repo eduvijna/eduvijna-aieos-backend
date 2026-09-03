@@ -14,6 +14,7 @@ from aieos.platform.events.constants import (
     CLOUDEVENTS_TEACHING_SOURCE,
     content_subject,
     teaching_assignment_subject,
+    teaching_execution_subject,
 )
 from aieos.platform.events.identities import EventId
 from aieos.platform.events.models import MutationEventContext
@@ -71,6 +72,35 @@ def build_teaching_cloudevent(
         "source": CLOUDEVENTS_TEACHING_SOURCE,
         "type": event_type,
         "subject": teaching_assignment_subject(str(assignment_id)),
+        "time": _rfc3339(time),
+        "datacontenttype": CLOUDEVENTS_DATACONTENTTYPE,
+        "data": dict(data),
+        "tenantid": str(tenant_id),
+        "correlationid": str(context.correlation_id),
+        "causationid": str(context.causation_id),
+        "actorid": str(context.actor_principal_id),
+        "effectiveactorid": str(context.effective_actor_id),
+        "aggregaterevision": int(aggregate_revision),
+    }
+
+
+def build_teaching_execution_cloudevent(
+    *,
+    event_id: EventId,
+    event_type: str,
+    execution_id: UUID,
+    time: datetime,
+    context: MutationEventContext,
+    tenant_id: UUID,
+    aggregate_revision: int,
+    data: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "specversion": CLOUDEVENTS_SPECVERSION,
+        "id": str(event_id),
+        "source": CLOUDEVENTS_TEACHING_SOURCE,
+        "type": event_type,
+        "subject": teaching_execution_subject(str(execution_id)),
         "time": _rfc3339(time),
         "datacontenttype": CLOUDEVENTS_DATACONTENTTYPE,
         "data": dict(data),

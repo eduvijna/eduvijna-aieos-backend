@@ -22,9 +22,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS = REPO_ROOT / "migrations" / "versions"
 MIGRATION = MIGRATIONS / "tosd070002_teaching_execution_audit.py"
 
-_PRE_I02R1_OPENAPI = (
-    "CCD233062672B36A4DB6C6B60E7413AF8EEC6FDAAE9550270C6879E4C4A06D7C"
-)
 _EXECUTION_ACTIONS = (
     "teaching.execution.start",
     "teaching.execution.complete",
@@ -38,7 +35,9 @@ def test_head_constants_and_chain() -> None:
     assert EXPECTED_ALEMBIC_HEAD == "tosd070002"
     assert EXPECTED_MIGRATION_HEAD == "tosd070002"
     assert DEV_EXPECTED_ALEMBIC_HEAD == "tosd070002"
-    assert EXPECTED_OPENAPI_SHA256 == _PRE_I02R1_OPENAPI
+    assert EXPECTED_OPENAPI_SHA256 == (
+        "7D7D0E7C7115667757A31CFEB5474F7498ECC7198FB812DE5EF14A0E9F2D289A"
+    )
     text_002 = MIGRATION.read_text(encoding="utf-8")
     assert 'revision: str = "tosd070002"' in text_002
     assert 'down_revision: str | None = "tosd070001"' in text_002

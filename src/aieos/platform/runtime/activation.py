@@ -48,6 +48,11 @@ FROZEN_API_MUTATION_OPERATION_IDS: frozenset[str] = frozenset(
         "teaching_assignment_due_update",
         "teaching_assignment_close",
         "teaching_assignment_cancel",
+        "teaching_execution_start",
+        "teaching_execution_complete",
+        "teaching_execution_cancel",
+        "teaching_execution_observation_create",
+        "teaching_execution_observation_correct",
     }
 )
 
@@ -65,6 +70,9 @@ READ_ONLY_OPERATION_IDS: frozenset[str] = frozenset(
         "teaching_work_artifacts_list",
         "teaching_assignment_get",
         "teaching_assignment_list",
+        "teaching_execution_get",
+        "teaching_execution_list",
+        "teacher_os_teach_context_get",
     }
 )
 

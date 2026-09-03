@@ -689,3 +689,39 @@ class SqlAlchemyTeachingExecutionRepository:
         except Exception as exc:
             reraise_as_application_error(exc)
         return result.rowcount == 1
+
+    def list_for_teacher(
+        self,
+        *,
+        teacher_principal_id: UUID,
+        limit: int,
+        work_id: WorkId | None = None,
+        class_ref: str | None = None,
+        lifecycle_state: str | None = None,
+    ) -> list[TeachingExecution]:
+        statement = select(executions_table).where(
+            executions_table.c.tenant_id == self._execution_tenant_id,
+            executions_table.c.teacher_principal_id == teacher_principal_id,
+        )
+        if work_id is not None:
+            statement = statement.where(executions_table.c.work_id == work_id.value)
+        if class_ref is not None:
+            statement = statement.where(executions_table.c.class_ref == class_ref)
+        if lifecycle_state is not None:
+            statement = statement.where(
+                executions_table.c.lifecycle_state == lifecycle_state
+            )
+        statement = statement.order_by(
+            executions_table.c.updated_at.desc(),
+            executions_table.c.execution_id.desc(),
+        ).limit(limit)
+        try:
+            rows = self._connection.execute(statement).mappings().all()
+            result: list[TeachingExecution] = []
+            for row in rows:
+                execution_id = ExecutionId(row["execution_id"])
+                bindings = self._load_bindings(execution_id)
+                result.append(teaching_execution_from_row(row, bindings))
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return result

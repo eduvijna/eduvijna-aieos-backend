@@ -4,10 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from uuid import UUID
 
+from aieos.domains.teaching.domain.assignment import TeachingAssignment
+from aieos.domains.teaching.domain.execution import TeachingExecution
+from aieos.domains.teaching.domain.execution_observation import (
+    TeachingExecutionObservation,
+)
 from aieos.domains.teaching.domain.identities import (
     AggregateRevision,
     AssignmentId,
+    ExecutionId,
+    ObservationId,
+    ObservationRevision,
     WorkId,
 )
 from aieos.domains.teaching.domain.work import UNSET, TeachingWork, UnsetType
@@ -173,4 +182,129 @@ def teaching_assignment_read_model(
         aggregate_revision=assignment.aggregate_revision,
         created_at=assignment.created_at,
         updated_at=assignment.updated_at,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class TeachingExecutionContentBindingInput:
+    content_id: UUID
+    content_version_id: UUID
+    artifact_kind: str
+
+
+@dataclass(frozen=True, slots=True)
+class StartTeachingExecutionCommand:
+    work_id: UUID
+    class_ref: str
+    bindings: tuple[TeachingExecutionContentBindingInput, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CreateTeachingExecutionObservationCommand:
+    observation_kind: str
+    body: str
+
+
+@dataclass(frozen=True, slots=True)
+class CorrectTeachingExecutionObservationCommand:
+    body: str
+
+
+@dataclass(frozen=True, slots=True)
+class ListTeachingExecutionsQuery:
+    limit: int
+    work_id: UUID | None = None
+    class_ref: str | None = None
+    lifecycle_state: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GetTeacherOsTeachContextQuery:
+    work_id: UUID
+    class_ref: str
+
+
+@dataclass(frozen=True, slots=True)
+class TeachingExecutionContentBindingReadModel:
+    content_id: UUID
+    content_version_id: UUID
+    artifact_kind: str
+
+
+@dataclass(frozen=True, slots=True)
+class TeachingExecutionReadModel:
+    execution_id: ExecutionId
+    teacher_principal_id: UUID
+    work_id: WorkId
+    class_ref: str
+    lifecycle_state: str
+    started_at: datetime
+    completed_at: datetime | None
+    cancelled_at: datetime | None
+    aggregate_revision: AggregateRevision
+    created_at: datetime
+    updated_at: datetime
+    bindings: tuple[TeachingExecutionContentBindingReadModel, ...]
+    observations: tuple[TeachingExecutionObservationReadModel, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ListTeachingExecutionsResult:
+    items: tuple[TeachingExecutionReadModel, ...]
+    has_more: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TeachingExecutionObservationReadModel:
+    observation_id: ObservationId
+    execution_id: ExecutionId
+    observation_kind: str
+    body: str
+    recorded_at: datetime
+    updated_at: datetime
+    revision: ObservationRevision
+
+
+def teaching_execution_observation_read_model(
+    observation: TeachingExecutionObservation,
+) -> TeachingExecutionObservationReadModel:
+    return TeachingExecutionObservationReadModel(
+        observation_id=observation.observation_id,
+        execution_id=observation.execution_id,
+        observation_kind=observation.observation_kind.value,
+        body=observation.body,
+        recorded_at=observation.recorded_at,
+        updated_at=observation.updated_at,
+        revision=observation.revision,
+    )
+
+
+def teaching_execution_read_model(
+    execution: TeachingExecution,
+    *,
+    observations: tuple[TeachingExecutionObservation, ...] = (),
+) -> TeachingExecutionReadModel:
+    return TeachingExecutionReadModel(
+        execution_id=execution.execution_id,
+        teacher_principal_id=execution.teacher_principal_id,
+        work_id=execution.work_id,
+        class_ref=execution.class_ref,
+        lifecycle_state=execution.lifecycle_state.value,
+        started_at=execution.started_at,
+        completed_at=execution.completed_at,
+        cancelled_at=execution.cancelled_at,
+        aggregate_revision=execution.aggregate_revision,
+        created_at=execution.created_at,
+        updated_at=execution.updated_at,
+        bindings=tuple(
+            TeachingExecutionContentBindingReadModel(
+                content_id=binding.content_id,
+                content_version_id=binding.content_version_id,
+                artifact_kind=binding.artifact_kind,
+            )
+            for binding in execution.bindings
+        ),
+        observations=tuple(
+            teaching_execution_observation_read_model(item) for item in observations
+        ),
     )

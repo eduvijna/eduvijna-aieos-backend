@@ -37,6 +37,11 @@ TEACHING_ASSIGNMENT_CREATE = "teaching.assignment.create"
 TEACHING_ASSIGNMENT_DUE_UPDATE = "teaching.assignment.due_update"
 TEACHING_ASSIGNMENT_CLOSE = "teaching.assignment.close"
 TEACHING_ASSIGNMENT_CANCEL = "teaching.assignment.cancel"
+TEACHING_EXECUTION_START = "teaching.execution.start"
+TEACHING_EXECUTION_COMPLETE = "teaching.execution.complete"
+TEACHING_EXECUTION_CANCEL = "teaching.execution.cancel"
+TEACHING_EXECUTION_OBSERVATION_CREATE = "teaching.execution.observation.create"
+TEACHING_EXECUTION_OBSERVATION_CORRECT = "teaching.execution.observation.correct"
 
 
 class TeachingWorkRepository(Protocol):
@@ -139,6 +144,16 @@ class TeachingExecutionRepository(Protocol):
         *,
         expected_revision: ObservationRevision,
     ) -> bool: ...
+
+    def list_for_teacher(
+        self,
+        *,
+        teacher_principal_id: UUID,
+        limit: int,
+        work_id: WorkId | None = None,
+        class_ref: str | None = None,
+        lifecycle_state: str | None = None,
+    ) -> list[TeachingExecution]: ...
 
 
 class ReviewQueuePendingCountPort(Protocol):

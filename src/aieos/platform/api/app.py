@@ -59,6 +59,21 @@ from aieos.domains.teaching.application.assignment_queries import (
     ListTeachingAssignmentsService,
 )
 from aieos.domains.teaching.application.create import CreateTeachingWorkService
+from aieos.domains.teaching.application.execution_mutations import (
+    CancelTeachingExecutionService,
+    CompleteTeachingExecutionService,
+)
+from aieos.domains.teaching.application.execution_observations import (
+    CorrectTeachingExecutionObservationService,
+    CreateTeachingExecutionObservationService,
+)
+from aieos.domains.teaching.application.execution_queries import (
+    GetTeachingExecutionService,
+    ListTeachingExecutionsService,
+)
+from aieos.domains.teaching.application.execution_start import (
+    StartTeachingExecutionService,
+)
 from aieos.domains.teaching.application.generate import GenerateTeachingWorkService
 from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionService
 from aieos.domains.teaching.application.ports import TeachingUnitOfWorkFactory
@@ -75,6 +90,9 @@ from aieos.domains.teaching.application.school_context import (
     ListAssignableSchoolClassesService,
     SchoolContextClassAuthorityService,
     SchoolContextClassReader,
+)
+from aieos.domains.teaching.application.teach_composition import (
+    GetTeacherOsTeachContextService,
 )
 from aieos.platform.ai.application.ports import AIUnitOfWorkFactory
 from aieos.platform.ai.clock import UtcNow
@@ -281,6 +299,65 @@ def create_app(
         app.state.generate_teaching_work_service = None
         app.state.prepare_teaching_work_service = None
         app.state.list_teaching_work_artifacts_service = None
+
+    app.state.get_teaching_execution_service = GetTeachingExecutionService(
+        teaching_uow_factory
+    )
+    app.state.list_teaching_executions_service = ListTeachingExecutionsService(
+        teaching_uow_factory
+    )
+    list_artifacts = app.state.list_teaching_work_artifacts_service
+    if school_context_class_reader is not None:
+        class_authority = app.state.school_context_class_authority
+        app.state.start_teaching_execution_service = StartTeachingExecutionService(
+            teaching_uow_factory,
+            class_authority,
+            list_artifacts,
+            idempotency_retention=idempotency_retention,
+        )
+        app.state.complete_teaching_execution_service = (
+            CompleteTeachingExecutionService(
+                teaching_uow_factory,
+                class_authority,
+                idempotency_retention=idempotency_retention,
+            )
+        )
+        app.state.cancel_teaching_execution_service = CancelTeachingExecutionService(
+            teaching_uow_factory,
+            class_authority,
+            idempotency_retention=idempotency_retention,
+        )
+        app.state.create_teaching_execution_observation_service = (
+            CreateTeachingExecutionObservationService(
+                teaching_uow_factory,
+                class_authority,
+                idempotency_retention=idempotency_retention,
+            )
+        )
+        app.state.correct_teaching_execution_observation_service = (
+            CorrectTeachingExecutionObservationService(
+                teaching_uow_factory,
+                class_authority,
+                idempotency_retention=idempotency_retention,
+            )
+        )
+        if list_artifacts is not None:
+            app.state.teacher_os_teach_context_service = (
+                GetTeacherOsTeachContextService(
+                    teaching_uow_factory,
+                    class_authority,
+                    list_artifacts,
+                )
+            )
+        else:
+            app.state.teacher_os_teach_context_service = None
+    else:
+        app.state.start_teaching_execution_service = None
+        app.state.complete_teaching_execution_service = None
+        app.state.cancel_teaching_execution_service = None
+        app.state.create_teaching_execution_observation_service = None
+        app.state.correct_teaching_execution_observation_service = None
+        app.state.teacher_os_teach_context_service = None
 
     def _openapi() -> dict:
         if app.openapi_schema is None:
