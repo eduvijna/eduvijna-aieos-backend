@@ -14,6 +14,7 @@ from aieos.domains.content.infrastructure.persistence.repositories import (
 from aieos.domains.education.schema import (
     ContentAudience,
     PREPARATION_ARTIFACT_AUDIENCE,
+    is_learner_assignable_content_type,
 )
 from aieos.domains.teaching.application.errors import (
     ContentNotEligibleForAssignment,
