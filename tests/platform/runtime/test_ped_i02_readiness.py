@@ -220,7 +220,16 @@ class TestRealReadiness:
                 ).scalar_one()
                 is False
             )
-            for schema in ("content", "api", "workflow", "integration", "security"):
+            for schema in (
+                "content",
+                "api",
+                "workflow",
+                "integration",
+                "teaching",
+                "ai",
+                "assessment",
+                "security",
+            ):
                 assert (
                     conn.execute(
                         text(
@@ -240,12 +249,21 @@ class TestRealReadiness:
                         FROM pg_namespace n
                         JOIN pg_roles r ON r.oid = n.nspowner
                         WHERE n.nspname IN
-                          ('content', 'api', 'workflow', 'integration', 'security')
+                          ('content', 'api', 'workflow', 'integration',
+                           'teaching', 'ai', 'assessment', 'security')
                         """
                     )
                 )
             }
-            for schema in ("content", "api", "workflow", "integration"):
+            for schema in (
+                "content",
+                "api",
+                "workflow",
+                "integration",
+                "teaching",
+                "ai",
+                "assessment",
+            ):
                 assert owners[schema] == SCHEMA_OWNER_ROLE
             assert owners["security"] == SECURITY_SCHEMA_OWNER_ROLE
             assert (
@@ -255,7 +273,8 @@ class TestRealReadiness:
                         SELECT count(*) FROM pg_namespace n
                         JOIN pg_roles r ON r.oid = n.nspowner
                         WHERE n.nspname IN
-                          ('content', 'api', 'workflow', 'integration', 'security')
+                          ('content', 'api', 'workflow', 'integration',
+                           'teaching', 'ai', 'assessment', 'security')
                           AND r.rolname = current_user
                         """
                     )
@@ -331,7 +350,7 @@ class TestRealReadiness:
         config = _config_for_runtime_url(postgres18["runtime_url"])
         probe = SqlAlchemyApiReadinessProbe(runtime_engine, config)
         assert probe.check().code is ReadinessCode.READY
-        assert EXPECTED_ALEMBIC_HEAD == "tosd070002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
         with bootstrap_engine.connect() as conn:
             with conn.begin():
                 original = conn.execute(

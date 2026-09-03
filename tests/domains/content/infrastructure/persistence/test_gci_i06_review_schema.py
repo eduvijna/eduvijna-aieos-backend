@@ -441,7 +441,7 @@ class TestAlembicCycleAndOfflineSql:
         command.upgrade(cfg, "head")
         provision_runtime_grants(bootstrap_engine)
         with bootstrap_engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("tosd070002")
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ("tosd080001")
             tables = {
                 row[0]
                 for row in conn.execute(
@@ -504,4 +504,5 @@ class TestAlembicCycleAndOfflineSql:
     "tosd060002_teaching_assignment_audit.py",
     "tosd070001_teaching_executions.py",
     "tosd070002_teaching_execution_audit.py",
+    "tosd080001_classroom_assessments.py",
         ]

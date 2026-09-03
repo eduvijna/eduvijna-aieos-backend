@@ -33,14 +33,14 @@ def _openapi() -> dict:
 
 class TestNoClassRosterOrAssignmentPersistence:
     def test_alembic_head_is_current(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd070002"
-        assert EXPECTED_MIGRATION_HEAD == "tosd070002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
+        assert EXPECTED_MIGRATION_HEAD == "tosd080001"
         versions = sorted(
             path.name
             for path in MIGRATIONS.glob("*.py")
             if path.name != "__init__.py"
         )
-        assert versions[-1].startswith("tosd070002_")
+        assert versions[-1].startswith("tosd080001_")
         assert not any("school_context" in name.lower() for name in versions)
 
     def test_no_class_roster_sqlalchemy_tables(self) -> None:

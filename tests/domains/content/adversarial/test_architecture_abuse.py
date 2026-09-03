@@ -78,6 +78,7 @@ _EXPECTED_MIGRATIONS = [
     "tosd060002_teaching_assignment_audit.py",
     "tosd070001_teaching_executions.py",
     "tosd070002_teaching_execution_audit.py",
+    "tosd080001_classroom_assessments.py",
 ]
 
 

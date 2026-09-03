@@ -18,6 +18,9 @@ if str(_SRC) not in sys.path:
 from aieos.domains.content.infrastructure.persistence import models as _content_models  # noqa: F401
 from aieos.domains.content.infrastructure.persistence.metadata import content_metadata
 from aieos.domains.teaching.infrastructure.persistence import models as _teaching_models  # noqa: F401
+from aieos.domains.assessment.infrastructure.persistence import (  # noqa: F401
+    models as _assessment_models,
+)
 from aieos.platform.ai.infrastructure.persistence import (
     models as _generation_run_models,  # noqa: F401
 )

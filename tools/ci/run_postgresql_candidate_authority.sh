@@ -272,7 +272,7 @@ AIEOS_VERIFY_MODE=jit run_as_deployment_admin \
   "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh"
 run_alembic_as_migrator upgrade head
 head_rev="$(psql_query -c "SELECT version_num FROM alembic_version")"
-[[ "$head_rev" == "tosd070002" ]] || fail "expected head tosd070002 after upgrade, got ${head_rev}"
+[[ "$head_rev" == "tosd080001" ]] || fail "expected head tosd080001 after upgrade, got ${head_rev}"
 infra_revoke_and_baseline
 
 # Isolated downgrade under a fresh JIT window (not shared with re-upgrade).
@@ -291,7 +291,7 @@ AIEOS_VERIFY_MODE=jit run_as_deployment_admin \
   "${INFRA_ROOT}/scripts/postgresql/verify-candidate-readers.sh"
 run_alembic_as_migrator upgrade head
 head_rev="$(psql_query -c "SELECT version_num FROM alembic_version")"
-[[ "$head_rev" == "tosd070002" ]] || fail "expected tosd070002 after re-upgrade, got ${head_rev}"
+[[ "$head_rev" == "tosd080001" ]] || fail "expected tosd080001 after re-upgrade, got ${head_rev}"
 infra_revoke_and_baseline
 
 info "offline alembic SQL expanded acceptance"

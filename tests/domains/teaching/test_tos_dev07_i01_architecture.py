@@ -56,8 +56,8 @@ def _impl_sources() -> list[Path]:
 
 class TestI01ArchitectureGuards:
     def test_migration_head_and_chain(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd070002"
-        assert EXPECTED_MIGRATION_HEAD == "tosd070002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
+        assert EXPECTED_MIGRATION_HEAD == "tosd080001"
         text = MIGRATION.read_text(encoding="utf-8")
         assert 'revision: str = "tosd070001"' in text
         assert 'down_revision: str | None = "tosd060002"' in text

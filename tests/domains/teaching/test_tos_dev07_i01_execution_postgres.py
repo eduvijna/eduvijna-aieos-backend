@@ -156,17 +156,17 @@ def _execution(
 
 class TestMigrationAndSchema:
     def test_alembic_head_tosd070002(self, bootstrap_engine: Engine) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd070002"
-        assert EXPECTED_MIGRATION_HEAD == "tosd070002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
+        assert EXPECTED_MIGRATION_HEAD == "tosd080001"
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd070002"
+                == "tosd080001"
             )
         versions = sorted(
             p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py"
         )
-        assert versions[-1].startswith("tosd070002_")
+        assert versions[-1].startswith("tosd080001_")
 
     def test_execution_tables_rls_and_policies(
         self, bootstrap_engine: Engine
