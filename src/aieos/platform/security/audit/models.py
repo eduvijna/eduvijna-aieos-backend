@@ -136,7 +136,7 @@ def _validate_revision_pair(
     if is_teaching_create_action(action):
         if before is not None or after != 0:
             raise InvalidSecurityAuditError(
-                "teaching.assignment.create requires before=None and after=0"
+                f"{action.value} requires before=None and after=0"
             )
         return
     if is_teaching_increment_action(action):

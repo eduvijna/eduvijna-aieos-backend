@@ -31,6 +31,15 @@ class SecurityAuditAction(StrEnum):
     TEACHING_ASSIGNMENT_DUE_UPDATE = "teaching.assignment.due_update"
     TEACHING_ASSIGNMENT_CLOSE = "teaching.assignment.close"
     TEACHING_ASSIGNMENT_CANCEL = "teaching.assignment.cancel"
+    TEACHING_EXECUTION_START = "teaching.execution.start"
+    TEACHING_EXECUTION_COMPLETE = "teaching.execution.complete"
+    TEACHING_EXECUTION_CANCEL = "teaching.execution.cancel"
+    TEACHING_EXECUTION_OBSERVATION_CREATE = (
+        "teaching.execution.observation.create"
+    )
+    TEACHING_EXECUTION_OBSERVATION_CORRECT = (
+        "teaching.execution.observation.correct"
+    )
 
 
 class SecurityAuditExecutionChannel(StrEnum):
@@ -74,12 +83,21 @@ _ASSET_INCREMENT_ACTIONS = frozenset(
         SecurityAuditAction.ASSET_SAFETY_FAIL,
     }
 )
-_TEACHING_CREATE_ACTIONS = frozenset({SecurityAuditAction.TEACHING_ASSIGNMENT_CREATE})
+_TEACHING_CREATE_ACTIONS = frozenset(
+    {
+        SecurityAuditAction.TEACHING_ASSIGNMENT_CREATE,
+        SecurityAuditAction.TEACHING_EXECUTION_START,
+        SecurityAuditAction.TEACHING_EXECUTION_OBSERVATION_CREATE,
+    }
+)
 _TEACHING_INCREMENT_ACTIONS = frozenset(
     {
         SecurityAuditAction.TEACHING_ASSIGNMENT_DUE_UPDATE,
         SecurityAuditAction.TEACHING_ASSIGNMENT_CLOSE,
         SecurityAuditAction.TEACHING_ASSIGNMENT_CANCEL,
+        SecurityAuditAction.TEACHING_EXECUTION_COMPLETE,
+        SecurityAuditAction.TEACHING_EXECUTION_CANCEL,
+        SecurityAuditAction.TEACHING_EXECUTION_OBSERVATION_CORRECT,
     }
 )
 

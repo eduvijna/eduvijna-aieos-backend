@@ -134,6 +134,11 @@ class TestActionsAndChannels:
             "teaching.assignment.due_update",
             "teaching.assignment.close",
             "teaching.assignment.cancel",
+            "teaching.execution.start",
+            "teaching.execution.complete",
+            "teaching.execution.cancel",
+            "teaching.execution.observation.create",
+            "teaching.execution.observation.correct",
         }
         assert "content.archive" not in {a.value for a in SecurityAuditAction}
         assert "asset.purge" not in {a.value for a in SecurityAuditAction}

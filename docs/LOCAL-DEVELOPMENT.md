@@ -56,7 +56,7 @@ When you press F5 with **AIEOS API — Local Development**:
 2. Starts or reuses container `aieos-local-postgres` (PostgreSQL 18).
 3. Provisions local roles idempotently (`aieos_bootstrap`, `aieos_migrator`, `aieos_runtime`, owners, dispatchers).
 4. Runs `alembic upgrade head` through `aieos_migrator`.
-5. Verifies `alembic_version = tosd070001`.
+5. Verifies `alembic_version = tosd070002`.
 6. Applies runtime grants required by current schemas.
 7. Starts the FastAPI API under the Python debugger at http://127.0.0.1:8080.
 
@@ -184,7 +184,7 @@ SELECT version_num
 FROM alembic_version;
 ```
 
-Expected: `tosd070001`
+Expected: `tosd070002`
 
 ### DEV07-I01 tables (may be empty)
 

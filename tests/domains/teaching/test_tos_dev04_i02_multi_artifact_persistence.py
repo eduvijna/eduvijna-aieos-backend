@@ -438,19 +438,19 @@ def _make_domain_version(
 
 class TestMigrationHeadAndSchema:
     def test_single_alembic_head_is_tosd060001(self, bootstrap_engine: Engine) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd070001"
-        assert EXPECTED_MIGRATION_HEAD == "tosd070001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd070002"
+        assert EXPECTED_MIGRATION_HEAD == "tosd070002"
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd070001"
+                == "tosd070002"
             )
         versions = sorted(
             p.name
             for p in (REPO_ROOT / "migrations" / "versions").glob("*.py")
             if p.name != "__pycache__"
         )
-        assert versions[-1].startswith("tosd070001_")
+        assert versions[-1].startswith("tosd070002_")
 
     def test_new_indexes_and_constraint_present(
         self, bootstrap_engine: Engine
@@ -554,7 +554,7 @@ class TestMigrationHeadAndSchema:
                     conn.execute(
                         text("SELECT version_num FROM alembic_version")
                     ).scalar_one()
-                    == "tosd070001"
+                    == "tosd070002"
                 )
                 prov = conn.execute(
                     text(
@@ -590,7 +590,7 @@ class TestMigrationHeadAndSchema:
                     conn.execute(
                         text("SELECT version_num FROM alembic_version")
                     ).scalar_one()
-                    == "tosd070001"
+                    == "tosd070002"
                 )
         finally:
             _ensure_head(postgres18, bootstrap_engine)
@@ -615,7 +615,7 @@ class TestMigrationHeadAndSchema:
                     conn.execute(
                         text("SELECT version_num FROM alembic_version")
                     ).scalar_one()
-                    == "tosd070001"
+                    == "tosd070002"
                 )
                 count = conn.execute(
                     text(

@@ -736,6 +736,7 @@ class TestArchitectureAndNoSchemaChange:
     "tosd060001_teaching_assignments.py",
     "tosd060002_teaching_assignment_audit.py",
     "tosd070001_teaching_executions.py",
+    "tosd070002_teaching_execution_audit.py",
         ]
         assert not Path(
             REPO_ROOT / "src" / "aieos" / "domains" / "content" / "infrastructure" / "outbox"

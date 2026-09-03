@@ -592,7 +592,7 @@ class TestTosDev03R1Migration:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd070001"
+                == "tosd070002"
             )
             fence_a = conn.execute(
                 text(
