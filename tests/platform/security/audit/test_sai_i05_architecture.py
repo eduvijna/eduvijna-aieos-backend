@@ -72,6 +72,7 @@ _EXPECTED_MIGRATIONS = [
     "tosd060001_teaching_assignments.py",
     "tosd060002_teaching_assignment_audit.py",
     "tosd070001_teaching_executions.py",
+    "tosd070002_teaching_execution_audit.py",
 ]
 
 # Frozen SAI-I05 mutation inventory classification.
@@ -267,6 +268,11 @@ class TestMutationInventory:
             "teaching.assignment.due_update",
             "teaching.assignment.close",
             "teaching.assignment.cancel",
+            "teaching.execution.start",
+            "teaching.execution.complete",
+            "teaching.execution.cancel",
+            "teaching.execution.observation.create",
+            "teaching.execution.observation.correct",
         }
         assert _FROZEN_ACTIONS == expected
         assert SecurityAuditExecutionChannel.WORKFLOW_ACTIVITY.value == "WORKFLOW_ACTIVITY"

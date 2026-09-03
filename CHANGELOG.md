@@ -9,6 +9,14 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV07-I02R1 — TeachingExecution security audit vocabulary substrate:
+  forward Alembic `tosd070002` extends `security.audit_records` CHECK
+  constraints for `teaching.execution.start|complete|cancel` and
+  `teaching.execution.observation.create|correct` (closed vocabulary;
+  assignment evidence alone does not block downgrade). Python
+  `SecurityAuditAction` families and SQLAlchemy mapping mirror the DB
+  contract. No TeachingExecution HTTP/API, events, or OpenAPI change.
+  Alembic head `tosd070002`.
 - TOS-DEV07-I01 — TeachingExecution domain + PostgreSQL persistence/RLS:
   `ExecutionId` / `ObservationId` (UUIDv7), `TeachingExecution` aggregate with
   IN_PROGRESS/COMPLETED/CANCELLED lifecycle, immutable exact ContentVersion

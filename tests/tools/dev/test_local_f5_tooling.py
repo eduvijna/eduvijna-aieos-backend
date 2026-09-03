@@ -82,14 +82,14 @@ def test_f5_launch_configuration_references_local_task_and_launcher() -> None:
     assert "AIEOS: Local DB Reset" in task_labels
 
 
-def test_alembic_head_remains_tosd070001() -> None:
+def test_alembic_head_remains_tosd070002() -> None:
     from aieos.platform.runtime.readiness import EXPECTED_ALEMBIC_HEAD
     from tools.dev.constants import EXPECTED_ALEMBIC_HEAD as DEV_EXPECTED
     from tools.release.common import EXPECTED_MIGRATION_HEAD
 
-    assert EXPECTED_ALEMBIC_HEAD == "tosd070001"
-    assert DEV_EXPECTED == "tosd070001"
-    assert EXPECTED_MIGRATION_HEAD == "tosd070001"
+    assert EXPECTED_ALEMBIC_HEAD == "tosd070002"
+    assert DEV_EXPECTED == "tosd070002"
+    assert EXPECTED_MIGRATION_HEAD == "tosd070002"
 
 
 def test_openapi_digest_unchanged() -> None:
