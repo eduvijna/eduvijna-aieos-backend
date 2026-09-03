@@ -95,4 +95,5 @@ markers = [
     "tos_dev06_i03: TOS-DEV06-I03 TeachingAssignment application/API/events/audit",
     "tos_dev07_i01: TOS-DEV07-I01 TeachingExecution domain and PostgreSQL persistence/RLS",
     "tos_dev07_i02r1: TOS-DEV07-I02R1 TeachingExecution security audit vocabulary",
+    "tos_dev07_i02: TOS-DEV07-I02 TeachingExecution teach composition application/API",
 ]

@@ -151,3 +151,40 @@ class ContentMaterializationFailedError(TeachingApplicationError):
 
 class PreparationRecoveryInvariantError(TeachingApplicationError):
     """Partial or corrupt preparation Content bindings violate the exact-six invariant."""
+
+
+class TeachingExecutionNotFound(TeachingApplicationError):
+    """Target TeachingExecution is not visible in the execution tenant."""
+
+
+class TeachingExecutionForbidden(TeachingApplicationError):
+    """The principal does not own the target TeachingExecution."""
+
+
+class TeachingExecutionNotInProgress(TeachingApplicationError):
+    """Mutation requires an IN_PROGRESS TeachingExecution."""
+
+
+class InvalidTeachingExecutionRequest(TeachingApplicationError):
+    """An execution command failed application validation."""
+
+
+class ExecutionContentBindingRejected(TeachingApplicationError):
+    """A TeachingExecution content binding failed exact-version or Work artifact checks."""
+
+
+class TeachingExecutionObservationNotFound(TeachingApplicationError):
+    """Target TeachingExecutionObservation is not visible in the execution tenant."""
+
+
+class TeachingExecutionObservationRevisionConflict(TeachingApplicationError):
+    """Expected observation revision does not match the locked/stored head."""
+
+
+class UnsupportedObservationKind(TeachingApplicationError):
+    """Requested observation_kind is not a frozen TeachingExecutionObservation kind."""
+
+
+# Shorter aliases used by TeachingExecution observation application services.
+ObservationNotFound = TeachingExecutionObservationNotFound
+ObservationRevisionConflict = TeachingExecutionObservationRevisionConflict

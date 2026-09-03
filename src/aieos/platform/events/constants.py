@@ -23,6 +23,7 @@ EVENT_CONTENT_ARCHIVED_V1 = "io.eduvijna.aieos.content.content.archived.v1"
 
 CLOUDEVENTS_TEACHING_SOURCE = "urn:eduvijna:aieos:teaching"
 AGGREGATE_TYPE_TEACHING_ASSIGNMENT = "teaching.assignment"
+AGGREGATE_TYPE_TEACHING_EXECUTION = "teaching.execution"
 
 EVENT_TEACHING_ASSIGNMENT_CREATED_V1 = (
     "io.eduvijna.aieos.teaching.assignment.created.v1"
@@ -36,6 +37,15 @@ EVENT_TEACHING_ASSIGNMENT_CLOSED_V1 = (
 EVENT_TEACHING_ASSIGNMENT_CANCELLED_V1 = (
     "io.eduvijna.aieos.teaching.assignment.cancelled.v1"
 )
+EVENT_TEACHING_EXECUTION_STARTED_V1 = (
+    "io.eduvijna.aieos.teaching.execution.started.v1"
+)
+EVENT_TEACHING_EXECUTION_COMPLETED_V1 = (
+    "io.eduvijna.aieos.teaching.execution.completed.v1"
+)
+EVENT_TEACHING_EXECUTION_CANCELLED_V1 = (
+    "io.eduvijna.aieos.teaching.execution.cancelled.v1"
+)
 
 EMITTED_TEACHING_EVENT_TYPES = frozenset(
     {
@@ -43,6 +53,9 @@ EMITTED_TEACHING_EVENT_TYPES = frozenset(
         EVENT_TEACHING_ASSIGNMENT_DUE_UPDATED_V1,
         EVENT_TEACHING_ASSIGNMENT_CLOSED_V1,
         EVENT_TEACHING_ASSIGNMENT_CANCELLED_V1,
+        EVENT_TEACHING_EXECUTION_STARTED_V1,
+        EVENT_TEACHING_EXECUTION_COMPLETED_V1,
+        EVENT_TEACHING_EXECUTION_CANCELLED_V1,
     }
 )
 
@@ -88,3 +101,7 @@ def content_subject(content_id: str) -> str:
 
 def teaching_assignment_subject(assignment_id: str) -> str:
     return f"teaching/assignment/{assignment_id}"
+
+
+def teaching_execution_subject(execution_id: str) -> str:
+    return f"teaching/execution/{execution_id}"

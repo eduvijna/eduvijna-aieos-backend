@@ -179,17 +179,12 @@ class TestI01ArchitectureGuards:
                     offenders.append(f"{path.name}:{needle}")
         assert offenders == []
 
-    def test_no_http_openapi_or_frontend_surface(self) -> None:
-        routes = (TEACHING_ROOT / "api" / "v1" / "routes.py").read_text(
-            encoding="utf-8"
-        )
-        assert "TeachingExecution" not in routes
-        assert "/executions" not in routes
-        schema = OPENAPI.read_text(encoding="utf-8")
-        assert "teaching_execution" not in schema.lower()
-        assert "/api/v1/teaching/executions" not in schema
+    def test_openapi_digest_tracks_release_constant(self) -> None:
+        # I01 forbade execution HTTP; TOS-DEV07-I02 owns that surface. I01 still
+        # freezes digest alignment and that frontend remains out of this repo.
         digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest().upper()
         assert digest == EXPECTED_OPENAPI_SHA256
+        assert not (REPO_ROOT / "frontend").exists()
 
     def test_no_observation_events_or_new_nats_prefix(self) -> None:
         offenders: list[str] = []

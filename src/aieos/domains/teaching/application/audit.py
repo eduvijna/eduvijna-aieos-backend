@@ -1,4 +1,4 @@
-"""Required Teaching committed-mutation audit evidence helpers (TOS-DEV06-I03)."""
+"""Required Teaching committed-mutation audit evidence helpers."""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ from aieos.platform.security.audit import (
 )
 
 RESOURCE_TEACHING_ASSIGNMENT = "teaching.assignment"
+RESOURCE_TEACHING_EXECUTION = "teaching.execution"
+RESOURCE_TEACHING_EXECUTION_OBSERVATION = "teaching.execution.observation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +44,18 @@ def assignment_primary_ref(assignment_id: UUID, revision_after: int) -> Resource
     return ResourceRef(RESOURCE_TEACHING_ASSIGNMENT, assignment_id, revision_after)
 
 
+def execution_primary_ref(execution_id: UUID, revision_after: int) -> ResourceRef:
+    return ResourceRef(RESOURCE_TEACHING_EXECUTION, execution_id, revision_after)
+
+
+def observation_primary_ref(
+    observation_id: UUID, revision_after: int
+) -> ResourceRef:
+    return ResourceRef(
+        RESOURCE_TEACHING_EXECUTION_OBSERVATION, observation_id, revision_after
+    )
+
+
 def source_work_ref(work_id: UUID) -> ResourceRef:
     return ResourceRef("teaching.work", work_id, None)
 
@@ -59,12 +73,39 @@ def insert_required_teaching_audit(
     audit_provenance: MutationAuditProvenance,
     occurred_at: datetime,
 ) -> None:
-    record = build_security_mutation_audit_record(
+    insert_required_teaching_execution_audit(
+        uow,
         tenant_id=tenant_id,
         action=action,
         primary_resource_ref=assignment_primary_ref(
             assignment_id, resource_revision_after
         ),
+        resource_revision_before=resource_revision_before,
+        resource_revision_after=resource_revision_after,
+        related_resource_refs=related_resource_refs,
+        mutation_event_context=mutation_event_context,
+        audit_provenance=audit_provenance,
+        occurred_at=occurred_at,
+    )
+
+
+def insert_required_teaching_execution_audit(
+    uow: TeachingUnitOfWork,
+    *,
+    tenant_id: UUID,
+    action: SecurityAuditAction,
+    primary_resource_ref: ResourceRef,
+    resource_revision_before: int | None,
+    resource_revision_after: int,
+    related_resource_refs: tuple[ResourceRef, ...],
+    mutation_event_context: MutationEventContext,
+    audit_provenance: MutationAuditProvenance,
+    occurred_at: datetime,
+) -> None:
+    record = build_security_mutation_audit_record(
+        tenant_id=tenant_id,
+        action=action,
+        primary_resource_ref=primary_resource_ref,
         resource_revision_before=resource_revision_before,
         resource_revision_after=resource_revision_after,
         related_resource_refs=related_resource_refs,
@@ -80,9 +121,15 @@ def insert_required_teaching_audit(
 
 __all__ = [
     "MutationAuditProvenance",
+    "RESOURCE_TEACHING_ASSIGNMENT",
+    "RESOURCE_TEACHING_EXECUTION",
+    "RESOURCE_TEACHING_EXECUTION_OBSERVATION",
     "api_mutation_audit_provenance",
     "assignment_primary_ref",
     "content_version_ref",
+    "execution_primary_ref",
     "insert_required_teaching_audit",
+    "insert_required_teaching_execution_audit",
+    "observation_primary_ref",
     "source_work_ref",
 ]

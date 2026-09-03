@@ -10,19 +10,27 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 
 from aieos.domains.teaching.api.v1.dependencies import (
     cancel_teaching_assignment_service,
+    cancel_teaching_execution_service,
     close_teaching_assignment_service,
+    complete_teaching_execution_service,
+    correct_teaching_execution_observation_service,
     create_teaching_assignment_service,
+    create_teaching_execution_observation_service,
     create_teaching_work_service,
     generate_teaching_work_service,
     get_teaching_assignment_service,
+    get_teaching_execution_service,
     get_teaching_work_service,
     list_assignable_school_classes_service,
     list_teaching_assignment_service,
+    list_teaching_executions_service,
     list_teaching_work_artifacts_service,
     list_teaching_works_service,
     prepare_teaching_work_service,
     refine_teaching_work_service,
     resolve_trusted_context,
+    start_teaching_execution_service,
+    teacher_os_teach_context_service,
     teacher_os_today_mission_service,
     update_teaching_assignment_due_service,
 )
@@ -39,6 +47,7 @@ from aieos.domains.teaching.api.v1.models import (
     SchoolContextClassItemResponse,
     SchoolContextClassesResponse,
     TeacherOsMissionResponse,
+    TeacherOsTeachContextResponse,
     TeachingWorkArtifactsResponse,
     TeachingWorkCreateRequest,
     TeachingWorkGenerateResponse,
@@ -50,6 +59,13 @@ from aieos.domains.teaching.api.v1.models import (
     TeachingAssignmentDueUpdateRequest,
     TeachingAssignmentListResponse,
     TeachingAssignmentResponse,
+    TeachingExecutionContentBindingResponse,
+    TeachingExecutionListResponse,
+    TeachingExecutionObservationCorrectRequest,
+    TeachingExecutionObservationCreateRequest,
+    TeachingExecutionObservationResponse,
+    TeachingExecutionResponse,
+    TeachingExecutionStartRequest,
     WorkArtifactItemResponse,
 )
 from aieos.domains.teaching.application.assignment_create import (
@@ -67,8 +83,24 @@ from aieos.domains.teaching.application.assignment_queries import (
 from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifactsService
 from aieos.domains.teaching.application.create import CreateTeachingWorkService
 from aieos.domains.teaching.application.errors import (
+    InvalidTeachingExecutionRequest,
     InvalidTeachingWorkRequest,
     PreparationRecoveryInvariantError,
+)
+from aieos.domains.teaching.application.execution_mutations import (
+    CancelTeachingExecutionService,
+    CompleteTeachingExecutionService,
+)
+from aieos.domains.teaching.application.execution_observations import (
+    CorrectTeachingExecutionObservationService,
+    CreateTeachingExecutionObservationService,
+)
+from aieos.domains.teaching.application.execution_queries import (
+    GetTeachingExecutionService,
+    ListTeachingExecutionsService,
+)
+from aieos.domains.teaching.application.execution_start import (
+    StartTeachingExecutionService,
 )
 from aieos.domains.teaching.application.generate import (
     GenerateTeachingWorkResult,
@@ -78,14 +110,22 @@ from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionS
 from aieos.domains.teaching.application.mission_models import TeacherOsMission
 from aieos.domains.teaching.application.audit import api_mutation_audit_provenance
 from aieos.domains.teaching.application.models import (
+    CorrectTeachingExecutionObservationCommand,
     CreateTeachingAssignmentCommand,
+    CreateTeachingExecutionObservationCommand,
     CreateTeachingWorkCommand,
     ListTeachingAssignmentsQuery,
+    ListTeachingExecutionsQuery,
     ListTeachingWorksQuery,
     RefineTeachingWorkCommand,
+    StartTeachingExecutionCommand,
     TeachingAssignmentReadModel,
+    TeachingExecutionContentBindingInput,
+    TeachingExecutionObservationReadModel,
+    TeachingExecutionReadModel,
     TeachingWorkReadModel,
     UpdateTeachingAssignmentDueCommand,
+    GetTeacherOsTeachContextQuery,
 )
 from aieos.domains.teaching.application.prepare import (
     PrepareTeachingWorkResult,
@@ -99,9 +139,20 @@ from aieos.domains.teaching.application.refine import RefineTeachingWorkService
 from aieos.domains.teaching.application.school_context import (
     ListAssignableSchoolClassesService,
 )
+from aieos.domains.teaching.application.teach_composition import (
+    GetTeacherOsTeachContextService,
+    TeacherOsTeachContextReadModel,
+)
 from aieos.domains.education.schema import PREPARATION_ARTIFACT_KINDS
 from aieos.domains.teaching.domain.errors import InvalidTeachingIdentityError
-from aieos.domains.teaching.domain.identities import AggregateRevision, AssignmentId, WorkId
+from aieos.domains.teaching.domain.identities import (
+    AggregateRevision,
+    AssignmentId,
+    ExecutionId,
+    ObservationId,
+    ObservationRevision,
+    WorkId,
+)
 from aieos.domains.teaching.domain.work import UNSET
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.api.idempotency_key import parse_idempotency_key
@@ -141,6 +192,18 @@ _ASSIGNMENT_CREATE_RESPONSES = _problem_responses(
 _ASSIGNMENT_MUTATION_RESPONSES = _problem_responses(
     400, 401, 403, 404, 409, 412, 422, 428, 500, 503
 )
+_EXECUTION_CREATE_RESPONSES = _problem_responses(
+    400, 401, 403, 409, 422, 500, 503
+)
+_EXECUTION_MUTATION_RESPONSES = _problem_responses(
+    400, 401, 403, 404, 409, 412, 422, 428, 500, 503
+)
+_OBSERVATION_CREATE_RESPONSES = _problem_responses(
+    400, 401, 403, 404, 409, 422, 500, 503
+)
+_OBSERVATION_CORRECT_RESPONSES = _problem_responses(
+    400, 401, 403, 404, 409, 412, 422, 428, 500, 503
+)
 
 
 def _mutation_event_context(
@@ -166,6 +229,118 @@ def _assignment_id(value: UUID) -> AssignmentId:
         return AssignmentId(value)
     except InvalidTeachingIdentityError as exc:
         raise InvalidTeachingWorkRequest("assignment_id must be a UUIDv7") from exc
+
+
+def _execution_id(value: UUID) -> ExecutionId:
+    try:
+        return ExecutionId(value)
+    except InvalidTeachingIdentityError as exc:
+        raise InvalidTeachingExecutionRequest("execution_id must be a UUIDv7") from exc
+
+
+def _observation_id(value: UUID) -> ObservationId:
+    try:
+        return ObservationId(value)
+    except InvalidTeachingIdentityError as exc:
+        raise InvalidTeachingExecutionRequest(
+            "observation_id must be a UUIDv7"
+        ) from exc
+
+
+def _to_observation_response(
+    model: TeachingExecutionObservationReadModel,
+) -> TeachingExecutionObservationResponse:
+    return TeachingExecutionObservationResponse(
+        observation_id=model.observation_id.value,
+        execution_id=model.execution_id.value,
+        observation_kind=model.observation_kind,
+        body=model.body,
+        recorded_at=model.recorded_at,
+        updated_at=model.updated_at,
+        revision=int(model.revision),
+    )
+
+
+def _to_execution_response(
+    model: TeachingExecutionReadModel,
+) -> TeachingExecutionResponse:
+    return TeachingExecutionResponse(
+        execution_id=model.execution_id.value,
+        teacher_principal_id=model.teacher_principal_id,
+        work_id=model.work_id.value,
+        class_ref=model.class_ref,
+        lifecycle_state=model.lifecycle_state,
+        started_at=model.started_at,
+        completed_at=model.completed_at,
+        cancelled_at=model.cancelled_at,
+        aggregate_revision=int(model.aggregate_revision),
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+        bindings=[
+            TeachingExecutionContentBindingResponse(
+                content_id=binding.content_id,
+                content_version_id=binding.content_version_id,
+                artifact_kind=binding.artifact_kind,
+            )
+            for binding in model.bindings
+        ],
+        observations=[
+            _to_observation_response(item) for item in model.observations
+        ],
+    )
+
+
+def _to_artifact_item_response(item) -> WorkArtifactItemResponse:
+    return WorkArtifactItemResponse(
+        content_id=item.content_id,
+        version_id=item.version_id,
+        content_type=item.content_type,
+        title=item.title,
+        origin=item.origin,
+        stewardship_state=item.stewardship_state,
+        aggregate_revision=item.aggregate_revision,
+        educational_quality=(
+            None
+            if item.educational_quality is None
+            else EducationalQualityResponse(
+                status=item.educational_quality.status,
+                checks=[
+                    EducationalQualityCheckResponse(
+                        code=str(check["code"]),
+                        passed=bool(check["passed"]),
+                        explanation=str(check["explanation"]),
+                    )
+                    for check in item.educational_quality.checks
+                ],
+            )
+        ),
+        artifact_kind=item.artifact_kind,
+        generation_run_id=item.generation_run_id,
+    )
+
+
+def _to_teach_context_response(
+    model: TeacherOsTeachContextReadModel,
+) -> TeacherOsTeachContextResponse:
+    work = model.work
+    return TeacherOsTeachContextResponse(
+        work=ContinueWorkSummaryResponse(
+            work_id=work.work_id.value,
+            intent_type=work.intent_type,
+            goal_text=work.goal_text,
+            class_label=work.class_label,
+            subject=work.subject,
+            topic=work.topic,
+            target_date=work.target_date,
+            aggregate_revision=int(work.aggregate_revision),
+            updated_at=work.updated_at,
+        ),
+        class_ref=model.class_ref,
+        display_label=model.class_display_label,
+        artifacts=[_to_artifact_item_response(item) for item in model.artifacts.items],
+        assignments=[_to_assignment_response(item) for item in model.assignments],
+        executions=[_to_execution_response(item) for item in model.executions],
+    )
 
 
 def _to_assignment_response(
@@ -515,35 +690,7 @@ def teaching_work_artifacts_list(
     result = service.list(context.tenant_id, context.principal_id, _work_id(work_id))
     return TeachingWorkArtifactsResponse(
         work_id=result.work_id.value,
-        items=[
-            WorkArtifactItemResponse(
-                content_id=item.content_id,
-                version_id=item.version_id,
-                content_type=item.content_type,
-                title=item.title,
-                origin=item.origin,
-                stewardship_state=item.stewardship_state,
-                aggregate_revision=item.aggregate_revision,
-                educational_quality=(
-                    None
-                    if item.educational_quality is None
-                    else EducationalQualityResponse(
-                        status=item.educational_quality.status,
-                        checks=[
-                            EducationalQualityCheckResponse(
-                                code=str(check["code"]),
-                                passed=bool(check["passed"]),
-                                explanation=str(check["explanation"]),
-                            )
-                            for check in item.educational_quality.checks
-                        ],
-                    )
-                ),
-                artifact_kind=item.artifact_kind,
-                generation_run_id=item.generation_run_id,
-            )
-            for item in result.items
-        ],
+        items=[_to_artifact_item_response(item) for item in result.items],
     )
 
 
@@ -799,3 +946,265 @@ def teacher_os_school_context_classes_list(
             for item in items
         ]
     )
+
+
+@router.post(
+    "/teaching/executions",
+    status_code=201,
+    response_model=TeachingExecutionResponse,
+    operation_id="teaching_execution_start",
+    responses=_EXECUTION_CREATE_RESPONSES,
+)
+def teaching_execution_start(
+    body: TeachingExecutionStartRequest,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        StartTeachingExecutionService, Depends(start_teaching_execution_service)
+    ],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingExecutionResponse:
+    key = parse_idempotency_key(idempotency_key)
+    model = service.start(
+        context.tenant_id,
+        context.principal_id,
+        StartTeachingExecutionCommand(
+            work_id=body.work_id,
+            class_ref=body.class_ref,
+            bindings=tuple(
+                TeachingExecutionContentBindingInput(
+                    content_id=binding.content_id,
+                    content_version_id=binding.content_version_id,
+                    artifact_kind=binding.artifact_kind,
+                )
+                for binding in body.bindings
+            ),
+        ),
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
+    )
+    response.headers["Location"] = (
+        f"/api/v1/teaching/executions/{model.execution_id.value}"
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_execution_response(model)
+
+
+@router.get(
+    "/teaching/executions",
+    response_model=TeachingExecutionListResponse,
+    operation_id="teaching_execution_list",
+    responses=_LIST_RESPONSES,
+)
+def teaching_execution_list(
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        ListTeachingExecutionsService, Depends(list_teaching_executions_service)
+    ],
+    work_id: Annotated[UUID | None, Query()] = None,
+    class_ref: Annotated[str | None, Query()] = None,
+    lifecycle_state: Annotated[str | None, Query()] = None,
+    limit: Annotated[int | None, Query(ge=1)] = None,
+) -> TeachingExecutionListResponse:
+    if limit is not None and limit > MAX_LIST_LIMIT:
+        raise InvalidTeachingExecutionRequest("list limit exceeds the maximum of 100")
+    page_size = DEFAULT_LIST_LIMIT if limit is None else limit
+    result = service.list(
+        context.tenant_id,
+        context.principal_id,
+        ListTeachingExecutionsQuery(
+            limit=page_size,
+            work_id=work_id,
+            class_ref=class_ref,
+            lifecycle_state=lifecycle_state,
+        ),
+    )
+    return TeachingExecutionListResponse(
+        items=[_to_execution_response(item) for item in result.items],
+        has_more=result.has_more,
+    )
+
+
+@router.get(
+    "/teaching/executions/{execution_id}",
+    response_model=TeachingExecutionResponse,
+    operation_id="teaching_execution_get",
+    responses=_GET_RESPONSES,
+)
+def teaching_execution_get(
+    execution_id: UUID,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        GetTeachingExecutionService, Depends(get_teaching_execution_service)
+    ],
+) -> TeachingExecutionResponse:
+    model = service.get(
+        context.tenant_id,
+        context.principal_id,
+        _execution_id(execution_id),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_execution_response(model)
+
+
+@router.post(
+    "/teaching/executions/{execution_id}/observations",
+    status_code=201,
+    response_model=TeachingExecutionObservationResponse,
+    operation_id="teaching_execution_observation_create",
+    responses=_OBSERVATION_CREATE_RESPONSES,
+)
+def teaching_execution_observation_create(
+    execution_id: UUID,
+    body: TeachingExecutionObservationCreateRequest,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        CreateTeachingExecutionObservationService,
+        Depends(create_teaching_execution_observation_service),
+    ],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingExecutionObservationResponse:
+    key = parse_idempotency_key(idempotency_key)
+    model = service.create(
+        context.tenant_id,
+        context.principal_id,
+        execution_id=_execution_id(execution_id),
+        command=CreateTeachingExecutionObservationCommand(
+            observation_kind=body.observation_kind,
+            body=body.body,
+        ),
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.revision))
+    return _to_observation_response(model)
+
+
+@router.patch(
+    "/teaching/executions/{execution_id}/observations/{observation_id}",
+    response_model=TeachingExecutionObservationResponse,
+    operation_id="teaching_execution_observation_correct",
+    responses=_OBSERVATION_CORRECT_RESPONSES,
+)
+def teaching_execution_observation_correct(
+    execution_id: UUID,
+    observation_id: UUID,
+    body: TeachingExecutionObservationCorrectRequest,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        CorrectTeachingExecutionObservationService,
+        Depends(correct_teaching_execution_observation_service),
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingExecutionObservationResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = ObservationRevision(parse_if_match(if_match))
+    model = service.correct(
+        context.tenant_id,
+        context.principal_id,
+        execution_id=_execution_id(execution_id),
+        observation_id=_observation_id(observation_id),
+        expected_revision=expected,
+        command=CorrectTeachingExecutionObservationCommand(body=body.body),
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.revision))
+    return _to_observation_response(model)
+
+
+@router.post(
+    "/teaching/executions/{execution_id}/actions/complete",
+    response_model=TeachingExecutionResponse,
+    operation_id="teaching_execution_complete",
+    responses=_EXECUTION_MUTATION_RESPONSES,
+)
+def teaching_execution_complete(
+    execution_id: UUID,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        CompleteTeachingExecutionService, Depends(complete_teaching_execution_service)
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingExecutionResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    model = service.complete(
+        context.tenant_id,
+        context.principal_id,
+        execution_id=_execution_id(execution_id),
+        expected_aggregate_revision=expected,
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_execution_response(model)
+
+
+@router.post(
+    "/teaching/executions/{execution_id}/actions/cancel",
+    response_model=TeachingExecutionResponse,
+    operation_id="teaching_execution_cancel",
+    responses=_EXECUTION_MUTATION_RESPONSES,
+)
+def teaching_execution_cancel(
+    execution_id: UUID,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        CancelTeachingExecutionService, Depends(cancel_teaching_execution_service)
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingExecutionResponse:
+    key = parse_idempotency_key(idempotency_key)
+    expected = AggregateRevision(parse_if_match(if_match))
+    model = service.cancel(
+        context.tenant_id,
+        context.principal_id,
+        execution_id=_execution_id(execution_id),
+        expected_aggregate_revision=expected,
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
+    )
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_execution_response(model)
+
+
+@router.get(
+    "/teacher-os/teach/context",
+    response_model=TeacherOsTeachContextResponse,
+    operation_id="teacher_os_teach_context_get",
+    responses=_GET_RESPONSES,
+    tags=["teacher-os"],
+)
+def teacher_os_teach_context_get(
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        GetTeacherOsTeachContextService, Depends(teacher_os_teach_context_service)
+    ],
+    work_id: Annotated[UUID, Query()],
+    class_ref: Annotated[str, Query(min_length=1)],
+) -> TeacherOsTeachContextResponse:
+    model = service.get(
+        context.tenant_id,
+        context.principal_id,
+        GetTeacherOsTeachContextQuery(work_id=work_id, class_ref=class_ref),
+    )
+    return _to_teach_context_response(model)

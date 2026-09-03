@@ -20,6 +20,15 @@ TEACHING_ASSIGNMENT_CREATE_V1 = "teaching_assignment_create.v1"
 TEACHING_ASSIGNMENT_DUE_UPDATE_V1 = "teaching_assignment_due_update.v1"
 TEACHING_ASSIGNMENT_CLOSE_V1 = "teaching_assignment_close.v1"
 TEACHING_ASSIGNMENT_CANCEL_V1 = "teaching_assignment_cancel.v1"
+TEACHING_EXECUTION_START_V1 = "teaching_execution_start.v1"
+TEACHING_EXECUTION_COMPLETE_V1 = "teaching_execution_complete.v1"
+TEACHING_EXECUTION_CANCEL_V1 = "teaching_execution_cancel.v1"
+TEACHING_EXECUTION_OBSERVATION_CREATE_V1 = (
+    "teaching_execution_observation_create.v1"
+)
+TEACHING_EXECUTION_OBSERVATION_CORRECT_V1 = (
+    "teaching_execution_observation_correct.v1"
+)
 
 
 @dataclass(frozen=True, slots=True)
