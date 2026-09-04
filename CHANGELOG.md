@@ -9,6 +9,13 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV08-I01 — ClassroomAssessment domain + PostgreSQL persistence/RLS:
+  `AssessmentId` (UUIDv7), `ClassroomAssessment` aggregate with
+  RECORDED/VOIDED lifecycle, class result
+  DEMONSTRATED/MIXED/NOT_YET_DEMONSTRATED, `assessment.classroom_assessments`
+  (`tosd080001`), tenant RLS, repository + Assessment UoW. No Assessment
+  HTTP/API, ClassRef/ContentVersion Cases A/B/C gates, events/audit/idempotency,
+  learner evidence, Mastery, or OpenAPI change. Alembic head `tosd080001`.
 - TOS-DEV07-I02 — TeachingExecution teach composition application/API:
   start/complete/cancel + observation create/correct services with ClassRef
   current-authority gate, optional Work artifact bindings (zero bindings OK),

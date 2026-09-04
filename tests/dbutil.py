@@ -22,7 +22,8 @@ def clear_asset_audit_rows_for_schema_downgrade(engine) -> None:
 
     Production downgrade paths remain fail-closed and never delete audit
     evidence. The shared pytest PostgreSQL is session-scoped; immutable
-    asset.* and teaching.* rows would otherwise block unrelated downgrades.
+    asset.*, teaching.*, and assessment.* rows would otherwise block
+    unrelated downgrades.
     """
     with engine.begin() as conn:
         exists = conn.execute(
@@ -53,3 +54,32 @@ def clear_asset_audit_rows_for_schema_downgrade(engine) -> None:
                 "ENABLE TRIGGER audit_records_immutable_delete"
             )
         )
+        assessment_exists = conn.execute(
+            text(
+                "SELECT EXISTS ("
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = 'assessment' "
+                "AND table_name = 'classroom_assessments'"
+                ")"
+            )
+        ).scalar()
+        if assessment_exists:
+            conn.execute(
+                text(
+                    "ALTER TABLE assessment.classroom_assessments "
+                    "DISABLE ROW LEVEL SECURITY"
+                )
+            )
+            conn.execute(text("DELETE FROM assessment.classroom_assessments"))
+            conn.execute(
+                text(
+                    "ALTER TABLE assessment.classroom_assessments "
+                    "ENABLE ROW LEVEL SECURITY"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE assessment.classroom_assessments "
+                    "FORCE ROW LEVEL SECURITY"
+                )
+            )

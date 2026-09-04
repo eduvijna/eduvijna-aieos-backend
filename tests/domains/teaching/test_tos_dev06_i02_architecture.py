@@ -31,8 +31,8 @@ def _sql_literals(path: Path) -> str:
 
 class TestI02ArchitectureGuards:
     def test_migration_head_and_chain(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd070002"
-        assert EXPECTED_MIGRATION_HEAD == "tosd070002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
+        assert EXPECTED_MIGRATION_HEAD == "tosd080001"
         text = MIGRATION.read_text(encoding="utf-8")
         assert 'revision: str = "tosd060001"' in text
         assert 'down_revision: str | None = "tosd040001"' in text

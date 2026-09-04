@@ -32,9 +32,9 @@ _EXECUTION_ACTIONS = (
 
 
 def test_head_constants_and_chain() -> None:
-    assert EXPECTED_ALEMBIC_HEAD == "tosd070002"
-    assert EXPECTED_MIGRATION_HEAD == "tosd070002"
-    assert DEV_EXPECTED_ALEMBIC_HEAD == "tosd070002"
+    assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
+    assert EXPECTED_MIGRATION_HEAD == "tosd080001"
+    assert DEV_EXPECTED_ALEMBIC_HEAD == "tosd080001"
     assert EXPECTED_OPENAPI_SHA256 == (
         "7D7D0E7C7115667757A31CFEB5474F7498ECC7198FB812DE5EF14A0E9F2D289A"
     )
@@ -52,7 +52,7 @@ def test_head_constants_and_chain() -> None:
     versions = sorted(
         p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py"
     )
-    assert versions[-1] == "tosd070002_teaching_execution_audit.py"
+    assert versions[-1] == "tosd080001_classroom_assessments.py"
 
 
 def test_python_action_families() -> None:
