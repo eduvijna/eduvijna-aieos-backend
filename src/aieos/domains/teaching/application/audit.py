@@ -19,6 +19,7 @@ from aieos.platform.security.audit import (
 RESOURCE_TEACHING_ASSIGNMENT = "teaching.assignment"
 RESOURCE_TEACHING_EXECUTION = "teaching.execution"
 RESOURCE_TEACHING_EXECUTION_OBSERVATION = "teaching.execution.observation"
+RESOURCE_TEACHING_WORK = "teaching.work"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,10 @@ def api_mutation_audit_provenance(principal_id: UUID) -> MutationAuditProvenance
 
 def assignment_primary_ref(assignment_id: UUID, revision_after: int) -> ResourceRef:
     return ResourceRef(RESOURCE_TEACHING_ASSIGNMENT, assignment_id, revision_after)
+
+
+def work_primary_ref(work_id: UUID, revision_after: int) -> ResourceRef:
+    return ResourceRef(RESOURCE_TEACHING_WORK, work_id, revision_after)
 
 
 def execution_primary_ref(execution_id: UUID, revision_after: int) -> ResourceRef:
@@ -124,6 +129,7 @@ __all__ = [
     "RESOURCE_TEACHING_ASSIGNMENT",
     "RESOURCE_TEACHING_EXECUTION",
     "RESOURCE_TEACHING_EXECUTION_OBSERVATION",
+    "RESOURCE_TEACHING_WORK",
     "api_mutation_audit_provenance",
     "assignment_primary_ref",
     "content_version_ref",
@@ -132,4 +138,5 @@ __all__ = [
     "insert_required_teaching_execution_audit",
     "observation_primary_ref",
     "source_work_ref",
+    "work_primary_ref",
 ]

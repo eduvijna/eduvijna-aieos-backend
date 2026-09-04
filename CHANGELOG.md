@@ -17,6 +17,13 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV09-I02 — Assessment-origin remediation TeachingWork create:
+  strict `POST /api/v1/teaching/works/from-classroom-assessment`, dual
+  `teaching.work.create` + `assessment.classroom.read` authorization, locked
+  RECORDED Assessment revision validation, current ClassRef authority,
+  Teaching composition checks, immutable Work/origin snapshot, transactional
+  security audit and idempotency. Alembic head `tosd090002`; no Improve events,
+  NATS, Temporal, learner, mastery, Memory, note, or observation copying.
 - TOS-DEV09-I01 — Remediation TeachingWork + immutable origin domain/persistence:
   IntentType `remediate_class`, `TeachingWorkRemediationOrigin` Teaching-owned
   provenance, `teaching.work_remediation_origins` (`tosd090001`) with RLS,

@@ -8,6 +8,12 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine, Transaction
 
 from aieos.domains.teaching.application.errors import PersistenceOperationFailed
+from aieos.domains.teaching.application.ports import (
+    RemediationAssessmentSourceSnapshot,
+)
+from aieos.domains.teaching.infrastructure.persistence.assessment_source import (
+    SqlAlchemyRemediationAssessmentSource,
+)
 from aieos.domains.teaching.infrastructure.persistence.audit_repository import (
     TeachingSecurityMutationAuditRepository,
 )
@@ -43,6 +49,7 @@ class SqlAlchemyTeachingUnitOfWork:
         self.outbox: SqlAlchemyOutboxRepository
         self.audit: TeachingSecurityMutationAuditRepository
         self.content_eligibility: SqlAlchemyContentAssignmentEligibilityAdapter
+        self._assessment_source: SqlAlchemyRemediationAssessmentSource
 
     def __enter__(self) -> SqlAlchemyTeachingUnitOfWork:
         try:
@@ -74,6 +81,9 @@ class SqlAlchemyTeachingUnitOfWork:
             self.content_eligibility = SqlAlchemyContentAssignmentEligibilityAdapter(
                 self._connection, self._execution_tenant_id
             )
+            self._assessment_source = SqlAlchemyRemediationAssessmentSource(
+                self._connection, self._execution_tenant_id
+            )
             return self
         except Exception as exc:
             self._cleanup(suppress=True)
@@ -94,6 +104,11 @@ class SqlAlchemyTeachingUnitOfWork:
             self._transaction.rollback()
         except Exception as exc:
             reraise_as_application_error(exc)
+
+    def load_recorded_assessment_for_update(
+        self, assessment_id: UUID
+    ) -> RemediationAssessmentSourceSnapshot | None:
+        return self._assessment_source.load_for_update(assessment_id)
 
     def __exit__(
         self,

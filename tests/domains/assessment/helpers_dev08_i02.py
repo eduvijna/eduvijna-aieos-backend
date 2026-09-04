@@ -81,6 +81,7 @@ def build_assessment_client(
     school_context_reader: object | None = None,
     with_school_context: bool = True,
     assessment_authorization: object | None = None,
+    teaching_authorization: object | None = None,
 ) -> TestClient:
     reader: object | None
     if not with_school_context:
@@ -109,6 +110,7 @@ def build_assessment_client(
         asset_reference_validation=AllowAssetReferenceValidation(),
         asset_current_governance=AllowAssetCurrentGovernance(),
         school_context_class_reader=reader,  # type: ignore[arg-type]
+        teaching_authorization=teaching_authorization,  # type: ignore[arg-type]
     )
     return TestClient(app, raise_server_exceptions=False)
 

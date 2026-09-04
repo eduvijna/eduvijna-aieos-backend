@@ -16,6 +16,7 @@ from aieos.domains.teaching.api.v1.dependencies import (
     correct_teaching_execution_observation_service,
     create_teaching_assignment_service,
     create_teaching_execution_observation_service,
+    create_remediation_teaching_work_service,
     create_teaching_work_service,
     generate_teaching_work_service,
     get_teaching_assignment_service,
@@ -50,6 +51,7 @@ from aieos.domains.teaching.api.v1.models import (
     TeacherOsTeachContextResponse,
     TeachingWorkArtifactsResponse,
     TeachingWorkCreateRequest,
+    RemediationTeachingWorkCreateRequest,
     TeachingWorkGenerateResponse,
     TeachingWorkListResponse,
     TeachingWorkPrepareResponse,
@@ -82,6 +84,9 @@ from aieos.domains.teaching.application.assignment_queries import (
 )
 from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifactsService
 from aieos.domains.teaching.application.create import CreateTeachingWorkService
+from aieos.domains.teaching.application.remediation_create import (
+    CreateRemediationTeachingWorkService,
+)
 from aieos.domains.teaching.application.errors import (
     InvalidTeachingExecutionRequest,
     InvalidTeachingWorkRequest,
@@ -114,6 +119,7 @@ from aieos.domains.teaching.application.models import (
     CreateTeachingAssignmentCommand,
     CreateTeachingExecutionObservationCommand,
     CreateTeachingWorkCommand,
+    CreateRemediationTeachingWorkCommand,
     ListTeachingAssignmentsQuery,
     ListTeachingExecutionsQuery,
     ListTeachingWorksQuery,
@@ -540,6 +546,48 @@ def teaching_work_create(
         idempotency_key=key,
     )
     response.headers["Location"] = f"/api/v1/teaching/works/{model.work_id}"
+    response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
+    return _to_response(model)
+
+
+@router.post(
+    "/teaching/works/from-classroom-assessment",
+    status_code=201,
+    response_model=TeachingWorkResponse,
+    operation_id="teaching_work_from_classroom_assessment_create",
+    responses=_CREATE_RESPONSES,
+)
+def teaching_work_from_classroom_assessment_create(
+    body: RemediationTeachingWorkCreateRequest,
+    request: Request,
+    response: Response,
+    context: Annotated[TrustedSecurityContext, Depends(resolve_trusted_context)],
+    service: Annotated[
+        CreateRemediationTeachingWorkService,
+        Depends(create_remediation_teaching_work_service),
+    ],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> TeachingWorkResponse:
+    key = parse_idempotency_key(idempotency_key)
+    model = service.create(
+        context.tenant_id,
+        context.principal_id,
+        CreateRemediationTeachingWorkCommand(
+            assessment_id=body.assessment_id,
+            expected_assessment_aggregate_revision=(
+                body.expected_assessment_aggregate_revision
+            ),
+            goal_text=body.goal_text,
+            target_date=body.target_date,
+            locale=body.locale,
+            subject=body.subject,
+            topic=body.topic,
+        ),
+        idempotency_key=key,
+        event_context=_mutation_event_context(request, context),
+        audit_provenance=api_mutation_audit_provenance(context.principal_id),
+    )
+    response.headers["Location"] = f"/api/v1/teaching/works/{model.work_id.value}"
     response.headers["ETag"] = encode_revision_etag(int(model.aggregate_revision))
     return _to_response(model)
 

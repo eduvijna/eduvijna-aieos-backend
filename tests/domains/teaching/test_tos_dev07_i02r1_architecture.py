@@ -32,11 +32,11 @@ _EXECUTION_ACTIONS = (
 
 
 def test_head_constants_and_chain() -> None:
-    assert EXPECTED_ALEMBIC_HEAD == "tosd090001"
-    assert EXPECTED_MIGRATION_HEAD == "tosd090001"
-    assert DEV_EXPECTED_ALEMBIC_HEAD == "tosd090001"
+    assert EXPECTED_ALEMBIC_HEAD == "tosd090002"
+    assert EXPECTED_MIGRATION_HEAD == "tosd090002"
+    assert DEV_EXPECTED_ALEMBIC_HEAD == "tosd090002"
     assert EXPECTED_OPENAPI_SHA256 == (
-        "824B389D6D4EDB2EA5D8ED3A9E5411087B566DFDCA09C2AB0CD4FDED51C4D89D"
+        "B4326D43A213D7831F2AAD8E77A2CEC6BA70B800B4C62EFC52D5B8DFC07CB4D9"
     )
     text_002 = MIGRATION.read_text(encoding="utf-8")
     assert 'revision: str = "tosd070002"' in text_002
@@ -52,7 +52,7 @@ def test_head_constants_and_chain() -> None:
     versions = sorted(
         p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py"
     )
-    assert versions[-1] == "tosd090001_remediation_work_origin.py"
+    assert versions[-1] == "tosd090002_teaching_work_remediation_audit.py"
 
 
 def test_python_action_families() -> None:

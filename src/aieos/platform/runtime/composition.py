@@ -17,7 +17,10 @@ from aieos.domains.content.application.ports import (
     ReviewCommentPolicy,
 )
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
-from aieos.domains.teaching.application.ports import TeachingUnitOfWorkFactory
+from aieos.domains.teaching.application.ports import (
+    TeachingUnitOfWorkFactory,
+    TeachingWorkAuthorization,
+)
 from aieos.domains.assessment.application.ports import (
     AssessmentUnitOfWorkFactory,
     ClassroomAssessmentAuthorization,
@@ -57,6 +60,7 @@ class ApiRuntimeDependencies:
     asset_current_governance: AssetCurrentGovernancePort
     readiness_probe: ApiReadinessProbe
     mutation_activation_gate: ApiMutationActivationGate
+    teaching_authorization: TeachingWorkAuthorization | None = None
 
 
 def compose_api_application(
@@ -74,6 +78,7 @@ def compose_api_application(
         teaching_uow_factory=dependencies.teaching_uow_factory,
         assessment_uow_factory=dependencies.assessment_uow_factory,
         assessment_authorization=dependencies.assessment_authorization,
+        teaching_authorization=dependencies.teaching_authorization,
         request_identity_authenticator=dependencies.request_identity_authenticator,
         security_resolver=dependencies.security_resolver,
         content_types=dependencies.content_types,

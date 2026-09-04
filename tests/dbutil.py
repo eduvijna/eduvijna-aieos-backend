@@ -85,3 +85,66 @@ def clear_asset_audit_rows_for_schema_downgrade(engine) -> None:
                     "FORCE ROW LEVEL SECURITY"
                 )
             )
+        remediation_origins_exist = conn.execute(
+            text(
+                "SELECT EXISTS ("
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = 'teaching' "
+                "AND table_name = 'work_remediation_origins'"
+                ")"
+            )
+        ).scalar()
+        if remediation_origins_exist:
+            conn.execute(
+                text(
+                    "ALTER TABLE teaching.work_remediation_origins "
+                    "DISABLE TRIGGER "
+                    "teaching_work_remediation_origins_immutable_delete"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE teaching.work_remediation_origins "
+                    "DISABLE ROW LEVEL SECURITY"
+                )
+            )
+            conn.execute(text("DELETE FROM teaching.work_remediation_origins"))
+            conn.execute(
+                text(
+                    "ALTER TABLE teaching.work_remediation_origins "
+                    "ENABLE TRIGGER "
+                    "teaching_work_remediation_origins_immutable_delete"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE teaching.work_remediation_origins "
+                    "ENABLE ROW LEVEL SECURITY"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE teaching.work_remediation_origins "
+                    "FORCE ROW LEVEL SECURITY"
+                )
+            )
+        teaching_works_exist = conn.execute(
+            text(
+                "SELECT EXISTS ("
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = 'teaching' AND table_name = 'works'"
+                ")"
+            )
+        ).scalar()
+        if teaching_works_exist:
+            conn.execute(
+                text("ALTER TABLE teaching.works DISABLE ROW LEVEL SECURITY")
+            )
+            conn.execute(
+                text(
+                    "DELETE FROM teaching.works "
+                    "WHERE intent_type = 'remediate_class'"
+                )
+            )
+            conn.execute(text("ALTER TABLE teaching.works ENABLE ROW LEVEL SECURITY"))
+            conn.execute(text("ALTER TABLE teaching.works FORCE ROW LEVEL SECURITY"))

@@ -932,4 +932,11 @@ class TestProductionCatalogComposition:
         src = Path(mod.__file__).read_text(encoding="utf-8")
         assert "AIEOS_ASSESSMENT_CAPABILITIES" in src
         assert "KernelClassroomAssessmentAuthorization" in src
-        assert "AIEOS_CONTENT_CAPABILITIES | AIEOS_ASSESSMENT_CAPABILITIES" in src
+        assert "AIEOS_REMEDIATION_CREATE_CAPABILITIES" in src
+        compact_src = " ".join(src.split())
+        assert (
+            "known_capabilities=( AIEOS_CONTENT_CAPABILITIES"
+            " | AIEOS_ASSESSMENT_CAPABILITIES"
+            " | AIEOS_REMEDIATION_CREATE_CAPABILITIES )"
+            in compact_src
+        )

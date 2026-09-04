@@ -42,6 +42,9 @@ from aieos.domains.teaching.application.execution_start import (
 from aieos.domains.teaching.application.generate import GenerateTeachingWorkService
 from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionService
 from aieos.domains.teaching.application.prepare import PrepareTeachingWorkService
+from aieos.domains.teaching.application.remediation_create import (
+    CreateRemediationTeachingWorkService,
+)
 from aieos.domains.teaching.application.queries import (
     GetTeachingWorkService,
     ListTeachingWorksService,
@@ -63,6 +66,7 @@ __all__ = [
     "create_teaching_assignment_service",
     "create_teaching_execution_observation_service",
     "create_teaching_work_service",
+    "create_remediation_teaching_work_service",
     "generate_teaching_work_service",
     "get_teaching_assignment_service",
     "get_teaching_execution_service",
@@ -84,6 +88,19 @@ __all__ = [
 
 def create_teaching_work_service(request: Request) -> CreateTeachingWorkService:
     return request.app.state.create_teaching_work_service
+
+
+def create_remediation_teaching_work_service(
+    request: Request,
+) -> CreateRemediationTeachingWorkService:
+    service = request.app.state.create_remediation_teaching_work_service
+    if service is None:
+        from aieos.domains.teaching.application.errors import SchoolContextUnavailable
+
+        raise SchoolContextUnavailable(
+            "Assessment-origin TeachingWork creation is not composed"
+        )
+    return service
 
 
 def refine_teaching_work_service(request: Request) -> RefineTeachingWorkService:

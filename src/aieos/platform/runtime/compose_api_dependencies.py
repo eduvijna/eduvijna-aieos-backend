@@ -51,11 +51,13 @@ from aieos.platform.security.authority import CurrentAuthoritySecurityContextRes
 from aieos.platform.security.authorization import (
     AIEOS_ASSESSMENT_CAPABILITIES,
     AIEOS_CONTENT_CAPABILITIES,
+    AIEOS_REMEDIATION_CREATE_CAPABILITIES,
     AuthorizationKernel,
     KernelClassroomAssessmentAuthorization,
     KernelCurrentTenantAccessAuthority,
     KernelPublicationAuthorization,
     KernelReviewAuthorization,
+    KernelTeachingWorkAuthorization,
 )
 from aieos.platform.security.jwt_bearer import JwtBearerRequestIdentityAuthenticator
 
@@ -151,7 +153,11 @@ def compose_api_runtime_dependencies(
     )
     kernel = AuthorizationKernel(
         engine,
-        known_capabilities=AIEOS_CONTENT_CAPABILITIES | AIEOS_ASSESSMENT_CAPABILITIES,
+        known_capabilities=(
+            AIEOS_CONTENT_CAPABILITIES
+            | AIEOS_ASSESSMENT_CAPABILITIES
+            | AIEOS_REMEDIATION_CREATE_CAPABILITIES
+        ),
     )
     asset_authority = _build_asset_use_authority(engine, env)
     handled_types = tuple(sorted(ASSET_RESOURCE_TYPES_V1))
@@ -160,6 +166,7 @@ def compose_api_runtime_dependencies(
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(engine),
         assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(engine),
         assessment_authorization=KernelClassroomAssessmentAuthorization(kernel),
+        teaching_authorization=KernelTeachingWorkAuthorization(kernel),
         request_identity_authenticator=JwtBearerRequestIdentityAuthenticator(
             auth_config
         ),

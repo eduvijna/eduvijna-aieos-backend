@@ -22,6 +22,20 @@ class TeachingWorkCreateRequest(BaseModel):
     topic: str | None = Field(default=None, max_length=255)
 
 
+class RemediationTeachingWorkCreateRequest(BaseModel):
+    """Strict Assessment-origin remediation request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assessment_id: UUID
+    expected_assessment_aggregate_revision: int = Field(ge=0)
+    goal_text: str = Field(min_length=1, max_length=2000)
+    target_date: date
+    locale: str = Field(min_length=1, max_length=255)
+    subject: str | None = Field(default=None, max_length=255)
+    topic: str | None = Field(default=None, max_length=255)
+
+
 class TeachingWorkRefineRequest(BaseModel):
     """PATCH body. Omitted fields are unchanged; explicit null clears a field."""
 

@@ -102,6 +102,7 @@ def test_no_audit_or_inbox_tables_and_migration_chain() -> None:
     "tosd080001_classroom_assessments.py",
     "tosd080002_classroom_assessment_audit.py",
     "tosd090001_remediation_work_origin.py",
+    "tosd090002_teaching_work_remediation_audit.py",
     ]
 
 
