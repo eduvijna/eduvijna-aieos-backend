@@ -1,7 +1,8 @@
-"""Assessment source adapter sharing the Teaching transaction connection."""
+"""Runtime bridge from Teaching remediation to Assessment persistence."""
 
 from __future__ import annotations
 
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy.engine import Connection
@@ -17,11 +18,11 @@ from aieos.domains.teaching.application.ports import (
 
 
 class SqlAlchemyRemediationAssessmentSource:
-    """Locks Assessment through its repository, then maps to a Teaching DTO."""
+    """Locks Assessment using the transaction owned by the Teaching UoW."""
 
-    def __init__(self, connection: Connection, execution_tenant_id: UUID) -> None:
+    def __init__(self, connection: object, execution_tenant_id: UUID) -> None:
         self._repository = SqlAlchemyClassroomAssessmentRepository(
-            connection, execution_tenant_id
+            cast(Connection, connection), execution_tenant_id
         )
 
     def load_for_update(

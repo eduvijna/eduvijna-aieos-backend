@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from aieos.domains.assessment.application.ports import ASSESSMENT_CLASSROOM_READ
 from aieos.domains.teaching.application.errors import (
     TeachingWorkCapabilityForbidden,
 )
@@ -16,13 +15,11 @@ from aieos.platform.security.authorization.kernel import (
 )
 from aieos.platform.security.context import AuthorizationUnavailableError
 
-AIEOS_REMEDIATION_CREATE_CAPABILITIES = frozenset(
-    {TEACHING_WORK_CREATE, ASSESSMENT_CLASSROOM_READ}
-)
+AIEOS_TEACHING_WORK_CAPABILITIES = frozenset({TEACHING_WORK_CREATE})
 
 
 class KernelTeachingWorkAuthorization:
-    """Exact-capability authorization for Assessment-origin Work creation."""
+    """Exact-capability authorization for Teaching Work creation."""
 
     def __init__(self, kernel: AuthorizationKernel) -> None:
         self._kernel = kernel
@@ -36,7 +33,7 @@ class KernelTeachingWorkAuthorization:
     ) -> None:
         if (
             capability_contains_wildcard(capability)
-            or capability not in AIEOS_REMEDIATION_CREATE_CAPABILITIES
+            or capability not in AIEOS_TEACHING_WORK_CAPABILITIES
         ):
             raise TeachingWorkCapabilityForbidden("teaching capability denied")
         try:

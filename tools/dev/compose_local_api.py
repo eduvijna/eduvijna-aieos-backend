@@ -15,6 +15,7 @@ from aieos.development.auth_adapters import (
     DevelopmentPublicationGovernancePermit,
     DevelopmentReviewAuthorizationPermit,
     DevelopmentReviewCommentPermit,
+    DevelopmentTeachingWorkPermit,
 )
 from aieos.domains.content.infrastructure.persistence.uow import (
     SqlAlchemyContentUnitOfWorkFactory,
@@ -35,6 +36,9 @@ from aieos.platform.runtime.content_production import (
 )
 from aieos.platform.runtime.models import ApiRuntimeConfig
 from aieos.platform.runtime.readiness import SqlAlchemyApiReadinessProbe
+from aieos.platform.runtime.remediation_assessment_source import (
+    SqlAlchemyRemediationAssessmentSource,
+)
 from tools.dev.local_auth import (
     LocalDevelopmentBearerAuthenticator,
     LocalDevelopmentTenantSecurityResolver,
@@ -54,9 +58,15 @@ def compose_local_api_runtime_dependencies(
     """Explicit local composition — no JWT/JWKS fetch, no AIStor network I/O."""
     return ApiRuntimeDependencies(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(engine),
-        teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(engine),
+        teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(
+            engine,
+            remediation_assessment_source_factory=(
+                SqlAlchemyRemediationAssessmentSource
+            ),
+        ),
         assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(engine),
         assessment_authorization=DevelopmentClassroomAssessmentPermit(),
+        teaching_authorization=DevelopmentTeachingWorkPermit(),
         request_identity_authenticator=LocalDevelopmentBearerAuthenticator(
             principal_id=LOCAL_DEV_PRINCIPAL_ID,
             expected_bearer_token=LOCAL_BEARER_TOKEN,

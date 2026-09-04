@@ -5,7 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from aieos.domains.assessment.application.ports import ASSESSMENT_CLASSROOM_READ
+from aieos.domains.assessment.application.ports import (
+    ASSESSMENT_CLASSROOM_READ,
+    ClassroomAssessmentAuthorization,
+)
 from aieos.domains.teaching.application.audit import (
     MutationAuditProvenance,
     insert_required_teaching_execution_audit,
@@ -171,7 +174,8 @@ class CreateRemediationTeachingWorkService:
         self,
         uow_factory: TeachingUnitOfWorkFactory,
         class_authority: SchoolContextClassAuthority,
-        authorization: TeachingWorkAuthorization,
+        teaching_authorization: TeachingWorkAuthorization,
+        assessment_authorization: ClassroomAssessmentAuthorization,
         *,
         idempotency_retention: timedelta,
     ) -> None:
@@ -179,16 +183,21 @@ class CreateRemediationTeachingWorkService:
             raise ValueError("idempotency_retention must be a positive duration")
         self._uow_factory = uow_factory
         self._class_authority = class_authority
-        self._authorization = authorization
+        self._teaching_authorization = teaching_authorization
+        self._assessment_authorization = assessment_authorization
         self._idempotency_retention = idempotency_retention
 
     def _authorize(self, tenant_id: UUID, principal_id: UUID) -> None:
-        for capability in (TEACHING_WORK_CREATE, ASSESSMENT_CLASSROOM_READ):
-            self._authorization.authorize(
-                tenant_id=tenant_id,
-                principal_id=principal_id,
-                capability=capability,
-            )
+        self._teaching_authorization.authorize(
+            tenant_id=tenant_id,
+            principal_id=principal_id,
+            capability=TEACHING_WORK_CREATE,
+        )
+        self._assessment_authorization.authorize(
+            tenant_id=tenant_id,
+            principal_id=principal_id,
+            capability=ASSESSMENT_CLASSROOM_READ,
+        )
 
     def create(
         self,

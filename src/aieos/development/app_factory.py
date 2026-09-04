@@ -17,6 +17,7 @@ from aieos.development.auth_adapters import (
     DevelopmentPublicationGovernancePermit,
     DevelopmentReviewAuthorizationPermit,
     DevelopmentReviewCommentPermit,
+    DevelopmentTeachingWorkPermit,
     DevelopmentTenantSecurityResolver,
 )
 from aieos.development.schemas import (
@@ -47,6 +48,9 @@ from aieos.platform.ai.infrastructure.persistence.uow import (
 )
 from aieos.platform.ai.providers.openai import OpenAIStructuredModelGateway
 from aieos.platform.api.app import create_app
+from aieos.platform.runtime.remediation_assessment_source import (
+    SqlAlchemyRemediationAssessmentSource,
+)
 
 CURSOR_KEY = b"tos-dev01-development-cursor-signing-key"
 IDEMPOTENCY_RETENTION = timedelta(hours=24)
@@ -81,7 +85,12 @@ def build_development_teacher_os_app(
 
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
-        teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
+        teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(
+            runtime_engine,
+            remediation_assessment_source_factory=(
+                SqlAlchemyRemediationAssessmentSource
+            ),
+        ),
         assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
         assessment_authorization=DevelopmentClassroomAssessmentPermit(),
         request_identity_authenticator=DevelopmentPrincipalAuthenticator(principal_id),
@@ -106,6 +115,7 @@ def build_development_teacher_os_app(
             tenant_id=tenant_id,
             teacher_principal_id=principal_id,
         ),
+        teaching_authorization=DevelopmentTeachingWorkPermit(),
     )
 
 

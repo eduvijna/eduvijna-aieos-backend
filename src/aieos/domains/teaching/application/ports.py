@@ -66,6 +66,22 @@ class RemediationAssessmentSourceSnapshot:
     aggregate_revision: int
 
 
+class RemediationAssessmentSourcePort(Protocol):
+    """Locked Assessment facts supplied by runtime composition."""
+
+    def load_for_update(
+        self, assessment_id: UUID
+    ) -> RemediationAssessmentSourceSnapshot | None: ...
+
+
+class RemediationAssessmentSourceFactory(Protocol):
+    """Creates a source bound to the Teaching UoW's opaque connection."""
+
+    def __call__(
+        self, connection: object, execution_tenant_id: UUID
+    ) -> RemediationAssessmentSourcePort: ...
+
+
 class TeachingWorkAuthorization(Protocol):
     """Current capability authority used by remediation Work creation."""
 

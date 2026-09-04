@@ -236,16 +236,14 @@ def create_app(
             ListAssignableSchoolClassesService(school_context_class_reader)
         )
         app.state.school_context_class_authority = class_authority
-        remediation_authorization = (
-            teaching_authorization or assessment_authorization
-        )
         app.state.create_remediation_teaching_work_service = (
             None
-            if remediation_authorization is None
+            if teaching_authorization is None or assessment_authorization is None
             else CreateRemediationTeachingWorkService(
                 teaching_uow_factory,
                 class_authority,
-                remediation_authorization,
+                teaching_authorization,
+                assessment_authorization,
                 idempotency_retention=idempotency_retention,
             )
         )

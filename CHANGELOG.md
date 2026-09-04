@@ -9,6 +9,12 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- TOS-DEV09-I02R1 — Assessment-origin remediation create corrections: move
+  Assessment persistence bridge out of Teaching domain into platform runtime
+  (same Teaching UoW connection), split Teaching vs Assessment authorization
+  authorities, and add deterministic PostgreSQL CORRECT/VOID row-lock race
+  proofs. Alembic head remains `tosd090002`; OpenAPI unchanged.
+
 - TOS-DEV09-I01R1 — TeachingWork `intent_type` DB immutability + candidate-authority
   head pin: `tosd090001` adds `BEFORE UPDATE OF intent_type` fail-closed trigger;
   CI current-head expectations move `tosd080002` → `tosd090001` (historical

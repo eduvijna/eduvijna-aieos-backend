@@ -405,7 +405,16 @@ def test_capability_denial_applies_to_create_and_replay(
         runtime_engine,
         tenant_id,
         teacher_id,
-        teaching_authorization=_CapabilityAuthorization(capability),
+        teaching_authorization=(
+            _CapabilityAuthorization(capability)
+            if capability == "teaching.work.create"
+            else None
+        ),
+        assessment_authorization=(
+            _CapabilityAuthorization(capability)
+            if capability == "assessment.classroom.read"
+            else None
+        ),
     )
     new_key = _post(deny_client, tenant_id, assessment, key=f"new-{capability}")
     replay = _post(deny_client, tenant_id, assessment, key=f"cap-{capability}")

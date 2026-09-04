@@ -149,3 +149,16 @@ class DevelopmentClassroomAssessmentPermit:
         capability: str,
     ) -> None:
         return None
+
+
+class DevelopmentTeachingWorkPermit:
+    """NON_PRODUCTION permissive Teaching Work capability authority."""
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+    ) -> None:
+        return None

@@ -9,10 +9,9 @@ from sqlalchemy.engine import Connection, Engine, Transaction
 
 from aieos.domains.teaching.application.errors import PersistenceOperationFailed
 from aieos.domains.teaching.application.ports import (
+    RemediationAssessmentSourceFactory,
+    RemediationAssessmentSourcePort,
     RemediationAssessmentSourceSnapshot,
-)
-from aieos.domains.teaching.infrastructure.persistence.assessment_source import (
-    SqlAlchemyRemediationAssessmentSource,
 )
 from aieos.domains.teaching.infrastructure.persistence.audit_repository import (
     TeachingSecurityMutationAuditRepository,
@@ -36,9 +35,20 @@ from aieos.platform.events.persistence.repositories import SqlAlchemyOutboxRepos
 
 
 class SqlAlchemyTeachingUnitOfWork:
-    def __init__(self, engine: Engine, execution_tenant_id: UUID) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        execution_tenant_id: UUID,
+        *,
+        remediation_assessment_source_factory: (
+            RemediationAssessmentSourceFactory | None
+        ) = None,
+    ) -> None:
         self._engine = engine
         self._execution_tenant_id = execution_tenant_id
+        self._remediation_assessment_source_factory = (
+            remediation_assessment_source_factory
+        )
         self._connection: Connection | None = None
         self._transaction: Transaction | None = None
         self.works: SqlAlchemyTeachingWorkRepository
@@ -49,7 +59,7 @@ class SqlAlchemyTeachingUnitOfWork:
         self.outbox: SqlAlchemyOutboxRepository
         self.audit: TeachingSecurityMutationAuditRepository
         self.content_eligibility: SqlAlchemyContentAssignmentEligibilityAdapter
-        self._assessment_source: SqlAlchemyRemediationAssessmentSource
+        self._assessment_source: RemediationAssessmentSourcePort | None = None
 
     def __enter__(self) -> SqlAlchemyTeachingUnitOfWork:
         try:
@@ -81,9 +91,10 @@ class SqlAlchemyTeachingUnitOfWork:
             self.content_eligibility = SqlAlchemyContentAssignmentEligibilityAdapter(
                 self._connection, self._execution_tenant_id
             )
-            self._assessment_source = SqlAlchemyRemediationAssessmentSource(
-                self._connection, self._execution_tenant_id
-            )
+            if self._remediation_assessment_source_factory is not None:
+                self._assessment_source = self._remediation_assessment_source_factory(
+                    self._connection, self._execution_tenant_id
+                )
             return self
         except Exception as exc:
             self._cleanup(suppress=True)
@@ -108,6 +119,10 @@ class SqlAlchemyTeachingUnitOfWork:
     def load_recorded_assessment_for_update(
         self, assessment_id: UUID
     ) -> RemediationAssessmentSourceSnapshot | None:
+        if self._assessment_source is None:
+            raise PersistenceOperationFailed(
+                "Teaching remediation Assessment source is not composed"
+            )
         return self._assessment_source.load_for_update(assessment_id)
 
     def __exit__(
@@ -139,8 +154,24 @@ class SqlAlchemyTeachingUnitOfWork:
 
 
 class SqlAlchemyTeachingUnitOfWorkFactory:
-    def __init__(self, engine: Engine) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        *,
+        remediation_assessment_source_factory: (
+            RemediationAssessmentSourceFactory | None
+        ) = None,
+    ) -> None:
         self._engine = engine
+        self._remediation_assessment_source_factory = (
+            remediation_assessment_source_factory
+        )
 
     def __call__(self, execution_tenant_id: UUID) -> SqlAlchemyTeachingUnitOfWork:
-        return SqlAlchemyTeachingUnitOfWork(self._engine, execution_tenant_id)
+        return SqlAlchemyTeachingUnitOfWork(
+            self._engine,
+            execution_tenant_id,
+            remediation_assessment_source_factory=(
+                self._remediation_assessment_source_factory
+            ),
+        )

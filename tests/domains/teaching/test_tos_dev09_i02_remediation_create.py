@@ -181,6 +181,7 @@ def _call(snapshot, command, principal_id=None):
         _Factory(uow),
         _Authority(snapshot.class_ref),
         _Authorization(),
+        _Authorization(),
         idempotency_retention=timedelta(hours=1),
     )
     return service, uow, caller, {
@@ -194,15 +195,17 @@ def _call(snapshot, command, principal_id=None):
 
 def test_success_origin_audit_atomicity_and_replay() -> None:
     tenant_id, principal_id, snapshot, command = _fixture()
-    uow, authority, authorization = (
+    uow, authority, teaching_authorization, assessment_authorization = (
         _Uow(snapshot),
         _Authority(snapshot.class_ref),
+        _Authorization(),
         _Authorization(),
     )
     service = CreateRemediationTeachingWorkService(
         _Factory(uow),
         authority,
-        authorization,
+        teaching_authorization,
+        assessment_authorization,
         idempotency_retention=timedelta(hours=24),
     )
     context = MutationEventContext(
@@ -243,10 +246,12 @@ def test_success_origin_audit_atomicity_and_replay() -> None:
     assert replay.work_id == first.work_id
     assert len(uow.audit.records) == 1
     assert uow.loads == 1
-    assert [call[2] for call in authorization.calls] == [
+    assert [call[2] for call in teaching_authorization.calls] == [
         "teaching.work.create",
+        "teaching.work.create",
+    ]
+    assert [call[2] for call in assessment_authorization.calls] == [
         "assessment.classroom.read",
-        "teaching.work.create",
         "assessment.classroom.read",
     ]
     assert len(authority.calls) == 2
@@ -258,6 +263,7 @@ def test_different_fingerprint_conflicts_without_second_mutation() -> None:
     service = CreateRemediationTeachingWorkService(
         _Factory(uow),
         _Authority(snapshot.class_ref),
+        _Authorization(),
         _Authorization(),
         idempotency_retention=timedelta(hours=1),
     )
@@ -325,7 +331,11 @@ def test_current_class_ref_denial() -> None:
             raise ClassRefNotAssignable("revoked")
 
     service = CreateRemediationTeachingWorkService(
-        _Factory(uow), Deny(), _Authorization(), idempotency_retention=timedelta(hours=1)
+        _Factory(uow),
+        Deny(),
+        _Authorization(),
+        _Authorization(),
+        idempotency_retention=timedelta(hours=1),
     )
     with pytest.raises(ClassRefNotAssignable):
         service.create(

@@ -24,6 +24,9 @@ TEACHING = ROOT / "src" / "aieos" / "domains" / "teaching"
 MIGRATIONS = ROOT / "migrations" / "versions"
 MIGRATION = MIGRATIONS / "tosd090002_teaching_work_remediation_audit.py"
 OPENAPI = ROOT / "contracts" / "openapi" / "aieos-v1.json"
+ASSESSMENT_SOURCE = (
+    ROOT / "src" / "aieos" / "platform" / "runtime" / "remediation_assessment_source.py"
+)
 
 
 def test_current_head_and_only_i02_migration() -> None:
@@ -43,27 +46,20 @@ def test_openapi_contains_dedicated_endpoint_and_digest_is_frozen() -> None:
     assert "teaching_work_from_classroom_assessment_create" in contract
 
 
-def test_application_has_no_assessment_infrastructure_dependency() -> None:
-    source = (TEACHING / "application" / "remediation_create.py").read_text(
-        encoding="utf-8"
-    )
-    assert "assessment.infrastructure" not in source
-
-
-def test_single_teaching_infrastructure_assessment_bridge() -> None:
+def test_teaching_has_no_assessment_infrastructure_dependency() -> None:
     bridge_importers = []
-    for path in (TEACHING / "infrastructure").rglob("*.py"):
+    for path in TEACHING.rglob("*.py"):
         source = path.read_text(encoding="utf-8")
-        if "assessment.infrastructure.persistence" in source:
-            bridge_importers.append(path.name)
-    assert bridge_importers == ["assessment_source.py"]
+        if "aieos.domains.assessment.infrastructure" in source:
+            bridge_importers.append(path.relative_to(TEACHING))
+    assert bridge_importers == []
 
 
 def test_i02_files_exclude_deferred_scope() -> None:
     paths = [
         MIGRATION,
         TEACHING / "application" / "remediation_create.py",
-        TEACHING / "infrastructure" / "persistence" / "assessment_source.py",
+        ASSESSMENT_SOURCE,
     ]
     forbidden = (
         "learner_id",
