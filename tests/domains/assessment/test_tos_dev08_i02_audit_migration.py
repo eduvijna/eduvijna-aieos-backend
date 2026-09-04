@@ -98,6 +98,7 @@ class TestAssessmentAuditMigration:
                 action="assessment.classroom.record",
             )
         try:
+            command.downgrade(cfg, "tosd080002")
             with pytest.raises(Exception) as exc:
                 command.downgrade(cfg, "tosd080001")
             message = str(exc.value)

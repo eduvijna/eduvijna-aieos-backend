@@ -40,6 +40,7 @@ _EXPECTED_MIGRATIONS = [
     "tosd070002_teaching_execution_audit.py",
     "tosd080001_classroom_assessments.py",
     "tosd080002_classroom_assessment_audit.py",
+    "tosd090001_remediation_work_origin.py",
 ]
 
 
@@ -118,7 +119,8 @@ def test_no_gci_i14_or_unauthorized_structures() -> None:
     "tosd070001_teaching_executions.py",
     "tosd070002_teaching_execution_audit.py",
     "tosd080001_classroom_assessments.py",
-    "tosd080002_classroom_assessment_audit.py", "env.py"}
+    "tosd080002_classroom_assessment_audit.py",
+    "tosd090001_remediation_work_origin.py", "env.py"}
     for path in (REPO_ROOT / "migrations").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         for needle in (

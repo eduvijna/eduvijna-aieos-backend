@@ -472,6 +472,31 @@ def provision_runtime_grants(bootstrap: Engine) -> None:
                         f"FROM {RUNTIME_USER}"
                     )
                 )
+            # TOS-DEV09-I01 immutable origin table may be absent on older heads.
+            has_remediation_origins = conn.execute(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_schema = 'teaching'
+                          AND table_name = 'work_remediation_origins'
+                    )
+                    """
+                )
+            ).scalar_one()
+            if has_remediation_origins:
+                conn.execute(
+                    text(
+                        f"GRANT SELECT, INSERT ON teaching.work_remediation_origins "
+                        f"TO {RUNTIME_USER}"
+                    )
+                )
+                conn.execute(
+                    text(
+                        f"REVOKE UPDATE, DELETE ON teaching.work_remediation_origins "
+                        f"FROM {RUNTIME_USER}"
+                    )
+                )
             conn.execute(
                 text(
                     f"GRANT EXECUTE ON FUNCTION teaching.current_tenant_id() "

@@ -38,12 +38,12 @@ EXECUTION_READ_OPS = (
 
 class TestI02ArchitectureGuards:
     def test_alembic_head_still_tosd070002(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
-        assert EXPECTED_MIGRATION_HEAD == "tosd080002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd090001"
+        assert EXPECTED_MIGRATION_HEAD == "tosd090001"
         versions = sorted(
             p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py"
         )
-        assert versions[-1].startswith("tosd080002_")
+        assert versions[-1].startswith("tosd090001_")
 
     def test_openapi_has_execution_and_teach_context_ops(self) -> None:
         schema = json.loads(OPENAPI.read_text(encoding="utf-8"))

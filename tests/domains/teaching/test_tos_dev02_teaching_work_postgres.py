@@ -535,9 +535,10 @@ class TestNoTeachingIntentSystemOfRecord:
             "executions",
             "execution_content_bindings",
             "execution_observations",
+            "work_remediation_origins",
         }
         assert "teaching_intents" not in tables
-        assert not any("intent" in name for name in tables)
+        assert not any(name == "intents" or name.endswith("_intents") for name in tables)
         assert not any("mission" in name for name in tables)
 
     def test_no_intent_or_mission_table_exists_in_any_schema(

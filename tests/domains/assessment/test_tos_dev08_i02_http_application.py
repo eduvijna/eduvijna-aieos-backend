@@ -317,7 +317,7 @@ class TestAuditMigration:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd080002"
+                == "tosd090001"
             )
         content_id, version_id = seed_published_learner_content(
             

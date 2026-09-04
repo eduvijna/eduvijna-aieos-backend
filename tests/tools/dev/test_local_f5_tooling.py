@@ -87,9 +87,9 @@ def test_alembic_head_remains_tosd070002() -> None:
     from tools.dev.constants import EXPECTED_ALEMBIC_HEAD as DEV_EXPECTED
     from tools.release.common import EXPECTED_MIGRATION_HEAD
 
-    assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
-    assert DEV_EXPECTED == "tosd080002"
-    assert EXPECTED_MIGRATION_HEAD == "tosd080002"
+    assert EXPECTED_ALEMBIC_HEAD == "tosd090001"
+    assert DEV_EXPECTED == "tosd090001"
+    assert EXPECTED_MIGRATION_HEAD == "tosd090001"
 
 
 def test_openapi_digest_unchanged() -> None:

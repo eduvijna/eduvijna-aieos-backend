@@ -98,4 +98,5 @@ markers = [
     "tos_dev07_i02: TOS-DEV07-I02 TeachingExecution teach composition application/API",
     "tos_dev08_i01: TOS-DEV08-I01 ClassroomAssessment domain and PostgreSQL persistence/RLS",
     "tos_dev08_i02: TOS-DEV08-I02 ClassroomAssessment application/API + authority composition",
+    "tos_dev09_i01: TOS-DEV09-I01 remediation TeachingWork + immutable origin domain/persistence",
 ]

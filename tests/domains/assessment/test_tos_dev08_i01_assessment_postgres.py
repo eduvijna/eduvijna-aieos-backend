@@ -109,17 +109,17 @@ def _assessment(**overrides) -> ClassroomAssessment:
 
 class TestP01P03MigrationAndShape:
     def test_p01_alembic_head_tosd080001(self, bootstrap_engine: Engine) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
-        assert EXPECTED_MIGRATION_HEAD == "tosd080002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd090001"
+        assert EXPECTED_MIGRATION_HEAD == "tosd090001"
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd080002"
+                == "tosd090001"
             )
         versions = sorted(
             p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py"
         )
-        assert versions[-1].startswith("tosd080002_")
+        assert versions[-1].startswith("tosd090001_")
 
     def test_p02_assessment_schema_exists(self, bootstrap_engine: Engine) -> None:
         insp = inspect(bootstrap_engine)
@@ -483,7 +483,7 @@ class TestP18P19Downgrade:
                     conn.execute(
                         text("SELECT version_num FROM alembic_version")
                     ).scalar_one()
-                    == "tosd080002"
+                    == "tosd090001"
                 )
             with factory(tenant_id) as uow:
                 loaded = uow.classroom_assessments.get(created.assessment_id)

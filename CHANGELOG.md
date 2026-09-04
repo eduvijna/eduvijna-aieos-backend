@@ -9,6 +9,14 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV09-I01 — Remediation TeachingWork + immutable origin domain/persistence:
+  IntentType `remediate_class`, `TeachingWorkRemediationOrigin` Teaching-owned
+  provenance, `teaching.work_remediation_origins` (`tosd090001`) with RLS,
+  immutability triggers, and DEFERRABLE commit-time Work/origin pair
+  enforcement. Generic `POST /api/v1/teaching/works` rejects `remediate_class`
+  until DEV09-I02. No Improve HTTP/OpenAPI, Assessment eligibility/ClassRef
+  composition, audit, UX, generation, learner/mastery/Memory, NATS, or Temporal.
+  Alembic head `tosd090001`; OpenAPI unchanged.
 - TOS-DEV08-I02R1 — Assessment current-capability AuthorizationKernel enforcement
   + mutation idempotency replay revalidates capability and current ClassRef before
   returning stored outcomes. Production known-capability catalog unions Content

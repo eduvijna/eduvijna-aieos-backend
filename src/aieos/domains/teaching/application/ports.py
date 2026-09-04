@@ -22,6 +22,9 @@ from aieos.domains.teaching.domain.identities import (
     ObservationRevision,
     WorkId,
 )
+from aieos.domains.teaching.domain.remediation_origin import (
+    TeachingWorkRemediationOrigin,
+)
 from aieos.domains.teaching.domain.work import TeachingWork
 from aieos.platform.events.ports import OutboxRepository
 from aieos.platform.idempotency.ports import IdempotencyRepository
@@ -75,6 +78,14 @@ class TeachingWorkRepository(Protocol):
     ) -> TeachingWork | None: ...
 
     def count_active_for_teacher(self, *, teacher_principal_id: UUID) -> int: ...
+
+
+class TeachingWorkRemediationOriginRepository(Protocol):
+    """Insert/get only for immutable remediation origin provenance."""
+
+    def insert(self, origin: TeachingWorkRemediationOrigin) -> None: ...
+
+    def get(self, work_id: WorkId) -> TeachingWorkRemediationOrigin | None: ...
 
 
 class TeachingAssignmentRepository(Protocol):
@@ -176,6 +187,7 @@ class TeachingClock(Protocol):
 
 class TeachingUnitOfWork(Protocol):
     works: TeachingWorkRepository
+    remediation_origins: TeachingWorkRemediationOriginRepository
     assignments: TeachingAssignmentRepository
     executions: TeachingExecutionRepository
     idempotency: IdempotencyRepository
