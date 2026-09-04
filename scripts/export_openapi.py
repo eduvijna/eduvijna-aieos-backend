@@ -9,6 +9,7 @@ from uuid import uuid4
 from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.app import create_app
+from tests.fakes import AllowClassroomAssessmentAuthorization
 from aieos.platform.api.openapi import build_openapi, canonical_openapi_json
 from aieos.platform.security.context import TrustedSecurityContext
 from aieos.platform.security.identity import TrustedRequestIdentity
@@ -68,6 +69,8 @@ def main() -> None:
     app = create_app(
         uow_factory=_UnusedUowFactory(),
         teaching_uow_factory=_UnusedUowFactory(),
+        assessment_uow_factory=_UnusedUowFactory(),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=_ExportOnlyRequestIdentityAuthenticator(),
         security_resolver=_ExportResolver(),
         content_types=StaticContentTypeCatalog({"test.generic"}),

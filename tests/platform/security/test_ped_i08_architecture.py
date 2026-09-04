@@ -21,6 +21,7 @@ from aieos.platform.security.identity import TrustedRequestIdentity
 from aieos.platform.security.jwt_bearer import JwtBearerRequestIdentityAuthenticator
 from tests.dbutil import REPO_ROOT
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
@@ -175,7 +176,7 @@ def test_no_principal_mapping_persistence_or_migration() -> None:
     versions = sorted(p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py")
     assert "pedi090001_security_authority.py" in versions
     assert "pedi10b2001_asset_authority_sor.py" in versions
-    assert versions[-1] == "tosd080001_classroom_assessments.py"
+    assert versions[-1] == "tosd080002_classroom_assessment_audit.py"
     for path in MIGRATIONS.rglob("*.py"):
         body = path.read_text(encoding="utf-8")
         assert "pedi080001" not in body
@@ -192,6 +193,8 @@ def test_openapi_exposes_aieos_bearer_auth_scheme() -> None:
     app = create_app(
         uow_factory=_UnusedUowFactory(),
         teaching_uow_factory=_UnusedUowFactory(),
+        assessment_uow_factory=_UnusedUowFactory(),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),
@@ -228,6 +231,8 @@ def test_openapi_snapshot_matches_checked_in_and_hash() -> None:
     app = create_app(
         uow_factory=_UnusedUowFactory(),
         teaching_uow_factory=_UnusedUowFactory(),
+        assessment_uow_factory=_UnusedUowFactory(),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),

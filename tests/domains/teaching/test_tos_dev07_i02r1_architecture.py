@@ -32,11 +32,11 @@ _EXECUTION_ACTIONS = (
 
 
 def test_head_constants_and_chain() -> None:
-    assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
-    assert EXPECTED_MIGRATION_HEAD == "tosd080001"
-    assert DEV_EXPECTED_ALEMBIC_HEAD == "tosd080001"
+    assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
+    assert EXPECTED_MIGRATION_HEAD == "tosd080002"
+    assert DEV_EXPECTED_ALEMBIC_HEAD == "tosd080002"
     assert EXPECTED_OPENAPI_SHA256 == (
-        "7D7D0E7C7115667757A31CFEB5474F7498ECC7198FB812DE5EF14A0E9F2D289A"
+        "824B389D6D4EDB2EA5D8ED3A9E5411087B566DFDCA09C2AB0CD4FDED51C4D89D"
     )
     text_002 = MIGRATION.read_text(encoding="utf-8")
     assert 'revision: str = "tosd070002"' in text_002
@@ -52,7 +52,7 @@ def test_head_constants_and_chain() -> None:
     versions = sorted(
         p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py"
     )
-    assert versions[-1] == "tosd080001_classroom_assessments.py"
+    assert versions[-1] == "tosd080002_classroom_assessment_audit.py"
 
 
 def test_python_action_families() -> None:

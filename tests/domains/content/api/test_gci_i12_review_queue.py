@@ -24,12 +24,16 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
+from aieos.domains.assessment.infrastructure.persistence.uow import (
+    SqlAlchemyAssessmentUnitOfWorkFactory,
+)
 from aieos.platform.api.app import create_app
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.events.models import MutationEventContext
 from aieos.platform.resources import ResourceRef
 from aieos.domains.content.application.audit import ai_materialization_audit_provenance
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAIGenerationAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
@@ -59,6 +63,8 @@ def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID):
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
+        assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog({"test.generic"}),

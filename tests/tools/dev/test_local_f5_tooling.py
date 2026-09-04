@@ -87,9 +87,9 @@ def test_alembic_head_remains_tosd070002() -> None:
     from tools.dev.constants import EXPECTED_ALEMBIC_HEAD as DEV_EXPECTED
     from tools.release.common import EXPECTED_MIGRATION_HEAD
 
-    assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
-    assert DEV_EXPECTED == "tosd080001"
-    assert EXPECTED_MIGRATION_HEAD == "tosd080001"
+    assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
+    assert DEV_EXPECTED == "tosd080002"
+    assert EXPECTED_MIGRATION_HEAD == "tosd080002"
 
 
 def test_openapi_digest_unchanged() -> None:
@@ -97,7 +97,7 @@ def test_openapi_digest_unchanged() -> None:
 
     assert (
         EXPECTED_OPENAPI_SHA256
-        == "7D7D0E7C7115667757A31CFEB5474F7498ECC7198FB812DE5EF14A0E9F2D289A"
+        == "824B389D6D4EDB2EA5D8ED3A9E5411087B566DFDCA09C2AB0CD4FDED51C4D89D"
     )
     assert_openapi_digest(REPO_ROOT)
 

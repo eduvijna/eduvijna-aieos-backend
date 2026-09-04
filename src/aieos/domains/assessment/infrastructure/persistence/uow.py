@@ -8,11 +8,23 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine, Transaction
 
 from aieos.domains.assessment.application.errors import PersistenceOperationFailed
+from aieos.domains.assessment.infrastructure.persistence.audit_repository import (
+    AssessmentSecurityMutationAuditRepository,
+)
+from aieos.domains.assessment.infrastructure.persistence.content_authority import (
+    SqlAlchemyAssessmentContentAuthorityAdapter,
+)
 from aieos.domains.assessment.infrastructure.persistence.errors import (
     reraise_as_application_error,
 )
 from aieos.domains.assessment.infrastructure.persistence.repositories import (
     SqlAlchemyClassroomAssessmentRepository,
+)
+from aieos.domains.assessment.infrastructure.persistence.teaching_composition import (
+    SqlAlchemyAssessmentTeachingCompositionAdapter,
+)
+from aieos.platform.api.infrastructure.persistence.repositories import (
+    SqlAlchemyIdempotencyRepository,
 )
 
 
@@ -23,6 +35,10 @@ class SqlAlchemyAssessmentUnitOfWork:
         self._connection: Connection | None = None
         self._transaction: Transaction | None = None
         self.classroom_assessments: SqlAlchemyClassroomAssessmentRepository
+        self.idempotency: SqlAlchemyIdempotencyRepository
+        self.audit: AssessmentSecurityMutationAuditRepository
+        self.content_authority: SqlAlchemyAssessmentContentAuthorityAdapter
+        self.teaching_composition: SqlAlchemyAssessmentTeachingCompositionAdapter
 
     def __enter__(self) -> SqlAlchemyAssessmentUnitOfWork:
         try:
@@ -33,6 +49,16 @@ class SqlAlchemyAssessmentUnitOfWork:
                 {"tid": str(self._execution_tenant_id)},
             )
             self.classroom_assessments = SqlAlchemyClassroomAssessmentRepository(
+                self._connection, self._execution_tenant_id
+            )
+            self.idempotency = SqlAlchemyIdempotencyRepository(
+                self._connection, self._execution_tenant_id
+            )
+            self.audit = AssessmentSecurityMutationAuditRepository(self._connection)
+            self.content_authority = SqlAlchemyAssessmentContentAuthorityAdapter(
+                self._connection, self._execution_tenant_id
+            )
+            self.teaching_composition = SqlAlchemyAssessmentTeachingCompositionAdapter(
                 self._connection, self._execution_tenant_id
             )
             return self

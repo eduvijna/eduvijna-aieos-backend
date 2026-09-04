@@ -53,6 +53,9 @@ FROZEN_API_MUTATION_OPERATION_IDS: frozenset[str] = frozenset(
         "teaching_execution_cancel",
         "teaching_execution_observation_create",
         "teaching_execution_observation_correct",
+        "assessment_classroom_record",
+        "assessment_classroom_correct",
+        "assessment_classroom_void",
     }
 )
 
@@ -73,6 +76,8 @@ READ_ONLY_OPERATION_IDS: frozenset[str] = frozenset(
         "teaching_execution_get",
         "teaching_execution_list",
         "teacher_os_teach_context_get",
+        "assessment_classroom_get",
+        "assessment_classroom_list",
     }
 )
 

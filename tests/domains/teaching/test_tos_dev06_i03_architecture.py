@@ -79,8 +79,8 @@ class TestI03ArchitectureGuards:
         assert 'revision: str = "tosd060002"' in text_002
         assert 'down_revision: str | None = "tosd060001"' in text_002
         assert "teaching.assignment.create" in text_002
-        assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
-        assert EXPECTED_MIGRATION_HEAD == "tosd080001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
+        assert EXPECTED_MIGRATION_HEAD == "tosd080002"
 
     def test_create_checks_idempotency_before_class_authority(self) -> None:
         source = CREATE_SERVICE.read_text(encoding="utf-8")

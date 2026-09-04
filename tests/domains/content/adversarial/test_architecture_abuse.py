@@ -20,9 +20,13 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
+from aieos.domains.assessment.infrastructure.persistence.uow import (
+    SqlAlchemyAssessmentUnitOfWorkFactory,
+)
 from aieos.platform.api.app import create_app
 from tests.dbutil import REPO_ROOT
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
@@ -79,6 +83,7 @@ _EXPECTED_MIGRATIONS = [
     "tosd070001_teaching_executions.py",
     "tosd070002_teaching_execution_audit.py",
     "tosd080001_classroom_assessments.py",
+    "tosd080002_classroom_assessment_audit.py",
 ]
 
 
@@ -193,6 +198,8 @@ class TestArchitectureAbuse:
         app = create_app(
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
             teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
+        assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
             request_identity_authenticator=FixedPrincipalAuthenticator(tenant_id),
             security_resolver=StubSecurityContextResolver(tenant_id, tenant_id),
             content_types=StaticContentTypeCatalog({"test.generic"}),

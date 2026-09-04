@@ -14,8 +14,12 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
+from aieos.domains.assessment.infrastructure.persistence.uow import (
+    SqlAlchemyAssessmentUnitOfWorkFactory,
+)
 from aieos.platform.api.app import create_app
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     IDEMPOTENCY_RETENTION,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
@@ -37,6 +41,8 @@ def build_client(
     app = create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
+        assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog({"test.generic"}),

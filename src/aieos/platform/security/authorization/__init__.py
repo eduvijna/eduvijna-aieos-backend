@@ -13,6 +13,10 @@ from aieos.platform.security.authorization.asset_adapters import (
     AIEOS_ASSET_CAPABILITIES,
     KernelAssetMutationAuthorization,
 )
+from aieos.platform.security.authorization.assessment_adapters import (
+    AIEOS_ASSESSMENT_CAPABILITIES,
+    KernelClassroomAssessmentAuthorization,
+)
 from aieos.platform.security.authorization.content_adapters import (
     AIEOS_CONTENT_CAPABILITIES,
     KernelAIGenerationAuthorization,
@@ -36,6 +40,7 @@ from aieos.platform.security.authorization.tenant_authority import (
 )
 
 __all__ = [
+    "AIEOS_ASSESSMENT_CAPABILITIES",
     "AIEOS_ASSET_CAPABILITIES",
     "AIEOS_CONTENT_CAPABILITIES",
     "CONTENT_MIGRATE_IMPORT",
@@ -48,6 +53,7 @@ __all__ = [
     "GrantStatus",
     "KernelAIGenerationAuthorization",
     "KernelAssetMutationAuthorization",
+    "KernelClassroomAssessmentAuthorization",
     "KernelContentMigrationAuthorization",
     "KernelCurrentTenantAccessAuthority",
     "KernelPublicationAuthorization",

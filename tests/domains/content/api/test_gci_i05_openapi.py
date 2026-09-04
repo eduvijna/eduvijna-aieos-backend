@@ -11,7 +11,7 @@ from aieos.domains.content.application.catalog import StaticContentTypeCatalog
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.platform.api.app import create_app
 from aieos.platform.api.openapi import build_openapi, canonical_openapi_json
-from tests.fakes import FixedPrincipalAuthenticator, StubSecurityContextResolver, AllowReviewAuthorization, AllowReviewCommentPolicy, AllowPublicationAuthorization, AllowPublicationGovernance, AllowAssetReferenceValidation, AllowAssetCurrentGovernance
+from tests.fakes import AllowClassroomAssessmentAuthorization, FixedPrincipalAuthenticator, StubSecurityContextResolver, AllowReviewAuthorization, AllowReviewCommentPolicy, AllowPublicationAuthorization, AllowPublicationGovernance, AllowAssetReferenceValidation, AllowAssetCurrentGovernance
 
 pytestmark = pytest.mark.gci_i05
 
@@ -25,6 +25,8 @@ def _schema() -> dict:
     app = create_app(
         uow_factory=_UnusedUowFactory(),
         teaching_uow_factory=_UnusedUowFactory(),
+        assessment_uow_factory=_UnusedUowFactory(),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),
