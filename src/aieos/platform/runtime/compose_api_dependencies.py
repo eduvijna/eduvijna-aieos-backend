@@ -27,6 +27,9 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
+from aieos.domains.assessment.infrastructure.persistence.uow import (
+    SqlAlchemyAssessmentUnitOfWorkFactory,
+)
 from aieos.platform.governance import (
     BaselinePublicationGovernanceV1,
     DeterministicReviewCommentPolicyV1,
@@ -153,6 +156,7 @@ def compose_api_runtime_dependencies(
     return ApiRuntimeDependencies(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(engine),
+        assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(engine),
         request_identity_authenticator=JwtBearerRequestIdentityAuthenticator(
             auth_config
         ),

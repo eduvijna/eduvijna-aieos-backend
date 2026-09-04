@@ -45,6 +45,17 @@ from aieos.domains.education.application.generate_preparation_kit import (
 )
 from aieos.domains.education.application.generate_worksheet import GenerateWorksheetCapability
 from aieos.domains.teaching.api.v1.routes import router as teaching_v1_router
+from aieos.domains.assessment.api.v1.routes import router as assessment_v1_router
+from aieos.domains.assessment.application.mutations import (
+    CorrectClassroomAssessmentService,
+    VoidClassroomAssessmentService,
+)
+from aieos.domains.assessment.application.ports import AssessmentUnitOfWorkFactory
+from aieos.domains.assessment.application.queries import (
+    GetClassroomAssessmentService,
+    ListClassroomAssessmentsService,
+)
+from aieos.domains.assessment.application.record import RecordClassroomAssessmentService
 from aieos.domains.teaching.application.artifacts import ListTeachingWorkArtifactsService
 from aieos.domains.teaching.application.assignment_create import (
     CreateTeachingAssignmentService,
@@ -120,6 +131,7 @@ def create_app(
     *,
     uow_factory: ContentUnitOfWorkFactory,
     teaching_uow_factory: TeachingUnitOfWorkFactory,
+    assessment_uow_factory: AssessmentUnitOfWorkFactory,
     request_identity_authenticator: RequestIdentityAuthenticator,
     security_resolver: SecurityContextResolver,
     content_types: ContentTypeCatalog,
@@ -153,6 +165,7 @@ def create_app(
     app.add_middleware(RequestContextMiddleware)
     app.include_router(content_v1_router)
     app.include_router(teaching_v1_router)
+    app.include_router(assessment_v1_router)
     app.state.request_identity_authenticator = request_identity_authenticator
     app.state.security_resolver = security_resolver
     app.state.cursor_codec = codec
@@ -358,6 +371,36 @@ def create_app(
         app.state.create_teaching_execution_observation_service = None
         app.state.correct_teaching_execution_observation_service = None
         app.state.teacher_os_teach_context_service = None
+
+    app.state.get_classroom_assessment_service = GetClassroomAssessmentService(
+        assessment_uow_factory
+    )
+    app.state.list_classroom_assessments_service = ListClassroomAssessmentsService(
+        assessment_uow_factory
+    )
+    if school_context_class_reader is not None:
+        class_authority = app.state.school_context_class_authority
+        app.state.record_classroom_assessment_service = RecordClassroomAssessmentService(
+            assessment_uow_factory,
+            class_authority,
+            idempotency_retention=idempotency_retention,
+        )
+        app.state.correct_classroom_assessment_service = (
+            CorrectClassroomAssessmentService(
+                assessment_uow_factory,
+                class_authority,
+                idempotency_retention=idempotency_retention,
+            )
+        )
+        app.state.void_classroom_assessment_service = VoidClassroomAssessmentService(
+            assessment_uow_factory,
+            class_authority,
+            idempotency_retention=idempotency_retention,
+        )
+    else:
+        app.state.record_classroom_assessment_service = None
+        app.state.correct_classroom_assessment_service = None
+        app.state.void_classroom_assessment_service = None
 
     def _openapi() -> dict:
         if app.openapi_schema is None:

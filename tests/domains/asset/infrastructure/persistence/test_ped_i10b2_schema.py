@@ -311,7 +311,7 @@ class TestMigrationGraph:
     def test_script_directory_single_head_and_parent(self) -> None:
         cfg = Config(str(REPO_ROOT / "alembic.ini"))
         script = ScriptDirectory.from_config(cfg)
-        assert script.get_heads() == ["tosd080001"]
+        assert script.get_heads() == ["tosd080002"]
         revision = script.get_revision("pedi10b2001")
         assert revision is not None
         assert revision.down_revision == "pedi090001"
@@ -323,7 +323,7 @@ class TestMigrationGraph:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd080001"
+                == "tosd080002"
             )
 
     def test_downgrade_removes_asset_keeps_content_security_then_reupgrade(
@@ -352,7 +352,7 @@ class TestMigrationGraph:
         with bootstrap_engine.connect() as conn:
             assert (
                 conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "tosd080001"
+                == "tosd080002"
             )
 
 

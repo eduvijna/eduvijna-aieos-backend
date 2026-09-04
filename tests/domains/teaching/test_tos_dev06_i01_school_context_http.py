@@ -83,7 +83,8 @@ def _build_client(
         )
     app = create_app(
         uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
-        teaching_uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
+        teaching_uow_factory=_UnusedUowFactory(),
+        assessment_uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
         request_identity_authenticator=authenticator
         or FixedPrincipalAuthenticator(principal_id),
         security_resolver=security_resolver

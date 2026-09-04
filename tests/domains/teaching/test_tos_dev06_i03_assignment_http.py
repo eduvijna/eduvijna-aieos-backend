@@ -87,7 +87,8 @@ class _MutableReader:
 def _client(tenant_id: uuid.UUID, principal_id: uuid.UUID) -> TestClient:
     app = create_app(
         uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
-        teaching_uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
+        teaching_uow_factory=_UnusedUowFactory(),
+        assessment_uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog({"test.generic", "worksheet"}),
@@ -175,7 +176,8 @@ class TestCreateHttpContract:
         principal_id = uuid.uuid4()
         app = create_app(
             uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
-            teaching_uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
+            teaching_uow_factory=_UnusedUowFactory(),
+        assessment_uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
             request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
             security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
             content_types=StaticContentTypeCatalog({"test.generic"}),

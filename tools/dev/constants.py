@@ -23,7 +23,7 @@ DB_NAME = "aieos"
 DB_PASSWORD = "aieos_test"
 HOST = "127.0.0.1"
 HOST_PORT = "55432"
-EXPECTED_ALEMBIC_HEAD = "tosd080001"
+EXPECTED_ALEMBIC_HEAD = "tosd080002"
 
 ALLOWED_DB_HOSTS = frozenset({"127.0.0.1", "localhost"})
 

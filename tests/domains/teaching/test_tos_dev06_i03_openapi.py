@@ -41,7 +41,8 @@ class _Reader:
 def _schema() -> dict:
     app = create_app(
         uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
-        teaching_uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
+        teaching_uow_factory=_UnusedUowFactory(),
+        assessment_uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic", "worksheet"}),

@@ -30,6 +30,9 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
+from aieos.domains.assessment.infrastructure.persistence.uow import (
+    SqlAlchemyAssessmentUnitOfWorkFactory,
+)
 from aieos.platform.ai.config import (
     DEFAULT_AI_MODEL,
     DEFAULT_AI_PROVIDER,
@@ -78,6 +81,7 @@ def build_development_teacher_os_app(
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
+        assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
         request_identity_authenticator=DevelopmentPrincipalAuthenticator(principal_id),
         security_resolver=DevelopmentTenantSecurityResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog(development_content_type_names()),

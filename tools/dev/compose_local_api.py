@@ -21,6 +21,9 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
+from aieos.domains.assessment.infrastructure.persistence.uow import (
+    SqlAlchemyAssessmentUnitOfWorkFactory,
+)
 from aieos.platform.runtime.activation import (
     load_api_mutation_activation_gate_from_process_environment,
 )
@@ -51,6 +54,7 @@ def compose_local_api_runtime_dependencies(
     return ApiRuntimeDependencies(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(engine),
+        assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(engine),
         request_identity_authenticator=LocalDevelopmentBearerAuthenticator(
             principal_id=LOCAL_DEV_PRINCIPAL_ID,
             expected_bearer_token=LOCAL_BEARER_TOKEN,

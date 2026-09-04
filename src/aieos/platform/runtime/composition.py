@@ -18,6 +18,7 @@ from aieos.domains.content.application.ports import (
 )
 from aieos.domains.content.domain.schema import ContentSchemaRegistry
 from aieos.domains.teaching.application.ports import TeachingUnitOfWorkFactory
+from aieos.domains.assessment.application.ports import AssessmentUnitOfWorkFactory
 from aieos.platform.api.app import create_app
 from aieos.platform.runtime.activation import (
     ApiMutationActivationGate,
@@ -39,6 +40,7 @@ class ApiRuntimeDependencies:
 
     uow_factory: ContentUnitOfWorkFactory
     teaching_uow_factory: TeachingUnitOfWorkFactory
+    assessment_uow_factory: AssessmentUnitOfWorkFactory
     request_identity_authenticator: RequestIdentityAuthenticator
     security_resolver: SecurityContextResolver
     content_types: ContentTypeCatalog
@@ -66,6 +68,7 @@ def compose_api_application(
     app = create_app(
         uow_factory=dependencies.uow_factory,
         teaching_uow_factory=dependencies.teaching_uow_factory,
+        assessment_uow_factory=dependencies.assessment_uow_factory,
         request_identity_authenticator=dependencies.request_identity_authenticator,
         security_resolver=dependencies.security_resolver,
         content_types=dependencies.content_types,

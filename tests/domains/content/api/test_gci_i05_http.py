@@ -29,6 +29,9 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
+from aieos.domains.assessment.infrastructure.persistence.uow import (
+    SqlAlchemyAssessmentUnitOfWorkFactory,
+)
 from aieos.platform.api.app import create_app
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.idempotency.hashing import hash_idempotency_key
@@ -61,6 +64,7 @@ def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID):
     return create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
+        assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog({"test.generic"}),
@@ -282,6 +286,7 @@ class TestAppendContract:
         app = create_app(
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
             teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
+        assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
             request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
             security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
             content_types=StaticContentTypeCatalog({"test.generic"}),
@@ -539,6 +544,7 @@ class TestIdempotencyHttp:
             create_app(
                 uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
                 teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
+        assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
                 request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
                 security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
                 content_types=StaticContentTypeCatalog({"other.type"}),

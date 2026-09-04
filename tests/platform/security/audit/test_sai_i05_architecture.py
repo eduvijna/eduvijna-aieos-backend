@@ -47,7 +47,7 @@ BOUNDARY_DOC = REPO_ROOT / "docs" / "GCI-I04-NON-PRODUCTION-MUTATION-BOUNDARY.md
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 SNAPSHOT = REPO_ROOT / "contracts" / "openapi" / "aieos-v1.json"
 EXPECTED_OPENAPI_SHA256 = (
-    "7D7D0E7C7115667757A31CFEB5474F7498ECC7198FB812DE5EF14A0E9F2D289A"
+    "824B389D6D4EDB2EA5D8ED3A9E5411087B566DFDCA09C2AB0CD4FDED51C4D89D"
 )
 
 _EXPECTED_MIGRATIONS = [
@@ -74,6 +74,7 @@ _EXPECTED_MIGRATIONS = [
     "tosd070001_teaching_executions.py",
     "tosd070002_teaching_execution_audit.py",
     "tosd080001_classroom_assessments.py",
+    "tosd080002_classroom_assessment_audit.py",
 ]
 
 # Frozen SAI-I05 mutation inventory classification.
@@ -274,6 +275,9 @@ class TestMutationInventory:
             "teaching.execution.cancel",
             "teaching.execution.observation.create",
             "teaching.execution.observation.correct",
+            "assessment.classroom.record",
+            "assessment.classroom.correct",
+            "assessment.classroom.void",
         }
         assert _FROZEN_ACTIONS == expected
         assert SecurityAuditExecutionChannel.WORKFLOW_ACTIVITY.value == "WORKFLOW_ACTIVITY"
@@ -543,6 +547,7 @@ class TestMigrationChainAndOpenApi:
             app = create_app(
                 uow_factory=_UnusedUowFactory(),
                 teaching_uow_factory=_UnusedUowFactory(),
+        assessment_uow_factory=_UnusedUowFactory(),
                 request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
                 security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
                 content_types=StaticContentTypeCatalog({"test.generic"}),

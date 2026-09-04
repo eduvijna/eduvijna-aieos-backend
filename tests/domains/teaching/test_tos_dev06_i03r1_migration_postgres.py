@@ -162,8 +162,8 @@ def _seed_assignment_row(conn, *, tenant_id: uuid.UUID) -> uuid.UUID:
 
 class TestTosd060002Migration:
     def test_head_constants_and_chain(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
-        assert EXPECTED_MIGRATION_HEAD == "tosd080001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
+        assert EXPECTED_MIGRATION_HEAD == "tosd080002"
         text_002 = (MIGRATIONS / "tosd060002_teaching_assignment_audit.py").read_text(
             encoding="utf-8"
         )
@@ -312,7 +312,7 @@ class TestTosd060002Migration:
             with bootstrap_engine.connect() as conn:
                 assert (
                     conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                    == "tosd080001"
+                    == "tosd080002"
                 )
         finally:
             clear_asset_audit_rows_for_schema_downgrade(bootstrap_engine)

@@ -54,15 +54,15 @@ def _imports(path: Path) -> list[str]:
 
 class TestI01ArchitectureGuards:
     def test_current_alembic_head_tosd080001(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
-        assert EXPECTED_MIGRATION_HEAD == "tosd080001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
+        assert EXPECTED_MIGRATION_HEAD == "tosd080002"
         text = MIGRATION.read_text(encoding="utf-8")
         assert 'revision: str = "tosd080001"' in text
         assert 'down_revision: str | None = "tosd070002"' in text
         versions = sorted(
             p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py"
         )
-        assert versions[-1] == "tosd080001_classroom_assessments.py"
+        assert versions[-1] == "tosd080002_classroom_assessment_audit.py"
 
     def test_assessment_schema_in_readiness_ownership(self) -> None:
         assert "assessment" in _CONTENT_OWNED_SCHEMAS
@@ -138,26 +138,29 @@ class TestI01ArchitectureGuards:
             ):
                 assert needle not in text, f"{path.name}:{needle}"
 
-    def test_no_assessment_api_route(self) -> None:
-        assert not (ASSESSMENT_ROOT / "api").exists()
-        for path in SRC_ROOT.rglob("*routes.py"):
+    def test_i01_domain_and_persistence_remain_api_free(self) -> None:
+        """I01 delivered domain + persistence only; HTTP lives under api/ (I02)."""
+        for root_name in ("domain",):
+            for path in _py_files(ASSESSMENT_ROOT / root_name):
+                text = path.read_text(encoding="utf-8")
+                assert "APIRouter" not in text
+                assert "fastapi" not in text.lower()
+        persistence = ASSESSMENT_ROOT / "infrastructure" / "persistence"
+        for path in _py_files(persistence):
             text = path.read_text(encoding="utf-8")
-            assert "/assessment" not in text or "assessment" not in path.as_posix()
-        app_mod = (SRC_ROOT / "platform" / "api" / "app.py").read_text(
-            encoding="utf-8"
-        )
-        assert "domains.assessment.api" not in app_mod
-        assert "assessment_v1_router" not in app_mod
+            assert "APIRouter" not in text
+        assert (ASSESSMENT_ROOT / "api").is_dir()
 
-    def test_openapi_unchanged(self) -> None:
+    def test_openapi_digest_matches_release_pin(self) -> None:
         digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest().upper()
         assert digest == EXPECTED_OPENAPI_SHA256
         assert digest == (
-            "7D7D0E7C7115667757A31CFEB5474F7498ECC7198FB812DE5EF14A0E9F2D289A"
+            "824B389D6D4EDB2EA5D8ED3A9E5411087B566DFDCA09C2AB0CD4FDED51C4D89D"
         )
 
-    def test_no_security_audit_or_idempotency_in_i01(self) -> None:
-        for path in _py_files(ASSESSMENT_ROOT):
+    def test_i01_domain_has_no_audit_or_idempotency_wiring(self) -> None:
+        """I01 domain/persistence must not own audit/idempotency; I02 application does."""
+        for path in _py_files(ASSESSMENT_ROOT / "domain"):
             text = path.read_text(encoding="utf-8")
             for needle in (
                 "assessment.classroom.record",
@@ -167,3 +170,6 @@ class TestI01ArchitectureGuards:
                 "idempotency_records",
             ):
                 assert needle not in text, f"{path.name}:{needle}"
+        migration = MIGRATION.read_text(encoding="utf-8")
+        assert "assessment.classroom.record" not in migration
+        assert "idempotency" not in migration.lower()

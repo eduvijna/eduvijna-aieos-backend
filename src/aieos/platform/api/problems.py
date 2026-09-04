@@ -55,6 +55,32 @@ from aieos.domains.content.application.errors import (
 from aieos.domains.teaching.application.errors import (
     AggregateRevisionConflict as TeachingAggregateRevisionConflict,
 )
+from aieos.domains.assessment.application.errors import (
+    AggregateRevisionConflict as AssessmentAggregateRevisionConflict,
+    AssessmentApplicationError,
+    ClassRefNotAssignable as AssessmentClassRefNotAssignable,
+    ClassroomAssessmentForbidden,
+    ClassroomAssessmentNotFound,
+    ClassroomAssessmentNotRecorded,
+    CompositionConflict,
+    ContentNotEligibleForAssessment,
+    ContentNotFoundForAssessment,
+    ContentVersionMismatch as AssessmentContentVersionMismatch,
+    IdempotencyKeyReused as AssessmentIdempotencyKeyReused,
+    InvalidClassroomAssessmentRequest,
+    PersistenceInvariantViolation as AssessmentPersistenceInvariantViolation,
+    PersistenceOperationFailed as AssessmentPersistenceOperationFailed,
+    SchoolContextUnavailable as AssessmentSchoolContextUnavailable,
+    TeachingAssignmentCompositionMismatch,
+    TeachingAssignmentForbidden as AssessmentTeachingAssignmentForbidden,
+    TeachingAssignmentNotFound as AssessmentTeachingAssignmentNotFound,
+    TeachingExecutionBindingMismatch,
+    TeachingExecutionForbidden as AssessmentTeachingExecutionForbidden,
+    TeachingExecutionNotCompleted,
+    TeachingExecutionNotFound as AssessmentTeachingExecutionNotFound,
+    TeachingWorkForbidden as AssessmentTeachingWorkForbidden,
+    TeachingWorkNotFound as AssessmentTeachingWorkNotFound,
+)
 from aieos.domains.teaching.application.errors import (
     ClassRefNotAssignable,
     ContentMaterializationFailedError,
@@ -694,6 +720,149 @@ _TEACHING_PROBLEMS: dict[type[TeachingApplicationError], tuple[int, str, str, st
     ),
 }
 
+_ASSESSMENT_PROBLEMS: dict[
+    type[AssessmentApplicationError], tuple[int, str, str, str]
+] = {
+    InvalidClassroomAssessmentRequest: (
+        400,
+        "invalid_classroom_assessment_request",
+        "Invalid ClassroomAssessment request",
+        "The ClassroomAssessment command is invalid",
+    ),
+    ClassroomAssessmentNotFound: (
+        404,
+        "classroom_assessment_not_found",
+        "ClassroomAssessment not found",
+        "ClassroomAssessment was not found",
+    ),
+    ClassroomAssessmentForbidden: (
+        404,
+        "classroom_assessment_not_found",
+        "ClassroomAssessment not found",
+        "ClassroomAssessment was not found",
+    ),
+    ClassroomAssessmentNotRecorded: (
+        409,
+        "classroom_assessment_not_recorded",
+        "ClassroomAssessment not recorded",
+        "Only a RECORDED ClassroomAssessment may be mutated",
+    ),
+    AssessmentClassRefNotAssignable: (
+        403,
+        "class_ref_not_assignable",
+        "ClassRef not authorized",
+        "ClassRef is not a current teaching target for the represented teacher",
+    ),
+    AssessmentSchoolContextUnavailable: (
+        503,
+        "school_context_unavailable",
+        "School Context unavailable",
+        "School Context current-class authority is temporarily unavailable",
+    ),
+    AssessmentIdempotencyKeyReused: (
+        409,
+        "idempotency_key_reused",
+        "Idempotency key reused",
+        "Idempotency-Key was already used with a different request",
+    ),
+    AssessmentAggregateRevisionConflict: (
+        412,
+        "resource_revision_conflict",
+        "Resource revision conflict",
+        "If-Match does not match the current aggregate revision",
+    ),
+    ContentNotFoundForAssessment: (
+        404,
+        "content_not_found_for_assessment",
+        "Content not found",
+        "Content is not visible for Assessment",
+    ),
+    ContentNotEligibleForAssessment: (
+        400,
+        "content_not_eligible_for_assessment",
+        "Content not eligible",
+        "Content type is not Assessment-eligible",
+    ),
+    AssessmentContentVersionMismatch: (
+        400,
+        "content_version_mismatch",
+        "ContentVersion mismatch",
+        "Requested ContentVersion fails Assessment authority composition",
+    ),
+    AssessmentTeachingExecutionNotFound: (
+        404,
+        "teaching_execution_not_found",
+        "TeachingExecution not found",
+        "TeachingExecution is not visible for Assessment composition",
+    ),
+    AssessmentTeachingExecutionForbidden: (
+        404,
+        "teaching_execution_not_found",
+        "TeachingExecution not found",
+        "TeachingExecution is not visible for Assessment composition",
+    ),
+    TeachingExecutionNotCompleted: (
+        400,
+        "teaching_execution_not_completed",
+        "TeachingExecution not completed",
+        "Case A requires a COMPLETED TeachingExecution",
+    ),
+    TeachingExecutionBindingMismatch: (
+        400,
+        "teaching_execution_binding_mismatch",
+        "TeachingExecution binding mismatch",
+        "TeachingExecution composition does not match the Assessment request",
+    ),
+    AssessmentTeachingAssignmentNotFound: (
+        404,
+        "teaching_assignment_not_found",
+        "TeachingAssignment not found",
+        "TeachingAssignment is not visible for Assessment composition",
+    ),
+    AssessmentTeachingAssignmentForbidden: (
+        404,
+        "teaching_assignment_not_found",
+        "TeachingAssignment not found",
+        "TeachingAssignment is not visible for Assessment composition",
+    ),
+    TeachingAssignmentCompositionMismatch: (
+        400,
+        "teaching_assignment_composition_mismatch",
+        "TeachingAssignment composition mismatch",
+        "TeachingAssignment composition does not match the Assessment request",
+    ),
+    AssessmentTeachingWorkNotFound: (
+        404,
+        "teaching_work_not_found",
+        "TeachingWork not found",
+        "TeachingWork is not visible for Assessment composition",
+    ),
+    AssessmentTeachingWorkForbidden: (
+        404,
+        "teaching_work_not_found",
+        "TeachingWork not found",
+        "TeachingWork is not visible for Assessment composition",
+    ),
+    CompositionConflict: (
+        400,
+        "assessment_composition_conflict",
+        "Assessment composition conflict",
+        "Execution and assignment composition facts do not agree",
+    ),
+    AssessmentPersistenceInvariantViolation: (
+        500,
+        "persistence_invariant_violation",
+        "Persistence invariant violation",
+        "An Assessment persistence invariant failed",
+    ),
+    AssessmentPersistenceOperationFailed: (
+        500,
+        "persistence_operation_failed",
+        "Persistence operation failed",
+        "Assessment persistence operation failed",
+    ),
+}
+
 
 def install_exception_handlers(app) -> None:
     @app.exception_handler(RequestValidationError)
@@ -771,6 +940,28 @@ def install_exception_handlers(app) -> None:
         request: Request, exc: TeachingApplicationError
     ) -> JSONResponse:
         mapping = _TEACHING_PROBLEMS.get(type(exc))
+        if mapping is None:
+            status, code, title, detail = (
+                500,
+                "internal_error",
+                "Internal error",
+                "An unexpected error occurred",
+            )
+        else:
+            status, code, title, detail = mapping
+        return problem_response(
+            request,
+            status=status,
+            code=code,
+            title=title,
+            detail=detail,
+        )
+
+    @app.exception_handler(AssessmentApplicationError)
+    async def assessment_application_handler(
+        request: Request, exc: AssessmentApplicationError
+    ) -> JSONResponse:
+        mapping = _ASSESSMENT_PROBLEMS.get(type(exc))
         if mapping is None:
             status, code, title, detail = (
                 500,
@@ -925,6 +1116,7 @@ def install_exception_handlers(app) -> None:
                 RequestValidationError,
                 ContentApplicationError,
                 TeachingApplicationError,
+                AssessmentApplicationError,
                 UnauthenticatedError,
                 UnauthorizedError,
                 AuthenticationUnavailableError,

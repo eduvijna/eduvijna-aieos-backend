@@ -9,6 +9,11 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TOS-DEV08-I02 — ClassroomAssessment application/API + authority composition:
+  RECORD/CORRECT/VOID/GET/LIST, Cases A/B/C, current ClassRef mutation gate,
+  historical reads, Idempotency-Key, If-Match/ETag, security audit vocabulary
+  (`tosd080002`), REST/OpenAPI. No Assess UI, learner Assessment, Mastery,
+  events, Temporal, or AI grading. Alembic head `tosd080002`.
 - TOS-DEV08-I01 — ClassroomAssessment domain + PostgreSQL persistence/RLS:
   `AssessmentId` (UUIDv7), `ClassroomAssessment` aggregate with
   RECORDED/VOIDED lifecycle, class result

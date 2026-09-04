@@ -50,7 +50,7 @@ SNAPSHOT = REPO_ROOT / "contracts" / "openapi" / "aieos-v1.json"
 COMMON = REPO_ROOT / "tools" / "release" / "common.py"
 
 EXPECTED_OPENAPI_SHA256 = (
-    "7D7D0E7C7115667757A31CFEB5474F7498ECC7198FB812DE5EF14A0E9F2D289A"
+    "824B389D6D4EDB2EA5D8ED3A9E5411087B566DFDCA09C2AB0CD4FDED51C4D89D"
 )
 
 _FORBIDDEN_AUTHZ_LIBS = (
@@ -299,6 +299,7 @@ def test_openapi_unchanged() -> None:
     app = create_app(
         uow_factory=_UnusedUowFactory(),
         teaching_uow_factory=_UnusedUowFactory(),
+        assessment_uow_factory=_UnusedUowFactory(),
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),

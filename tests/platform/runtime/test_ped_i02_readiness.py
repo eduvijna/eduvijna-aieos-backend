@@ -124,6 +124,7 @@ def _compose(config, probe, uow_factory) -> Any:
         ApiRuntimeDependencies(
             uow_factory=uow_factory,
             teaching_uow_factory=uow_factory,
+        assessment_uow_factory=uow_factory,
             request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
             security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
             content_types=StaticContentTypeCatalog({"test.generic"}),
@@ -350,7 +351,7 @@ class TestRealReadiness:
         config = _config_for_runtime_url(postgres18["runtime_url"])
         probe = SqlAlchemyApiReadinessProbe(runtime_engine, config)
         assert probe.check().code is ReadinessCode.READY
-        assert EXPECTED_ALEMBIC_HEAD == "tosd080001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
         with bootstrap_engine.connect() as conn:
             with conn.begin():
                 original = conn.execute(

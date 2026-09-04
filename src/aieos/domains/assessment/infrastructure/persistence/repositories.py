@@ -7,15 +7,25 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.engine import Connection
 
-from aieos.domains.assessment.application.errors import PersistenceInvariantViolation
+from aieos.domains.assessment.application.errors import (
+    InvalidClassroomAssessmentRequest,
+    PersistenceInvariantViolation,
+)
 from aieos.domains.assessment.domain.classroom_assessment import ClassroomAssessment
 from aieos.domains.assessment.domain.identities import AggregateRevision, AssessmentId
+from aieos.domains.assessment.domain.lifecycle import (
+    AssessmentLifecycleState,
+    parse_assessment_lifecycle_state,
+)
 from aieos.domains.assessment.infrastructure.persistence.errors import (
     reraise_as_application_error,
 )
 from aieos.domains.assessment.infrastructure.persistence.models import (
     classroom_assessments_table,
 )
+
+DEFAULT_LIST_LIMIT = 50
+MAX_LIST_LIMIT = 100
 
 
 def classroom_assessment_from_row(row) -> ClassroomAssessment:
@@ -153,3 +163,58 @@ class SqlAlchemyClassroomAssessmentRepository:
         except Exception as exc:
             reraise_as_application_error(exc)
         return result.rowcount == 1
+
+    def list_for_teacher(
+        self,
+        teacher_principal_id: UUID,
+        *,
+        class_ref: str | None = None,
+        work_id: UUID | None = None,
+        execution_id: UUID | None = None,
+        assignment_id: UUID | None = None,
+        lifecycle_state: AssessmentLifecycleState | str | None = None,
+        limit: int = DEFAULT_LIST_LIMIT,
+    ) -> list[ClassroomAssessment]:
+        if not isinstance(limit, int) or limit < 1:
+            raise InvalidClassroomAssessmentRequest("limit must be a positive integer")
+        if limit > MAX_LIST_LIMIT:
+            raise InvalidClassroomAssessmentRequest(
+                f"limit must be at most {MAX_LIST_LIMIT}"
+            )
+        clauses = [
+            classroom_assessments_table.c.tenant_id == self._execution_tenant_id,
+            classroom_assessments_table.c.teacher_principal_id
+            == teacher_principal_id,
+        ]
+        if class_ref is not None:
+            clauses.append(classroom_assessments_table.c.class_ref == class_ref.strip())
+        if work_id is not None:
+            clauses.append(classroom_assessments_table.c.work_id == work_id)
+        if execution_id is not None:
+            clauses.append(classroom_assessments_table.c.execution_id == execution_id)
+        if assignment_id is not None:
+            clauses.append(
+                classroom_assessments_table.c.assignment_id == assignment_id
+            )
+        if lifecycle_state is not None:
+            state = parse_assessment_lifecycle_state(lifecycle_state)
+            clauses.append(
+                classroom_assessments_table.c.lifecycle_state == state.value
+            )
+        try:
+            rows = (
+                self._connection.execute(
+                    select(classroom_assessments_table)
+                    .where(*clauses)
+                    .order_by(
+                        classroom_assessments_table.c.updated_at.desc(),
+                        classroom_assessments_table.c.assessment_id.desc(),
+                    )
+                    .limit(limit)
+                )
+                .mappings()
+                .all()
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        return [classroom_assessment_from_row(row) for row in rows]

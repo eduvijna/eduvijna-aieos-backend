@@ -139,6 +139,9 @@ class TestActionsAndChannels:
             "teaching.execution.cancel",
             "teaching.execution.observation.create",
             "teaching.execution.observation.correct",
+            "assessment.classroom.record",
+            "assessment.classroom.correct",
+            "assessment.classroom.void",
         }
         assert "content.archive" not in {a.value for a in SecurityAuditAction}
         assert "asset.purge" not in {a.value for a in SecurityAuditAction}
