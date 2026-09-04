@@ -54,15 +54,15 @@ def _imports(path: Path) -> list[str]:
 
 class TestI01ArchitectureGuards:
     def test_current_alembic_head_tosd080001(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
-        assert EXPECTED_MIGRATION_HEAD == "tosd080002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd090001"
+        assert EXPECTED_MIGRATION_HEAD == "tosd090001"
         text = MIGRATION.read_text(encoding="utf-8")
         assert 'revision: str = "tosd080001"' in text
         assert 'down_revision: str | None = "tosd070002"' in text
         versions = sorted(
             p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py"
         )
-        assert versions[-1] == "tosd080002_classroom_assessment_audit.py"
+        assert versions[-1] == "tosd090001_remediation_work_origin.py"
 
     def test_assessment_schema_in_readiness_ownership(self) -> None:
         assert "assessment" in _CONTENT_OWNED_SCHEMAS

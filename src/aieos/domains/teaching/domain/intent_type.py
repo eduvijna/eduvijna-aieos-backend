@@ -17,6 +17,7 @@ from aieos.domains.teaching.domain.errors import InvalidIntentTypeError
 
 class IntentType(StrEnum):
     PREPARE_TOMORROW = "prepare_tomorrow"
+    REMEDIATE_CLASS = "remediate_class"
 
 
 def parse_intent_type(value: IntentType | str) -> IntentType:

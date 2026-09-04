@@ -52,7 +52,7 @@ works_table = Table(
     ),
     # Extend this list in a new migration whenever IntentType gains a member.
     CheckConstraint(
-        "intent_type IN ('prepare_tomorrow')",
+        "intent_type IN ('prepare_tomorrow', 'remediate_class')",
         name="ck_teaching_works_intent_type",
     ),
     CheckConstraint("btrim(goal_text) <> ''", name="ck_teaching_works_goal_text_nonempty"),
@@ -349,6 +349,76 @@ execution_observations_table = Table(
         "ix_teaching_execution_observations_tenant_execution",
         "tenant_id",
         "execution_id",
+    ),
+    schema="teaching",
+)
+
+
+work_remediation_origins_table = Table(
+    "work_remediation_origins",
+    teaching_metadata,
+    Column("work_id", UUID(as_uuid=True), nullable=False),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("source_assessment_id", UUID(as_uuid=True), nullable=False),
+    Column("source_assessment_aggregate_revision", BigInteger, nullable=False),
+    Column("source_class_result_level_snapshot", Text, nullable=False),
+    # Opaque School Context ClassRef at Improve initiation. NOT a Class SoR FK.
+    Column("source_class_ref", Text, nullable=False),
+    # Opaque Content / Assessment composition identities — no cross-domain FK.
+    Column("source_content_id", UUID(as_uuid=True), nullable=False),
+    Column("source_content_version_id", UUID(as_uuid=True), nullable=False),
+    Column("source_work_id", UUID(as_uuid=True), nullable=True),
+    Column("source_execution_id", UUID(as_uuid=True), nullable=True),
+    Column("source_assignment_id", UUID(as_uuid=True), nullable=True),
+    Column("initiating_teacher_principal_id", UUID(as_uuid=True), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    PrimaryKeyConstraint("work_id", name="pk_teaching_work_remediation_origins"),
+    UniqueConstraint(
+        "tenant_id",
+        "work_id",
+        name="uq_teaching_work_remediation_origins_tenant_work",
+    ),
+    CheckConstraint(
+        "source_assessment_aggregate_revision >= 0",
+        name="ck_teaching_work_remediation_origins_assessment_revision_nonnegative",
+    ),
+    CheckConstraint(
+        "source_class_result_level_snapshot IN "
+        "('DEMONSTRATED', 'MIXED', 'NOT_YET_DEMONSTRATED')",
+        name="ck_teaching_work_remediation_origins_class_result_level_snapshot",
+    ),
+    CheckConstraint(
+        "btrim(source_class_ref) <> ''",
+        name="ck_teaching_work_remediation_origins_class_ref_nonempty",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "work_id"],
+        ["teaching.works.tenant_id", "teaching.works.work_id"],
+        name="fk_teaching_work_remediation_origins_work",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "source_work_id"],
+        ["teaching.works.tenant_id", "teaching.works.work_id"],
+        name="fk_teaching_work_remediation_origins_source_work",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "source_execution_id"],
+        ["teaching.executions.tenant_id", "teaching.executions.execution_id"],
+        name="fk_teaching_work_remediation_origins_source_execution",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "source_assignment_id"],
+        ["teaching.assignments.tenant_id", "teaching.assignments.assignment_id"],
+        name="fk_teaching_work_remediation_origins_source_assignment",
+        ondelete="RESTRICT",
+    ),
+    Index(
+        "ix_teaching_work_remediation_origins_tenant_source_assessment",
+        "tenant_id",
+        "source_assessment_id",
     ),
     schema="teaching",
 )

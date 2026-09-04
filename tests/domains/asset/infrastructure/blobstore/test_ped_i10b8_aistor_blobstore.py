@@ -638,7 +638,7 @@ class TestBoundaries:
 
     def test_no_http_openapi_migration_composition_or_pedi03(self) -> None:
         assert not (ASSET_ROOT / "api").exists()
-        assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd090001"
         assert not any(p.name.startswith("pedi10b8") for p in MIGRATIONS.glob("*.py"))
         digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest().upper()
         assert digest == EXPECTED_OPENAPI_SHA256

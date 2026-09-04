@@ -287,7 +287,7 @@ class TestArchitectureGuards:
             key=lambda p: p.name,
         )
         assert versions
-        assert versions[-1].name.startswith("tosd080002_")
+        assert versions[-1].name.startswith("tosd090001_")
         assert not any(p.name.startswith("tosd040002_") for p in versions)
 
     def test_no_preparation_kit_table_or_generation_artifact_tables(self) -> None:

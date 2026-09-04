@@ -183,6 +183,7 @@ def table_counts() -> dict[str, int]:
         "teaching.executions",
         "teaching.execution_content_bindings",
         "teaching.execution_observations",
+        "teaching.work_remediation_origins",
         "content.contents",
         "content.content_versions",
     )

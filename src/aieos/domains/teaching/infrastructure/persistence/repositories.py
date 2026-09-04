@@ -25,6 +25,9 @@ from aieos.domains.teaching.domain.identities import (
     ObservationRevision,
     WorkId,
 )
+from aieos.domains.teaching.domain.remediation_origin import (
+    TeachingWorkRemediationOrigin,
+)
 from aieos.domains.teaching.domain.work import TeachingWork
 from aieos.domains.teaching.infrastructure.persistence.errors import (
     reraise_as_application_error,
@@ -34,6 +37,7 @@ from aieos.domains.teaching.infrastructure.persistence.models import (
     execution_content_bindings_table,
     execution_observations_table,
     executions_table,
+    work_remediation_origins_table,
     works_table,
 )
 
@@ -733,3 +737,108 @@ class SqlAlchemyTeachingExecutionRepository:
         except Exception as exc:
             reraise_as_application_error(exc)
         return result
+
+
+def teaching_work_remediation_origin_from_row(row) -> TeachingWorkRemediationOrigin:
+    try:
+        source_work_id = row["source_work_id"]
+        source_execution_id = row["source_execution_id"]
+        source_assignment_id = row["source_assignment_id"]
+        return TeachingWorkRemediationOrigin(
+            work_id=WorkId(row["work_id"]),
+            tenant_id=row["tenant_id"],
+            source_assessment_id=row["source_assessment_id"],
+            source_assessment_aggregate_revision=int(
+                row["source_assessment_aggregate_revision"]
+            ),
+            source_class_result_level_snapshot=row[
+                "source_class_result_level_snapshot"
+            ],
+            source_class_ref=row["source_class_ref"],
+            source_content_id=row["source_content_id"],
+            source_content_version_id=row["source_content_version_id"],
+            source_work_id=None if source_work_id is None else WorkId(source_work_id),
+            source_execution_id=(
+                None
+                if source_execution_id is None
+                else ExecutionId(source_execution_id)
+            ),
+            source_assignment_id=(
+                None
+                if source_assignment_id is None
+                else AssignmentId(source_assignment_id)
+            ),
+            initiating_teacher_principal_id=row["initiating_teacher_principal_id"],
+            created_at=row["created_at"],
+        )
+    except Exception as exc:
+        raise PersistenceInvariantViolation(
+            "stored TeachingWorkRemediationOrigin row violates the origin contract"
+        ) from exc
+
+
+class SqlAlchemyTeachingWorkRemediationOriginRepository:
+    """Insert/get only. Origin rows are immutable after insert."""
+
+    def __init__(self, connection: Connection, execution_tenant_id: UUID) -> None:
+        self._connection = connection
+        self._execution_tenant_id = execution_tenant_id
+
+    def insert(self, origin: TeachingWorkRemediationOrigin) -> None:
+        try:
+            self._connection.execute(
+                work_remediation_origins_table.insert().values(
+                    work_id=origin.work_id.value,
+                    tenant_id=origin.tenant_id,
+                    source_assessment_id=origin.source_assessment_id,
+                    source_assessment_aggregate_revision=(
+                        origin.source_assessment_aggregate_revision
+                    ),
+                    source_class_result_level_snapshot=(
+                        origin.source_class_result_level_snapshot.value
+                    ),
+                    source_class_ref=origin.source_class_ref,
+                    source_content_id=origin.source_content_id,
+                    source_content_version_id=origin.source_content_version_id,
+                    source_work_id=(
+                        None
+                        if origin.source_work_id is None
+                        else origin.source_work_id.value
+                    ),
+                    source_execution_id=(
+                        None
+                        if origin.source_execution_id is None
+                        else origin.source_execution_id.value
+                    ),
+                    source_assignment_id=(
+                        None
+                        if origin.source_assignment_id is None
+                        else origin.source_assignment_id.value
+                    ),
+                    initiating_teacher_principal_id=(
+                        origin.initiating_teacher_principal_id
+                    ),
+                    created_at=origin.created_at,
+                )
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+
+    def get(self, work_id: WorkId) -> TeachingWorkRemediationOrigin | None:
+        try:
+            row = (
+                self._connection.execute(
+                    select(work_remediation_origins_table).where(
+                        work_remediation_origins_table.c.work_id == work_id.value,
+                        work_remediation_origins_table.c.tenant_id
+                        == self._execution_tenant_id,
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        except Exception as exc:
+            reraise_as_application_error(exc)
+        if row is None:
+            return None
+        return teaching_work_remediation_origin_from_row(row)

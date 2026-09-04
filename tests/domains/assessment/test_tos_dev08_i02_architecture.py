@@ -42,8 +42,8 @@ FORBIDDEN_EVENTS = (
 
 class TestI02ArchitectureGuards:
     def test_current_alembic_head_tosd080002(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
-        assert EXPECTED_MIGRATION_HEAD == "tosd080002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd090001"
+        assert EXPECTED_MIGRATION_HEAD == "tosd090001"
         text = MIGRATION.read_text(encoding="utf-8")
         assert 'revision: str = "tosd080002"' in text
         assert 'down_revision: str | None = "tosd080001"' in text

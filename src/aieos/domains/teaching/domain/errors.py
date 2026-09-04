@@ -23,6 +23,10 @@ class InvalidTeachingWorkError(TeachingDomainError):
     """A TeachingWork aggregate field failed validation."""
 
 
+class InvalidRemediationOriginError(TeachingDomainError):
+    """A TeachingWorkRemediationOrigin field or construction invariant failed."""
+
+
 class InvalidTeachingAssignmentError(TeachingDomainError):
     """A TeachingAssignment aggregate field or lifecycle transition failed."""
 

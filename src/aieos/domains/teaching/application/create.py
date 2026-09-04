@@ -25,6 +25,7 @@ from aieos.domains.teaching.application.models import (
 from aieos.domains.teaching.application.ports import TeachingUnitOfWorkFactory
 from aieos.domains.teaching.domain.errors import TeachingDomainError
 from aieos.domains.teaching.domain.identities import WorkId
+from aieos.domains.teaching.domain.intent_type import IntentType, parse_intent_type
 from aieos.domains.teaching.domain.work import TeachingWork
 from aieos.platform.idempotency.hashing import fingerprint_material, hash_idempotency_key
 from aieos.platform.idempotency.models import (
@@ -71,6 +72,21 @@ class CreateTeachingWorkService:
         idempotency_key: str,
         now: datetime | None = None,
     ) -> TeachingWorkReadModel:
+        # Generic create must never materialize remediate_class without the
+        # Assessment-origin command (DEV09-I02). Reject before persistence and
+        # before any idempotency outcome is committed.
+        try:
+            intent_type = parse_intent_type(command.intent_type)
+        except TeachingDomainError as exc:
+            raise InvalidTeachingWorkRequest(
+                "teaching work create request is invalid"
+            ) from exc
+        if intent_type is IntentType.REMEDIATE_CLASS:
+            raise InvalidTeachingWorkRequest(
+                "remediate_class requires Assessment-origin create; "
+                "generic TeachingWork create is not authorized"
+            )
+
         fingerprint = _create_fingerprint(command)
         scope = IdempotencyScope(
             tenant_id=execution_tenant_id,
@@ -98,7 +114,7 @@ class CreateTeachingWorkService:
                 work = TeachingWork.create_from_intent(
                     tenant_id=execution_tenant_id,
                     teacher_principal_id=principal_id,
-                    intent_type=command.intent_type,
+                    intent_type=intent_type,
                     goal_text=command.goal_text,
                     class_label=command.class_label,
                     subject=command.subject,

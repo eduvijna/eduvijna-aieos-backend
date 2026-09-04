@@ -213,7 +213,7 @@ class TestArchitectureScope:
     def test_no_migration_and_alembic_head_unchanged(self) -> None:
         assert not any(p.name.startswith("pedi10b3") for p in MIGRATIONS.glob("*.py"))
         assert (MIGRATIONS / "pedi10b2001_asset_authority_sor.py").is_file()
-        assert EXPECTED_ALEMBIC_HEAD == "tosd080002"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd090001"
 
     def test_no_asset_persistence_or_content_or_composition_change(self) -> None:
         models = (
