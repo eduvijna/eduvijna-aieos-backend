@@ -131,3 +131,5 @@ class TestI01ArchitectureGuards:
         assert "enforce_remediation_work_has_origin" in sql
         assert "enforce_origin_work_is_remediate_class" in sql
         assert "reject_work_remediation_origin_mutation" in sql
+        assert "reject_teaching_work_intent_type_mutation" in sql
+        assert "BEFORE UPDATE OF intent_type ON teaching.works" in sql

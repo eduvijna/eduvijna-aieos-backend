@@ -2,7 +2,8 @@
 
 Widens teaching.works intent_type CHECK for remediate_class and creates
 immutable teaching.work_remediation_origins with RLS, immutability triggers,
-and DEFERRABLE commit-time Work/origin pair enforcement.
+TeachingWork.intent_type immutability after insert, and DEFERRABLE
+commit-time Work/origin pair enforcement.
 
 Deliberately absent:
   * Improve HTTP/application command
@@ -189,9 +190,36 @@ UPGRADE_STATEMENTS: tuple[str, ...] = (
         FOR EACH ROW
         EXECUTE FUNCTION teaching.enforce_origin_work_is_remediate_class()
     """,
+    """
+    CREATE OR REPLACE FUNCTION teaching.reject_teaching_work_intent_type_mutation()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path = teaching, pg_temp
+    AS $$
+    BEGIN
+        IF NEW.intent_type IS DISTINCT FROM OLD.intent_type THEN
+            RAISE EXCEPTION
+                'teaching.works.intent_type is immutable after TeachingWork creation'
+                USING ERRCODE = '27000';
+        END IF;
+        RETURN NEW;
+    END;
+    $$
+    """,
+    """
+    CREATE TRIGGER teaching_works_intent_type_immutable
+        BEFORE UPDATE OF intent_type ON teaching.works
+        FOR EACH ROW
+        EXECUTE FUNCTION teaching.reject_teaching_work_intent_type_mutation()
+    """,
 )
 
 DOWNGRADE_STATEMENTS: tuple[str, ...] = (
+    """
+    DROP TRIGGER IF EXISTS teaching_works_intent_type_immutable
+        ON teaching.works
+    """,
+    "DROP FUNCTION IF EXISTS teaching.reject_teaching_work_intent_type_mutation()",
     """
     DROP TRIGGER IF EXISTS trg_teaching_origin_requires_remediate_class
         ON teaching.work_remediation_origins

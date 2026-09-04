@@ -7,6 +7,14 @@ and this repository follows [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- TOS-DEV09-I01R1 — TeachingWork `intent_type` DB immutability + candidate-authority
+  head pin: `tosd090001` adds `BEFORE UPDATE OF intent_type` fail-closed trigger;
+  CI current-head expectations move `tosd080002` → `tosd090001` (historical
+  `pedi10b6001` downgrade target and `tosd080002` down_revision unchanged).
+  OpenAPI unchanged.
+
 ### Added
 
 - TOS-DEV09-I01 — Remediation TeachingWork + immutable origin domain/persistence:

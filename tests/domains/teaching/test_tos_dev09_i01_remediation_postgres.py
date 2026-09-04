@@ -355,6 +355,162 @@ class TestPersistenceInvariants:
         assert loaded_work.goal_text == "Refined remediation goal"
 
 
+class TestIntentTypeImmutability:
+    _IMMUTABLE_MSG = "intent_type is immutable"
+
+    def test_prepare_tomorrow_cannot_become_remediate_class_runtime(
+        self, runtime_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        teacher_id = uuid.uuid7()
+        work = _prepare_work(tenant_id=tenant_id, teacher_id=teacher_id)
+        factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
+        with factory(tenant_id) as uow:
+            uow.works.insert(work)
+            uow.commit()
+        with runtime_engine.connect() as conn:
+            trans = conn.begin()
+            try:
+                conn.execute(
+                    text("SELECT set_config('aieos.tenant_id', :tid, true)"),
+                    {"tid": str(tenant_id)},
+                )
+                with pytest.raises(Exception) as excinfo:
+                    conn.execute(
+                        text(
+                            """
+                            UPDATE teaching.works
+                            SET intent_type = 'remediate_class'
+                            WHERE work_id = :wid
+                            """
+                        ),
+                        {"wid": work.work_id.value},
+                    )
+                assert self._IMMUTABLE_MSG in str(excinfo.value)
+            finally:
+                trans.rollback()
+        with factory(tenant_id) as uow:
+            loaded = uow.works.get(work.work_id)
+            assert loaded is not None
+            assert loaded.intent_type is IntentType.PREPARE_TOMORROW
+            assert uow.remediation_origins.get(work.work_id) is None
+
+    def test_remediate_class_cannot_become_prepare_tomorrow_runtime(
+        self, runtime_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        teacher_id = uuid.uuid7()
+        work, origin = _remediation_pair(tenant_id=tenant_id, teacher_id=teacher_id)
+        factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
+        with factory(tenant_id) as uow:
+            uow.works.insert(work)
+            uow.remediation_origins.insert(origin)
+            uow.commit()
+        with runtime_engine.connect() as conn:
+            trans = conn.begin()
+            try:
+                conn.execute(
+                    text("SELECT set_config('aieos.tenant_id', :tid, true)"),
+                    {"tid": str(tenant_id)},
+                )
+                with pytest.raises(Exception) as excinfo:
+                    conn.execute(
+                        text(
+                            """
+                            UPDATE teaching.works
+                            SET intent_type = 'prepare_tomorrow'
+                            WHERE work_id = :wid
+                            """
+                        ),
+                        {"wid": work.work_id.value},
+                    )
+                assert self._IMMUTABLE_MSG in str(excinfo.value)
+            finally:
+                trans.rollback()
+        with factory(tenant_id) as uow:
+            loaded_work = uow.works.get(work.work_id)
+            loaded_origin = uow.remediation_origins.get(work.work_id)
+        assert loaded_work is not None
+        assert loaded_work.intent_type is IntentType.REMEDIATE_CLASS
+        assert loaded_origin is not None
+        assert loaded_origin.source_assessment_aggregate_revision == 3
+
+    def test_intent_type_mutation_rejected_for_schema_owner(
+        self, runtime_engine: Engine, bootstrap_engine: Engine
+    ) -> None:
+        tenant_id = uuid.uuid7()
+        teacher_id = uuid.uuid7()
+        prepare = _prepare_work(tenant_id=tenant_id, teacher_id=teacher_id)
+        rem_work, rem_origin = _remediation_pair(
+            tenant_id=tenant_id, teacher_id=teacher_id
+        )
+        factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
+        with factory(tenant_id) as uow:
+            uow.works.insert(prepare)
+            uow.works.insert(rem_work)
+            uow.remediation_origins.insert(rem_origin)
+            uow.commit()
+        for work_id, target_intent in (
+            (prepare.work_id.value, "remediate_class"),
+            (rem_work.work_id.value, "prepare_tomorrow"),
+        ):
+            with bootstrap_engine.connect() as conn:
+                trans = conn.begin()
+                try:
+                    conn.execute(
+                        text("SELECT set_config('aieos.tenant_id', :tid, true)"),
+                        {"tid": str(tenant_id)},
+                    )
+                    with pytest.raises(Exception) as excinfo:
+                        conn.execute(
+                            text(
+                                """
+                                UPDATE teaching.works
+                                SET intent_type = :intent
+                                WHERE work_id = :wid
+                                """
+                            ),
+                            {"intent": target_intent, "wid": work_id},
+                        )
+                    assert self._IMMUTABLE_MSG in str(excinfo.value)
+                finally:
+                    trans.rollback()
+        with factory(tenant_id) as uow:
+            assert uow.works.get(prepare.work_id).intent_type is IntentType.PREPARE_TOMORROW
+            assert (
+                uow.works.get(rem_work.work_id).intent_type is IntentType.REMEDIATE_CLASS
+            )
+            assert uow.remediation_origins.get(prepare.work_id) is None
+            assert uow.remediation_origins.get(rem_work.work_id) is not None
+
+    def test_prepare_work_refine_still_commits(self, runtime_engine: Engine) -> None:
+        tenant_id = uuid.uuid7()
+        teacher_id = uuid.uuid7()
+        work = _prepare_work(tenant_id=tenant_id, teacher_id=teacher_id)
+        factory = SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine)
+        with factory(tenant_id) as uow:
+            uow.works.insert(work)
+            uow.commit()
+        refined = work.refine(
+            updated_at=FIXED_NOW.replace(hour=14),
+            goal_text="Refined prepare goal",
+            class_label="5A",
+            subject="Mathematics",
+            topic="Fractions",
+        )
+        with factory(tenant_id) as uow:
+            assert uow.works.update(refined, expected_revision=work.aggregate_revision)
+            uow.commit()
+        with factory(tenant_id) as uow:
+            loaded = uow.works.get(work.work_id)
+        assert loaded is not None
+        assert loaded.intent_type is IntentType.PREPARE_TOMORROW
+        assert loaded.goal_text == "Refined prepare goal"
+        assert loaded.class_label == "5A"
+        assert loaded.subject == "Mathematics"
+        assert loaded.topic == "Fractions"
+
+
 class TestDowngrade:
     def _purge_remediation_rows(self, bootstrap_engine: Engine) -> None:
         with bootstrap_engine.begin() as conn:
