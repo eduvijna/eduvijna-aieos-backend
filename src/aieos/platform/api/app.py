@@ -50,7 +50,10 @@ from aieos.domains.assessment.application.mutations import (
     CorrectClassroomAssessmentService,
     VoidClassroomAssessmentService,
 )
-from aieos.domains.assessment.application.ports import AssessmentUnitOfWorkFactory
+from aieos.domains.assessment.application.ports import (
+    AssessmentUnitOfWorkFactory,
+    ClassroomAssessmentAuthorization,
+)
 from aieos.domains.assessment.application.queries import (
     GetClassroomAssessmentService,
     ListClassroomAssessmentsService,
@@ -132,6 +135,7 @@ def create_app(
     uow_factory: ContentUnitOfWorkFactory,
     teaching_uow_factory: TeachingUnitOfWorkFactory,
     assessment_uow_factory: AssessmentUnitOfWorkFactory,
+    assessment_authorization: ClassroomAssessmentAuthorization,
     request_identity_authenticator: RequestIdentityAuthenticator,
     security_resolver: SecurityContextResolver,
     content_types: ContentTypeCatalog,
@@ -373,35 +377,39 @@ def create_app(
         app.state.teacher_os_teach_context_service = None
 
     app.state.get_classroom_assessment_service = GetClassroomAssessmentService(
-        assessment_uow_factory
+        assessment_uow_factory,
+        assessment_authorization,
     )
     app.state.list_classroom_assessments_service = ListClassroomAssessmentsService(
-        assessment_uow_factory
+        assessment_uow_factory,
+        assessment_authorization,
     )
     if school_context_class_reader is not None:
         class_authority = app.state.school_context_class_authority
         app.state.record_classroom_assessment_service = RecordClassroomAssessmentService(
             assessment_uow_factory,
             class_authority,
+            assessment_authorization,
             idempotency_retention=idempotency_retention,
         )
         app.state.correct_classroom_assessment_service = (
             CorrectClassroomAssessmentService(
                 assessment_uow_factory,
                 class_authority,
+                assessment_authorization,
                 idempotency_retention=idempotency_retention,
             )
         )
         app.state.void_classroom_assessment_service = VoidClassroomAssessmentService(
             assessment_uow_factory,
             class_authority,
+            assessment_authorization,
             idempotency_retention=idempotency_retention,
         )
     else:
         app.state.record_classroom_assessment_service = None
         app.state.correct_classroom_assessment_service = None
         app.state.void_classroom_assessment_service = None
-
     def _openapi() -> dict:
         if app.openapi_schema is None:
             app.openapi_schema = build_openapi(app)

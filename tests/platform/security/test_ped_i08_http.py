@@ -32,6 +32,7 @@ from aieos.platform.security.auth_config import (
 from aieos.platform.security.authority import CurrentAuthoritySecurityContextResolver
 from aieos.platform.security.jwt_bearer import JwtBearerRequestIdentityAuthenticator
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
@@ -203,6 +204,7 @@ def _app(
         uow_factory=factory,
         teaching_uow_factory=factory,
         assessment_uow_factory=factory,
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=authenticator,
         security_resolver=CurrentAuthoritySecurityContextResolver(authority),
         content_types=StaticContentTypeCatalog({"test.generic"}),

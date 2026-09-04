@@ -14,9 +14,10 @@ from aieos.domains.assessment.domain.lifecycle import AssessmentLifecycleState
 from aieos.platform.idempotency.ports import IdempotencyRepository
 from aieos.platform.security.audit.models import SecurityMutationAuditRecord
 
-# Authorization vocabulary (aligned with mutation audit names). Assessment HTTP
-# follows Teaching: trusted identity + ClassRef + ownership — not a parallel
-# AuthorizationKernel capability grant path.
+# Exact ADR-AIEOS-031 / ADR-AIEOS-055 Assessment capability vocabulary.
+# Protected operations compose: current tenant access + exact capability ALLOW
+# + ownership (resource-specific) + current ClassRef (mutations) + Case A/B/C
+# (fresh RECORD). Capability ALLOW does not replace ClassRef or ownership.
 ASSESSMENT_CLASSROOM_RECORD = "assessment.classroom.record"
 ASSESSMENT_CLASSROOM_CORRECT = "assessment.classroom.correct"
 ASSESSMENT_CLASSROOM_VOID = "assessment.classroom.void"
@@ -32,6 +33,18 @@ AIEOS_ASSESSMENT_CAPABILITIES = frozenset(
         ASSESSMENT_CLASSROOM_LIST,
     }
 )
+
+
+class ClassroomAssessmentAuthorization(Protocol):
+    """Technology-neutral current Assessment capability authorization port."""
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+    ) -> None: ...
 
 
 class ClassroomAssessmentRepository(Protocol):

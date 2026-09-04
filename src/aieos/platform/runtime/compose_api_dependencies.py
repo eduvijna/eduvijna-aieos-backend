@@ -49,8 +49,10 @@ from aieos.platform.resources.asset_use import AssetUseAuthority
 from aieos.platform.security.auth_config import AuthRuntimeConfig
 from aieos.platform.security.authority import CurrentAuthoritySecurityContextResolver
 from aieos.platform.security.authorization import (
+    AIEOS_ASSESSMENT_CAPABILITIES,
     AIEOS_CONTENT_CAPABILITIES,
     AuthorizationKernel,
+    KernelClassroomAssessmentAuthorization,
     KernelCurrentTenantAccessAuthority,
     KernelPublicationAuthorization,
     KernelReviewAuthorization,
@@ -149,7 +151,7 @@ def compose_api_runtime_dependencies(
     )
     kernel = AuthorizationKernel(
         engine,
-        known_capabilities=AIEOS_CONTENT_CAPABILITIES,
+        known_capabilities=AIEOS_CONTENT_CAPABILITIES | AIEOS_ASSESSMENT_CAPABILITIES,
     )
     asset_authority = _build_asset_use_authority(engine, env)
     handled_types = tuple(sorted(ASSET_RESOURCE_TYPES_V1))
@@ -157,6 +159,7 @@ def compose_api_runtime_dependencies(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(engine),
         assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(engine),
+        assessment_authorization=KernelClassroomAssessmentAuthorization(kernel),
         request_identity_authenticator=JwtBearerRequestIdentityAuthenticator(
             auth_config
         ),

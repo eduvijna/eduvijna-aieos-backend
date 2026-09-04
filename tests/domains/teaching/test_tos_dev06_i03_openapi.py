@@ -12,6 +12,7 @@ from aieos.domains.teaching.application.school_context import AssignableClassRef
 from aieos.platform.api.app import create_app
 from aieos.platform.api.openapi import build_openapi, canonical_openapi_json
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
@@ -43,6 +44,7 @@ def _schema() -> dict:
         uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
         teaching_uow_factory=_UnusedUowFactory(),
         assessment_uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic", "worksheet"}),

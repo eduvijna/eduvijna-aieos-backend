@@ -49,9 +49,20 @@ assignable == assessable. Historical GET/LIST do **not** require current ClassRe
 ## Authorization vocabulary
 
 Capability strings `assessment.classroom.record|correct|void|read|list` are
-documented and aligned with audit names. HTTP composition follows Teaching:
-trusted identity + ClassRef + ownership — not a parallel AuthorizationKernel
-grant path.
+enforced through the production AuthorizationKernel (ADR-AIEOS-031) via
+`KernelClassroomAssessmentAuthorization`.
+
+Protected operation authority composes:
+
+- current tenant access
+- exact Assessment capability ALLOW
+- represented-teacher ownership (resource-specific)
+- current ClassRef authority for RECORD / CORRECT / VOID
+- Case A/B/C composition for fresh RECORD
+
+Historical GET / LIST do not require current ClassRef, but still require their
+exact read / list capabilities. Capability ALLOW does not replace ClassRef or
+ownership.
 
 ## Explicit non-goals
 

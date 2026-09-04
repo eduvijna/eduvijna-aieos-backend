@@ -49,6 +49,7 @@ from tests.conftest import (
     SECURITY_SCHEMA_OWNER_ROLE,
 )
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
@@ -124,7 +125,8 @@ def _compose(config, probe, uow_factory) -> Any:
         ApiRuntimeDependencies(
             uow_factory=uow_factory,
             teaching_uow_factory=uow_factory,
-        assessment_uow_factory=uow_factory,
+            assessment_uow_factory=uow_factory,
+            assessment_authorization=AllowClassroomAssessmentAuthorization(),
             request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
             security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
             content_types=StaticContentTypeCatalog({"test.generic"}),

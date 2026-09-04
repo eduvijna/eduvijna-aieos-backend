@@ -308,6 +308,29 @@ class AllowMigrationAuthorization:
             raise MigrationForbidden("content.migrate.import denied")
 
 
+class AllowClassroomAssessmentAuthorization:
+    """TEST-ONLY permissive Assessment capability authority. Not production."""
+
+    def __init__(self, *, allow: bool = True) -> None:
+        self.allow = allow
+        self.calls: list[tuple[UUID, UUID, str]] = []
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+    ) -> None:
+        from aieos.domains.assessment.application.errors import (
+            AssessmentCapabilityForbidden,
+        )
+
+        self.calls.append((tenant_id, principal_id, capability))
+        if not self.allow:
+            raise AssessmentCapabilityForbidden("assessment capability denied")
+
+
 def make_test_schema_registry() -> ContentSchemaRegistry:
     registry = ContentSchemaRegistry()
     registry.register(TEST_GENERIC_V1)

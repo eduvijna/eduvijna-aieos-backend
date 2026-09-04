@@ -26,6 +26,7 @@ from aieos.domains.assessment.infrastructure.persistence.uow import (
 from aieos.platform.api.app import create_app
 from tests.dbutil import REPO_ROOT
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
@@ -198,6 +199,7 @@ class TestArchitectureAbuse:
             uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
             teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
         assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
             request_identity_authenticator=FixedPrincipalAuthenticator(tenant_id),
             security_resolver=StubSecurityContextResolver(tenant_id, tenant_id),
             content_types=StaticContentTypeCatalog({"test.generic"}),

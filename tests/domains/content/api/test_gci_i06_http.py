@@ -39,6 +39,7 @@ from aieos.platform.api.infrastructure.persistence.repositories import (
 )
 from aieos.platform.idempotency.hashing import hash_idempotency_key
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
     AllowAssetCurrentGovernance,
@@ -78,6 +79,7 @@ def _app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
         assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog({"test.generic"}),

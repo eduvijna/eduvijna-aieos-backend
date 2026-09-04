@@ -22,6 +22,7 @@ from aieos.platform.runtime.activation import (
 )
 from tests.dbutil import REPO_ROOT
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
@@ -71,6 +72,7 @@ def _minimal_app() -> FastAPI:
         uow_factory=_UnusedUow(),
         teaching_uow_factory=_UnusedUow(),
         assessment_uow_factory=_UnusedUow(),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),

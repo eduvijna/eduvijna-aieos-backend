@@ -58,6 +58,7 @@ from aieos.domains.teaching.application.errors import (
 from aieos.domains.assessment.application.errors import (
     AggregateRevisionConflict as AssessmentAggregateRevisionConflict,
     AssessmentApplicationError,
+    AssessmentCapabilityForbidden,
     ClassRefNotAssignable as AssessmentClassRefNotAssignable,
     ClassroomAssessmentForbidden,
     ClassroomAssessmentNotFound,
@@ -740,6 +741,12 @@ _ASSESSMENT_PROBLEMS: dict[
         "classroom_assessment_not_found",
         "ClassroomAssessment not found",
         "ClassroomAssessment was not found",
+    ),
+    AssessmentCapabilityForbidden: (
+        403,
+        "assessment_capability_forbidden",
+        "Assessment capability denied",
+        "The request is not authorized for this Assessment operation",
     ),
     ClassroomAssessmentNotRecorded: (
         409,

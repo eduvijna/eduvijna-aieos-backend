@@ -13,6 +13,7 @@ from aieos.domains.teaching.application.errors import SchoolContextUnavailable
 from aieos.domains.teaching.application.school_context import AssignableClassRef
 from aieos.platform.api.app import create_app
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
@@ -85,6 +86,7 @@ def _build_client(
         uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
         teaching_uow_factory=_UnusedUowFactory(),
         assessment_uow_factory=_UnusedUowFactory(),  # type: ignore[arg-type]
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=authenticator
         or FixedPrincipalAuthenticator(principal_id),
         security_resolver=security_resolver

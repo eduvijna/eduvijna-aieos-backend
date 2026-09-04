@@ -27,6 +27,7 @@ from aieos.platform.security.context import TrustedSecurityContext
 from aieos.platform.security.identity import TrustedRequestIdentity
 from tests.dbutil import REPO_ROOT
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
@@ -300,6 +301,7 @@ def test_openapi_unchanged() -> None:
         uow_factory=_UnusedUowFactory(),
         teaching_uow_factory=_UnusedUowFactory(),
         assessment_uow_factory=_UnusedUowFactory(),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=FixedPrincipalAuthenticator(uuid4()),
         security_resolver=StubSecurityContextResolver(uuid4(), uuid4()),
         content_types=StaticContentTypeCatalog({"test.generic"}),

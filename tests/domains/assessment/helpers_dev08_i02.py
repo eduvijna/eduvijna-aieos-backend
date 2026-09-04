@@ -35,6 +35,7 @@ from tests.domains.teaching.helpers_dev06_i03 import (
 from tests.fakes import (
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
+    AllowClassroomAssessmentAuthorization,
     AllowPublicationAuthorization,
     AllowPublicationGovernance,
     AllowReviewAuthorization,
@@ -79,6 +80,7 @@ def build_assessment_client(
     *,
     school_context_reader: object | None = None,
     with_school_context: bool = True,
+    assessment_authorization: object | None = None,
 ) -> TestClient:
     reader: object | None
     if not with_school_context:
@@ -88,10 +90,12 @@ def build_assessment_client(
             tenant_id=tenant_id,
             teacher_principal_id=principal_id,
         )
+    auth = assessment_authorization or AllowClassroomAssessmentAuthorization()
     app = create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
         assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
+        assessment_authorization=auth,  # type: ignore[arg-type]
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(tenant_id, principal_id),
         content_types=StaticContentTypeCatalog(development_content_type_names()),

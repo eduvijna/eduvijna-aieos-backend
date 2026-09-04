@@ -27,6 +27,7 @@ from aieos.platform.api.app import create_app
 from aieos.platform.api.etag import encode_revision_etag
 from aieos.platform.api.pagination import CursorCodec, ListCursor
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowReviewAuthorization,
     AllowReviewCommentPolicy,
     AllowAssetCurrentGovernance,
@@ -65,6 +66,7 @@ def _app(runtime_engine: Engine, tenant_id: UUID, principal_id: UUID, **resolver
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
         assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
         security_resolver=StubSecurityContextResolver(
             tenant_id, principal_id, **resolver_kw

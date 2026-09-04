@@ -25,7 +25,12 @@ from aieos.domains.assessment.application.models import (
     CorrectClassroomAssessmentCommand,
     classroom_assessment_read_model,
 )
-from aieos.domains.assessment.application.ports import AssessmentUnitOfWorkFactory
+from aieos.domains.assessment.application.ports import (
+    ASSESSMENT_CLASSROOM_CORRECT,
+    ASSESSMENT_CLASSROOM_VOID,
+    AssessmentUnitOfWorkFactory,
+    ClassroomAssessmentAuthorization,
+)
 from aieos.domains.assessment.domain.errors import InvalidClassroomAssessmentError
 from aieos.domains.assessment.domain.identities import AggregateRevision, AssessmentId
 from aieos.domains.assessment.domain.lifecycle import AssessmentLifecycleState
@@ -100,13 +105,18 @@ def _require_current_class_ref(
         raise SchoolContextUnavailable(str(exc)) from exc
 
 
-def _load_owned_for_update(
+def _load_owned(
     uow,
     *,
     assessment_id: AssessmentId,
     principal_id: UUID,
+    for_update: bool,
 ):
-    locked = uow.classroom_assessments.get_for_update(assessment_id)
+    locked = (
+        uow.classroom_assessments.get_for_update(assessment_id)
+        if for_update
+        else uow.classroom_assessments.get(assessment_id)
+    )
     if locked is None:
         raise ClassroomAssessmentNotFound(
             "ClassroomAssessment is not visible in the execution tenant"
@@ -118,11 +128,34 @@ def _load_owned_for_update(
     return locked
 
 
+def _replay_owned_matching_path(
+    uow,
+    *,
+    path_assessment_id: AssessmentId,
+    result_content_id: UUID,
+    principal_id: UUID,
+    invariant_message: str,
+):
+    if result_content_id != path_assessment_id.value:
+        raise PersistenceInvariantViolation(
+            "idempotent outcome assessment_id does not match command path"
+        )
+    replayed = uow.classroom_assessments.get(AssessmentId(result_content_id))
+    if replayed is None:
+        raise PersistenceInvariantViolation(invariant_message)
+    if replayed.teacher_principal_id != principal_id:
+        raise ClassroomAssessmentForbidden(
+            "ClassroomAssessment is owned by a different teacher"
+        )
+    return replayed
+
+
 class CorrectClassroomAssessmentService:
     def __init__(
         self,
         uow_factory: AssessmentUnitOfWorkFactory,
         class_authority: SchoolContextClassAuthority,
+        authorization: ClassroomAssessmentAuthorization,
         *,
         idempotency_retention: timedelta,
     ) -> None:
@@ -130,6 +163,7 @@ class CorrectClassroomAssessmentService:
             raise ValueError("idempotency_retention must be a positive duration")
         self._uow_factory = uow_factory
         self._class_authority = class_authority
+        self._authorization = authorization
         self._idempotency_retention = idempotency_retention
 
     def correct(
@@ -145,6 +179,11 @@ class CorrectClassroomAssessmentService:
         audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> ClassroomAssessmentReadModel:
+        self._authorization.authorize(
+            tenant_id=execution_tenant_id,
+            principal_id=principal_id,
+            capability=ASSESSMENT_CLASSROOM_CORRECT,
+        )
         fingerprint = correct_fingerprint(
             assessment_id, expected_aggregate_revision, command
         )
@@ -161,17 +200,26 @@ class CorrectClassroomAssessmentService:
             if established is not None:
                 if established.request_fingerprint_sha256 != fingerprint:
                     raise IdempotencyKeyReused("idempotency key already bound")
-                replayed = uow.classroom_assessments.get(
-                    AssessmentId(established.result_content_id)
+                replayed = _replay_owned_matching_path(
+                    uow,
+                    path_assessment_id=assessment_id,
+                    result_content_id=established.result_content_id,
+                    principal_id=principal_id,
+                    invariant_message="idempotent correct outcome is not visible",
                 )
-                if replayed is None:
-                    raise PersistenceInvariantViolation(
-                        "idempotent correct outcome is not visible"
-                    )
+                _require_current_class_ref(
+                    self._class_authority,
+                    execution_tenant_id,
+                    principal_id,
+                    replayed.class_ref,
+                )
                 return classroom_assessment_read_model(replayed)
 
-            locked = _load_owned_for_update(
-                uow, assessment_id=assessment_id, principal_id=principal_id
+            locked = _load_owned(
+                uow,
+                assessment_id=assessment_id,
+                principal_id=principal_id,
+                for_update=True,
             )
             if locked.lifecycle_state is not AssessmentLifecycleState.RECORDED:
                 raise ClassroomAssessmentNotRecorded(
@@ -240,6 +288,7 @@ class VoidClassroomAssessmentService:
         self,
         uow_factory: AssessmentUnitOfWorkFactory,
         class_authority: SchoolContextClassAuthority,
+        authorization: ClassroomAssessmentAuthorization,
         *,
         idempotency_retention: timedelta,
     ) -> None:
@@ -247,6 +296,7 @@ class VoidClassroomAssessmentService:
             raise ValueError("idempotency_retention must be a positive duration")
         self._uow_factory = uow_factory
         self._class_authority = class_authority
+        self._authorization = authorization
         self._idempotency_retention = idempotency_retention
 
     def void(
@@ -261,6 +311,11 @@ class VoidClassroomAssessmentService:
         audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> ClassroomAssessmentReadModel:
+        self._authorization.authorize(
+            tenant_id=execution_tenant_id,
+            principal_id=principal_id,
+            capability=ASSESSMENT_CLASSROOM_VOID,
+        )
         fingerprint = void_fingerprint(assessment_id, expected_aggregate_revision)
         scope = IdempotencyScope(
             tenant_id=execution_tenant_id,
@@ -275,17 +330,26 @@ class VoidClassroomAssessmentService:
             if established is not None:
                 if established.request_fingerprint_sha256 != fingerprint:
                     raise IdempotencyKeyReused("idempotency key already bound")
-                replayed = uow.classroom_assessments.get(
-                    AssessmentId(established.result_content_id)
+                replayed = _replay_owned_matching_path(
+                    uow,
+                    path_assessment_id=assessment_id,
+                    result_content_id=established.result_content_id,
+                    principal_id=principal_id,
+                    invariant_message="idempotent void outcome is not visible",
                 )
-                if replayed is None:
-                    raise PersistenceInvariantViolation(
-                        "idempotent void outcome is not visible"
-                    )
+                _require_current_class_ref(
+                    self._class_authority,
+                    execution_tenant_id,
+                    principal_id,
+                    replayed.class_ref,
+                )
                 return classroom_assessment_read_model(replayed)
 
-            locked = _load_owned_for_update(
-                uow, assessment_id=assessment_id, principal_id=principal_id
+            locked = _load_owned(
+                uow,
+                assessment_id=assessment_id,
+                principal_id=principal_id,
+                for_update=True,
             )
             if locked.lifecycle_state is not AssessmentLifecycleState.RECORDED:
                 raise ClassroomAssessmentNotRecorded(

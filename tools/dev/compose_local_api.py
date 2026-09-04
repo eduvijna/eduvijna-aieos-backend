@@ -10,6 +10,7 @@ from sqlalchemy.engine import Engine
 from aieos.development.auth_adapters import (
     DevelopmentAssetCurrentUsePermit,
     DevelopmentAssetReferencePermit,
+    DevelopmentClassroomAssessmentPermit,
     DevelopmentPublicationAuthorizationPermit,
     DevelopmentPublicationGovernancePermit,
     DevelopmentReviewAuthorizationPermit,
@@ -55,6 +56,7 @@ def compose_local_api_runtime_dependencies(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(engine),
         teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(engine),
         assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(engine),
+        assessment_authorization=DevelopmentClassroomAssessmentPermit(),
         request_identity_authenticator=LocalDevelopmentBearerAuthenticator(
             principal_id=LOCAL_DEV_PRINCIPAL_ID,
             expected_bearer_token=LOCAL_BEARER_TOKEN,

@@ -23,6 +23,7 @@ from aieos.platform.security.authority import CurrentAuthoritySecurityContextRes
 from aieos.platform.security.context import TrustedSecurityContext
 from aieos.platform.security.identity import TrustedRequestIdentity
 from tests.fakes import (
+    AllowClassroomAssessmentAuthorization,
     AllowAssetCurrentGovernance,
     AllowAssetReferenceValidation,
     AllowPublicationAuthorization,
@@ -100,6 +101,7 @@ def _app(
         uow_factory=factory,
         teaching_uow_factory=factory,
         assessment_uow_factory=factory,
+        assessment_authorization=AllowClassroomAssessmentAuthorization(),
         request_identity_authenticator=authenticator,
         security_resolver=CurrentAuthoritySecurityContextResolver(authority),
         content_types=StaticContentTypeCatalog({"test.generic"}),

@@ -133,3 +133,19 @@ class DevelopmentAIGenerationPermit:
         capability: str,
     ) -> None:
         return None
+
+
+class DevelopmentClassroomAssessmentPermit:
+    """NON_PRODUCTION permissive Assessment capability authority.
+
+    Must never be imported by production runtime composition.
+    """
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+    ) -> None:
+        return None

@@ -15,6 +15,7 @@ from aieos.domains.assessment.application.composition import (
 )
 from aieos.domains.assessment.application.errors import (
     ClassRefNotAssignable,
+    ClassroomAssessmentForbidden,
     IdempotencyKeyReused,
     InvalidClassroomAssessmentRequest,
     PersistenceInvariantViolation,
@@ -25,7 +26,11 @@ from aieos.domains.assessment.application.models import (
     RecordClassroomAssessmentCommand,
     classroom_assessment_read_model,
 )
-from aieos.domains.assessment.application.ports import AssessmentUnitOfWorkFactory
+from aieos.domains.assessment.application.ports import (
+    ASSESSMENT_CLASSROOM_RECORD,
+    AssessmentUnitOfWorkFactory,
+    ClassroomAssessmentAuthorization,
+)
 from aieos.domains.assessment.domain.classroom_assessment import ClassroomAssessment
 from aieos.domains.assessment.domain.errors import InvalidClassroomAssessmentError
 from aieos.domains.assessment.domain.identities import AssessmentId
@@ -76,11 +81,30 @@ def record_fingerprint(command: RecordClassroomAssessmentCommand) -> str:
     )
 
 
+def _require_current_class_ref(
+    class_authority: SchoolContextClassAuthority,
+    execution_tenant_id: UUID,
+    principal_id: UUID,
+    class_ref: str,
+):
+    try:
+        return class_authority.require_assignable_class_ref(
+            execution_tenant_id, principal_id, class_ref
+        )
+    except teaching_errors.ClassRefNotAssignable as exc:
+        raise ClassRefNotAssignable(str(exc)) from exc
+    except teaching_errors.SchoolContextUnavailable as exc:
+        raise SchoolContextUnavailable(str(exc)) from exc
+    except teaching_errors.SchoolContextContractError as exc:
+        raise SchoolContextUnavailable(str(exc)) from exc
+
+
 class RecordClassroomAssessmentService:
     def __init__(
         self,
         uow_factory: AssessmentUnitOfWorkFactory,
         class_authority: SchoolContextClassAuthority,
+        authorization: ClassroomAssessmentAuthorization,
         *,
         idempotency_retention: timedelta,
     ) -> None:
@@ -88,6 +112,7 @@ class RecordClassroomAssessmentService:
             raise ValueError("idempotency_retention must be a positive duration")
         self._uow_factory = uow_factory
         self._class_authority = class_authority
+        self._authorization = authorization
         self._idempotency_retention = idempotency_retention
 
     def record(
@@ -101,6 +126,11 @@ class RecordClassroomAssessmentService:
         audit_provenance: MutationAuditProvenance,
         now: datetime | None = None,
     ) -> ClassroomAssessmentReadModel:
+        self._authorization.authorize(
+            tenant_id=execution_tenant_id,
+            principal_id=principal_id,
+            capability=ASSESSMENT_CLASSROOM_RECORD,
+        )
         recorded_at = _now(now)
         fingerprint = record_fingerprint(command)
         scope = IdempotencyScope(
@@ -122,18 +152,26 @@ class RecordClassroomAssessmentService:
                     raise PersistenceInvariantViolation(
                         "idempotent record outcome is not visible"
                     )
+                if replayed.teacher_principal_id != principal_id:
+                    raise ClassroomAssessmentForbidden(
+                        "ClassroomAssessment is owned by a different teacher"
+                    )
+                # Current ClassRef must still hold on true replay (no composition
+                # re-run; no second mutation/audit).
+                _require_current_class_ref(
+                    self._class_authority,
+                    execution_tenant_id,
+                    principal_id,
+                    command.class_ref,
+                )
                 return classroom_assessment_read_model(replayed)
 
-            try:
-                class_target = self._class_authority.require_assignable_class_ref(
-                    execution_tenant_id, principal_id, command.class_ref
-                )
-            except teaching_errors.ClassRefNotAssignable as exc:
-                raise ClassRefNotAssignable(str(exc)) from exc
-            except teaching_errors.SchoolContextUnavailable as exc:
-                raise SchoolContextUnavailable(str(exc)) from exc
-            except teaching_errors.SchoolContextContractError as exc:
-                raise SchoolContextUnavailable(str(exc)) from exc
+            class_target = _require_current_class_ref(
+                self._class_authority,
+                execution_tenant_id,
+                principal_id,
+                command.class_ref,
+            )
             validate_composition(
                 uow,
                 teacher_principal_id=principal_id,

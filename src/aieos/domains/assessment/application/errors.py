@@ -38,9 +38,15 @@ class ClassroomAssessmentForbidden(AssessmentApplicationError):
     """Assessment exists but is owned by a different represented teacher."""
 
 
+class AssessmentCapabilityForbidden(AssessmentApplicationError):
+    """Exact current Assessment capability was DENY / not granted.
+
+    Sanitized: does not reveal resource existence or kernel internals.
+    """
+
+
 class ClassroomAssessmentNotRecorded(AssessmentApplicationError):
     """Mutation requires RECORDED lifecycle; VOIDED is terminal."""
-
 
 class SchoolContextUnavailable(AssessmentApplicationError):
     """School Context current-class authority is not composed or unreachable."""
