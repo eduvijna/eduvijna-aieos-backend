@@ -7,6 +7,7 @@ from aieos.platform.idempotency.models import (
     CONTENT_REVIEW_REQUEST_CHANGES_V1,
     CONTENT_REVIEW_SUBMIT_V1,
     CONTENT_VERSION_APPEND_V1,
+    TEACHING_WORK_FROM_CLASSROOM_ASSESSMENT_CREATE_V1,
     IdempotencyOutcome,
     IdempotencyScope,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "CONTENT_REVIEW_REQUEST_CHANGES_V1",
     "CONTENT_REVIEW_SUBMIT_V1",
     "CONTENT_VERSION_APPEND_V1",
+    "TEACHING_WORK_FROM_CLASSROOM_ASSESSMENT_CREATE_V1",
     "IdempotencyOutcome",
     "IdempotencyRepository",
     "IdempotencyScope",

@@ -40,6 +40,7 @@ class SecurityAuditAction(StrEnum):
     TEACHING_EXECUTION_OBSERVATION_CORRECT = (
         "teaching.execution.observation.correct"
     )
+    TEACHING_WORK_REMEDIATION_CREATE = "teaching.work.remediation.create"
     ASSESSMENT_CLASSROOM_RECORD = "assessment.classroom.record"
     ASSESSMENT_CLASSROOM_CORRECT = "assessment.classroom.correct"
     ASSESSMENT_CLASSROOM_VOID = "assessment.classroom.void"
@@ -91,6 +92,7 @@ _TEACHING_CREATE_ACTIONS = frozenset(
         SecurityAuditAction.TEACHING_ASSIGNMENT_CREATE,
         SecurityAuditAction.TEACHING_EXECUTION_START,
         SecurityAuditAction.TEACHING_EXECUTION_OBSERVATION_CREATE,
+        SecurityAuditAction.TEACHING_WORK_REMEDIATION_CREATE,
     }
 )
 _TEACHING_INCREMENT_ACTIONS = frozenset(

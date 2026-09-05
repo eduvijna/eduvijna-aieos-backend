@@ -90,13 +90,19 @@ from aieos.domains.teaching.application.execution_start import (
 )
 from aieos.domains.teaching.application.generate import GenerateTeachingWorkService
 from aieos.domains.teaching.application.mission import GetTeacherOsTodayMissionService
-from aieos.domains.teaching.application.ports import TeachingUnitOfWorkFactory
+from aieos.domains.teaching.application.ports import (
+    TeachingUnitOfWorkFactory,
+    TeachingWorkAuthorization,
+)
 from aieos.domains.teaching.application.prepare import PrepareTeachingWorkService
 from aieos.domains.teaching.application.queries import (
     GetTeachingWorkService,
     ListTeachingWorksService,
 )
 from aieos.domains.teaching.application.refine import RefineTeachingWorkService
+from aieos.domains.teaching.application.remediation_create import (
+    CreateRemediationTeachingWorkService,
+)
 from aieos.domains.teaching.application.review_queue_port import (
     ReviewQueuePendingCountAdapter,
 )
@@ -156,6 +162,7 @@ def create_app(
     generation_lease_seconds: int = 120,
     generation_clock: UtcNow | None = None,
     school_context_class_reader: SchoolContextClassReader | None = None,
+    teaching_authorization: TeachingWorkAuthorization | None = None,
 ) -> FastAPI:
     codec = CursorCodec(cursor_signing_key)
     app = FastAPI(
@@ -229,6 +236,17 @@ def create_app(
             ListAssignableSchoolClassesService(school_context_class_reader)
         )
         app.state.school_context_class_authority = class_authority
+        app.state.create_remediation_teaching_work_service = (
+            None
+            if teaching_authorization is None or assessment_authorization is None
+            else CreateRemediationTeachingWorkService(
+                teaching_uow_factory,
+                class_authority,
+                teaching_authorization,
+                assessment_authorization,
+                idempotency_retention=idempotency_retention,
+            )
+        )
         app.state.create_teaching_assignment_service = CreateTeachingAssignmentService(
             teaching_uow_factory,
             class_authority,
@@ -253,6 +271,7 @@ def create_app(
     else:
         app.state.list_assignable_school_classes_service = None
         app.state.school_context_class_authority = None
+        app.state.create_remediation_teaching_work_service = None
         app.state.create_teaching_assignment_service = None
         app.state.update_teaching_assignment_due_service = None
         app.state.close_teaching_assignment_service = None

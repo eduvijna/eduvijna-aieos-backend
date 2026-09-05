@@ -13,7 +13,11 @@ from alembic.config import Config
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-from tests.dbutil import REPO_ROOT, set_tenant
+from tests.dbutil import (
+    REPO_ROOT,
+    clear_asset_audit_rows_for_schema_downgrade,
+    set_tenant,
+)
 
 __all__ = ["REPO_ROOT", "set_tenant"]
 
@@ -858,6 +862,7 @@ def postgres18() -> Iterator[dict[str, str]]:
     os.environ["AIEOS_DATABASE_URL"] = m_url
     cfg = alembic_config(m_url)
     command.upgrade(cfg, "head")
+    clear_asset_audit_rows_for_schema_downgrade(bootstrap)
     command.downgrade(cfg, "base")
     command.upgrade(cfg, "head")
     provision_runtime_grants(bootstrap)

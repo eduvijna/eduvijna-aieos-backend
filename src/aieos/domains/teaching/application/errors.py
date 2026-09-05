@@ -18,6 +18,30 @@ class TeachingWorkForbidden(TeachingApplicationError):
     """The principal does not own the target TeachingWork."""
 
 
+class TeachingWorkCapabilityForbidden(TeachingApplicationError):
+    """Required current capability was denied."""
+
+
+class RemediationAssessmentNotFound(TeachingApplicationError):
+    """Source Assessment is not visible in the execution tenant."""
+
+
+class RemediationAssessmentNotRecorded(TeachingApplicationError):
+    """Source Assessment is not in RECORDED lifecycle."""
+
+
+class RemediationAssessmentRevisionConflict(TeachingApplicationError):
+    """Expected source Assessment revision does not match the locked revision."""
+
+
+class RemediationAssessmentForbidden(TeachingApplicationError):
+    """Source Assessment or composed Teaching facts have different ownership."""
+
+
+class RemediationCompositionConflict(TeachingApplicationError):
+    """Source Assessment Teaching composition is no longer coherent."""
+
+
 class AggregateRevisionConflict(TeachingApplicationError):
     """Expected aggregate revision does not match the locked/stored head."""
 

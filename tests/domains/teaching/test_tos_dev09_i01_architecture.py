@@ -37,15 +37,15 @@ def _py_files(root: Path) -> list[Path]:
 
 class TestI01ArchitectureGuards:
     def test_current_alembic_head_tosd090001(self) -> None:
-        assert EXPECTED_ALEMBIC_HEAD == "tosd090001"
-        assert EXPECTED_MIGRATION_HEAD == "tosd090001"
+        assert EXPECTED_ALEMBIC_HEAD == "tosd090002"
+        assert EXPECTED_MIGRATION_HEAD == "tosd090002"
         text = MIGRATION.read_text(encoding="utf-8")
         assert 'revision: str = "tosd090001"' in text
         assert 'down_revision: str | None = "tosd080002"' in text
         versions = sorted(
             p.name for p in MIGRATIONS.glob("*.py") if p.name != "__init__.py"
         )
-        assert versions[-1] == "tosd090001_remediation_work_origin.py"
+        assert versions[-1] == "tosd090002_teaching_work_remediation_audit.py"
 
     def test_no_learner_mastery_memory_note_observation_fields(self) -> None:
         sql = _sql_literals(MIGRATION).lower()
@@ -102,19 +102,17 @@ class TestI01ArchitectureGuards:
         assert "nats" not in migration.lower()
         assert "temporal" not in migration.lower()
 
-    def test_no_new_improve_http_route(self) -> None:
+    def test_no_generic_improvement_resource(self) -> None:
         routes = ROUTES.read_text(encoding="utf-8")
-        assert "from-classroom-assessment" not in routes
         assert "/improvements" not in routes
         openapi = OPENAPI.read_text(encoding="utf-8")
-        assert "from-classroom-assessment" not in openapi
         assert "/improvements" not in openapi
 
     def test_openapi_digest_unchanged(self) -> None:
         digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest().upper()
         assert digest == EXPECTED_OPENAPI_SHA256
         assert digest == (
-            "824B389D6D4EDB2EA5D8ED3A9E5411087B566DFDCA09C2AB0CD4FDED51C4D89D"
+            "B4326D43A213D7831F2AAD8E77A2CEC6BA70B800B4C62EFC52D5B8DFC07CB4D9"
         )
 
     def test_generic_create_guards_remediate_class(self) -> None:

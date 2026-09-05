@@ -24,8 +24,14 @@ from aieos.domains.content.infrastructure.persistence.uow import (
 from aieos.domains.teaching.infrastructure.persistence.uow import (
     SqlAlchemyTeachingUnitOfWorkFactory,
 )
+from aieos.domains.teaching.application.ports import (
+    RemediationAssessmentSourceFactory,
+)
 from aieos.platform.api.app import create_app
 from aieos.platform.events.models import MutationEventContext
+from aieos.platform.runtime.remediation_assessment_source import (
+    SqlAlchemyRemediationAssessmentSource,
+)
 from tests.domains.teaching.helpers_dev06_i03 import (
     seed_published_learner_content,
     seed_teacher_only_content,
@@ -48,6 +54,11 @@ FIXED_NOW = datetime(2026, 9, 4, 10, 0, tzinfo=UTC)
 IDEMPOTENCY_RETENTION = timedelta(hours=24)
 CURSOR_KEY = b"tos-dev08-i02-test-cursor-key"
 RECORD_PATH = "/api/v1/assessment/classroom-assessments"
+
+
+class _AllowTeachingWorkAuthorization:
+    def authorize(self, *, tenant_id, principal_id, capability) -> None:
+        return None
 
 
 def headers(
@@ -81,6 +92,8 @@ def build_assessment_client(
     school_context_reader: object | None = None,
     with_school_context: bool = True,
     assessment_authorization: object | None = None,
+    teaching_authorization: object | None = None,
+    remediation_assessment_source_factory: RemediationAssessmentSourceFactory | None = None,
 ) -> TestClient:
     reader: object | None
     if not with_school_context:
@@ -93,7 +106,13 @@ def build_assessment_client(
     auth = assessment_authorization or AllowClassroomAssessmentAuthorization()
     app = create_app(
         uow_factory=SqlAlchemyContentUnitOfWorkFactory(runtime_engine),
-        teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(runtime_engine),
+        teaching_uow_factory=SqlAlchemyTeachingUnitOfWorkFactory(
+            runtime_engine,
+            remediation_assessment_source_factory=(
+                remediation_assessment_source_factory
+                or SqlAlchemyRemediationAssessmentSource
+            ),
+        ),
         assessment_uow_factory=SqlAlchemyAssessmentUnitOfWorkFactory(runtime_engine),
         assessment_authorization=auth,  # type: ignore[arg-type]
         request_identity_authenticator=FixedPrincipalAuthenticator(principal_id),
@@ -109,6 +128,9 @@ def build_assessment_client(
         asset_reference_validation=AllowAssetReferenceValidation(),
         asset_current_governance=AllowAssetCurrentGovernance(),
         school_context_class_reader=reader,  # type: ignore[arg-type]
+        teaching_authorization=(
+            teaching_authorization or _AllowTeachingWorkAuthorization()
+        ),  # type: ignore[arg-type]
     )
     return TestClient(app, raise_server_exceptions=False)
 

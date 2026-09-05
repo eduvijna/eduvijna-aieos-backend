@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
@@ -45,6 +46,52 @@ TEACHING_EXECUTION_COMPLETE = "teaching.execution.complete"
 TEACHING_EXECUTION_CANCEL = "teaching.execution.cancel"
 TEACHING_EXECUTION_OBSERVATION_CREATE = "teaching.execution.observation.create"
 TEACHING_EXECUTION_OBSERVATION_CORRECT = "teaching.execution.observation.correct"
+
+
+@dataclass(frozen=True, slots=True)
+class RemediationAssessmentSourceSnapshot:
+    """Teaching-owned immutable view of locked Assessment source facts."""
+
+    assessment_id: UUID
+    tenant_id: UUID
+    teacher_principal_id: UUID
+    class_ref: str
+    content_id: UUID
+    content_version_id: UUID
+    class_result_level: str
+    lifecycle_state: str
+    work_id: UUID | None
+    execution_id: UUID | None
+    assignment_id: UUID | None
+    aggregate_revision: int
+
+
+class RemediationAssessmentSourcePort(Protocol):
+    """Locked Assessment facts supplied by runtime composition."""
+
+    def load_for_update(
+        self, assessment_id: UUID
+    ) -> RemediationAssessmentSourceSnapshot | None: ...
+
+
+class RemediationAssessmentSourceFactory(Protocol):
+    """Creates a source bound to the Teaching UoW's opaque connection."""
+
+    def __call__(
+        self, connection: object, execution_tenant_id: UUID
+    ) -> RemediationAssessmentSourcePort: ...
+
+
+class TeachingWorkAuthorization(Protocol):
+    """Current capability authority used by remediation Work creation."""
+
+    def authorize(
+        self,
+        *,
+        tenant_id: UUID,
+        principal_id: UUID,
+        capability: str,
+    ) -> None: ...
 
 
 class TeachingWorkRepository(Protocol):
@@ -194,6 +241,10 @@ class TeachingUnitOfWork(Protocol):
     outbox: OutboxRepository
     audit: SecurityMutationAuditRepository
     content_eligibility: ContentAssignmentEligibilityPort
+
+    def load_recorded_assessment_for_update(
+        self, assessment_id: UUID
+    ) -> RemediationAssessmentSourceSnapshot | None: ...
 
     def __enter__(self) -> TeachingUnitOfWork: ...
 

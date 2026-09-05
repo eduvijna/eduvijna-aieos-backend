@@ -40,6 +40,19 @@ class CreateTeachingWorkCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class CreateRemediationTeachingWorkCommand:
+    """Caller-supplied fields for Assessment-origin remediation creation."""
+
+    assessment_id: UUID
+    expected_assessment_aggregate_revision: int
+    goal_text: str
+    target_date: date
+    locale: str
+    subject: str | None = None
+    topic: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class RefineTeachingWorkCommand:
     """PATCH-style partial refinement of an existing TeachingWork.
 
